@@ -66,3 +66,28 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 For support and questions, please contact the development team or create an issue in the repository.
 
 ---
+
+In Development
+Advanced appointment scheduling
+Medical records management
+Secure messaging system
+Medication management
+Analytics and reporting
+
+## Technology Stack
+
+### Frontend
+**React Native** with Expo
+**TypeScript** for type safety
+**Cross-platform** support (Web, Android, iOS)
+**Responsive design** with adaptive layouts
+
+### Backend
+**Node.js** with Express
+**SQLite** database
+**JWT** authentication
+**bcrypt** password hashing
+**Nodemailer** for email services
+
+---
+
