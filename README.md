@@ -90,4 +90,108 @@ Analytics and reporting
 **Nodemailer** for email services
 
 ---
+## Getting Started
 
+### Prerequisites
+Node.js (v16 or higher)
+npm or yarn
+Expo CLI (npm install -g @expo/cli)
+For mobile development: Expo Go app on your device
+
+### Installation
+
+1. **Clone the repository**
+bash
+   git clone <repository-url>
+   cd PatientConnect360
+  
+
+2. **Install frontend dependencies**
+bash
+   npm install
+  
+
+3. **Install backend dependencies**
+bash
+   cd backend
+   npm install
+  
+
+### Running the Application
+
+#### Backend Server
+bash
+cd backend
+npm run dev
+The API server will start on http://localhost:3000
+
+#### Frontend Application
+
+**Web Development**
+bash
+npm run web
+
+**Mobile Development (iOS)**
+bash
+npm run ios
+
+**Mobile Development (Android)**
+bash
+npm run android
+
+**Expo Development Build**
+bash
+npx expo start
+
+## Default Login Credentials
+
+For testing purposes, you can use these default accounts:
+
+**Admin**: admin@patientconnect360.com / admin123
+**Test Patient**: patient@example.com / password123
+**Test Clinician**: clinician@example.com / password123
+**Test Caregiver**: caregiver@example.com / password123
+
+## API Endpoints
+
+### Authentication
+POST /api/register - User registration
+POST /api/login - User login
+POST /api/forgot-password - Request password reset
+POST /api/reset-password - Reset password with token
+
+### User Management
+GET /api/profile - Get current user profile
+GET /api/users - Get all users (admin only)
+PUT /api/users/:id - Update user (admin only)
+DELETE /api/users/:id - Delete user (admin only)
+
+### Health Check
+GET /api/health - API health status
+
+## User Roles & Permissions
+
+### Patient
+View personal health information
+Schedule appointments
+Access medical records
+Message healthcare providers
+Manage medications
+
+### Caregiver
+Manage care recipients
+Schedule appointments for patients
+Update care plans
+Communicate with care team
+
+### Clinician
+View patient list
+Manage appointments
+Update patient records
+Communicate with patients
+
+### Admin
+Full system access
+User management
+System configuration
+Analytics and reporting
