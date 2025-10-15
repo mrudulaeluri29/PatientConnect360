@@ -14,13 +14,20 @@ datasource db { //defines what kind of database is using and where to find it
 } 
 //So this connects Prisma to local PostgreSQL instance using the URL stored in .env
 
-//Each model in Prisma corresponds to a table in PostgreSQL.
+enum Role {
+  ADMIN
+  PATIENT
+  CAREGIVER
+  CLINICIAN
+}
 
+//Each model in Prisma corresponds to a table in PostgreSQL.
 model User {
   id           String   @id @default(cuid()) //Creates a column named id of type String. It’s the primary key (@id). @default(cuid()) means Prisma will auto-generate a random unique ID like ckz7x0m8d0000vsf78xyz2h6f
   email        String   @unique //A column called email of type String. It must be unique—no two users can share the same email.
   username     String   @unique //Same rule as above for usernames.
   passwordHash String //Stores the hashed password, never the plain password.
+  role         Role     @default(PATIENT)
   createdAt    DateTime @default(now()) //Automatically stores the date/time when the user row is first created.
   updatedAt    DateTime @updatedAt //Automatically updates to the current time whenever that row changes.
 }

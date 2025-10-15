@@ -4,7 +4,7 @@ import "dotenv/config";  //loads .env file automatically
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-
+import authRoutes from "./auth";
 
 // Import our Prisma database client
 import { prisma } from "./db";
@@ -34,6 +34,7 @@ app.get("/db/ping", async (_req, res) => {
     res.status(500).json({ db: "error", message: "Cannot reach database" });
   }
 });
+app.use("/api/auth", authRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 app.listen(PORT, () => { //start listening for requests on this port
