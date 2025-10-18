@@ -15,7 +15,7 @@ Completed Features
 - **Dashboard**: Role-specific dashboards with relevant features
 - **Responsive Design**: Optimized for mobile, tablet, and desktop
 - **Backend API**: Complete REST API with SQLite database
-
+- **Connected the backend to the database** using prisma
 
 ## Project Structure
 
