@@ -44,6 +44,7 @@ Input validation on both frontend and backend
 CORS enabled for cross-origin requests
 
 ### Database Schema
+we are using postgresql
 The SQLite database includes:
 users table for user accounts
 password_reset_tokens table for password reset functionality
