@@ -76,11 +76,12 @@ Analytics and reporting
 
 ## Technology Stack
 
-### Frontend
-**React Native** with Expo
-**TypeScript** for type safety
-**Cross-platform** support (Web, Android, iOS)
-**Responsive design** with adaptive layouts
+- **Frontend**: React Native with Expo
+- **Backend**: Node.js with Express
+- **Authentication**: JWT tokens
+- **State Management**: React Context API
+- **Navigation**: React Navigation
+- **UI Components**: React Native Paper
 
 ### Backend
 **Node.js** with Express
