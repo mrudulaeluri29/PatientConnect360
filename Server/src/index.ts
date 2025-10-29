@@ -18,18 +18,21 @@ app.use(cookieParser()); //to access cookies later
 
 //lets us know that the server is live
 //When someone visits "http://localhost:4000/health", the server replies with { ok: true, time: "..." }
-app.get("/health", (_req, res) => {
+app.get("/health", (_req, res) => 
+  {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
 // This sends a simple SQL query "SELECT NOW()" to Postgres
 // If it succeeds, we know the server and DB are connected correctly.
 app.get("/db/ping", async (_req, res) => {
-  try {
+  try 
+  {
     // Send a raw query to PostgreSQL to get the current timestamp
     const now = await prisma.$queryRaw`SELECT NOW() as now`;
     res.json({ db: "ok", now });
-  } catch (error) {
+  } catch (error) 
+  {
     console.error("Database connection failed:", error);
     res.status(500).json({ db: "error", message: "Cannot reach database" });
   }
