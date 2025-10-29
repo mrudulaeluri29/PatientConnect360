@@ -18,7 +18,6 @@ Completed Features
 - **Connected the backend to the database** using prisma
 
 ## Project Structure
-
 PatientConnect360/
 ├── App.tsx                 # Main application component
 ├── backend/
@@ -157,12 +156,14 @@ For testing purposes, you can use these default accounts:
 ## API Endpoints
 
 ### Authentication
+
 POST /api/register - User registration
 POST /api/login - User login
 POST /api/forgot-password - Request password reset
 POST /api/reset-password - Reset password with token
 
 ### User Management
+
 GET /api/profile - Get current user profile
 GET /api/users - Get all users (admin only)
 PUT /api/users/:id - Update user (admin only)
