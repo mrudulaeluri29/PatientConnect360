@@ -1,9 +1,12 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
-import SignIn from "./pages/SignIn";
+import Homepage from "./pages/Homepage";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 
-function Protected({ children }: { children: JSX.Element }) {
+function ProtectedRoute({ children }: { children: React.ReactElement }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="page pad">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
@@ -15,16 +18,21 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<SignIn />} />
-          {/* stubs for next steps */}
-          <Route path="/register" element={<div className="page pad">Register (coming up)</div>} />
-          <Route path="/forgot" element={<div className="page pad">Forgot Password (coming up)</div>} />
-          <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<Homepage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Signup />} />
+          <Route path="/forgot-password" element={<div className="page pad">Forgot Password (coming up)</div>} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
   );
 }
-
-//app routes and a guard that only lets signed-in users access /dashboard so can redirect to /login when not authenticated.
