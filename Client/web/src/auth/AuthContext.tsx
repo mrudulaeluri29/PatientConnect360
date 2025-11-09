@@ -1,7 +1,5 @@
-// AuthContext placeholder
-// TODO: Implement authentication context
-
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { api } from "../lib/axios";
 
 interface User {
   id: string;
@@ -13,31 +11,202 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  login: (emailOrUsername: string, password: string) => Promise<User>;
+  register: (email: string, username: string, password: string, role?: string) => Promise<User>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Development mode: Set to true to use mock authentication (no backend required)
+const DEV_MODE = true;
+
+// Mock storage for development (stores in localStorage)
+const STORAGE_KEY = "dev_auth_user";
+
+// Mock users for development
+const mockUsers: User[] = [];
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const login = async (email: string, password: string) => {
-    // TODO: Implement login logic
-    setLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setLoading(false);
+  // Load user from localStorage on mount (dev mode)
+  useEffect(() => {
+    if (DEV_MODE) {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        try {
+          const userData = JSON.parse(stored);
+          setUser(userData);
+        } catch (e) {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      }
+      setLoading(false);
+    } else {
+      refreshUser();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const refreshUser = async () => {
+    if (DEV_MODE) {
+      // In dev mode, just check localStorage
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        try {
+          const userData = JSON.parse(stored);
+          setUser(userData);
+        } catch (e) {
+          localStorage.removeItem(STORAGE_KEY);
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+      return;
+    }
+
+    // Real API call
+    try {
+      const response = await api.get("/api/auth/me");
+      setUser(response.data.user);
+    } catch (error) {
+      console.error("Failed to fetch user:", error);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const logout = () => {
-    // TODO: Implement logout logic
-    setUser(null);
+  const login = async (emailOrUsername: string, password: string) => {
+    setLoading(true);
+    
+    if (DEV_MODE) {
+      // Mock login - accept any credentials for development
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Check if user exists in mock storage
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const userData = JSON.parse(stored);
+        // If stored user matches credentials (email or username), use it
+        if (userData.email === emailOrUsername || userData.username === emailOrUsername || 
+            userData.email.toLowerCase() === emailOrUsername.toLowerCase() || 
+            userData.username.toLowerCase() === emailOrUsername.toLowerCase()) {
+          setUser(userData);
+          setLoading(false);
+          return userData;
+        }
+      }
+      
+      // Determine role based on current route in dev mode
+      let defaultRole: "ADMIN" | "PATIENT" | "CAREGIVER" | "CLINICIAN" = "PATIENT";
+      const path = window.location.pathname;
+      if (path.includes("/admin/login")) {
+        defaultRole = "ADMIN";
+      } else if (path.includes("/clinician/login")) {
+        defaultRole = "CLINICIAN";
+      }
+      
+      // Create a mock user with appropriate role
+      const userData: User = {
+        id: `dev-${defaultRole.toLowerCase()}-${Date.now()}`,
+        email: emailOrUsername.includes("@") ? emailOrUsername : `${emailOrUsername}@example.com`,
+        username: emailOrUsername.includes("@") ? emailOrUsername.split("@")[0] : emailOrUsername,
+        role: defaultRole,
+      };
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+      setUser(userData);
+      setLoading(false);
+      return userData;
+    }
+
+    // Real API call
+    try {
+      const response = await api.post("/api/auth/login", {
+        emailOrUsername,
+        password,
+      });
+      const userData = response.data.user;
+      setUser(userData);
+      setLoading(false);
+      return userData;
+    } catch (error: any) {
+      setUser(null);
+      setLoading(false);
+      throw new Error(error.response?.data?.error || "Login failed");
+    }
+  };
+
+  const register = async (email: string, username: string, password: string, role?: string) => {
+    setLoading(true);
+    
+    if (DEV_MODE) {
+      // Mock registration - create user and store in localStorage
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const userData: User = {
+        id: `dev-${role?.toLowerCase() || "user"}-${Date.now()}`,
+        email,
+        username,
+        role: (role as any) || "PATIENT",
+      };
+      
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+      setUser(userData);
+      setLoading(false);
+      return userData;
+    }
+
+    // Real API call
+    try {
+      const response = await api.post("/api/auth/register", {
+        email,
+        username,
+        password,
+        role,
+      });
+      const userData = response.data.user;
+      setUser(userData);
+      setLoading(false);
+      return userData;
+    } catch (error: any) {
+      setUser(null);
+      setLoading(false);
+      throw new Error(error.response?.data?.error || "Registration failed");
+    }
+  };
+
+  const logout = async () => {
+    setLoading(true);
+    
+    if (DEV_MODE) {
+      // Mock logout - clear localStorage
+      localStorage.removeItem(STORAGE_KEY);
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    // Real API call
+    try {
+      await api.post("/api/auth/logout");
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      setUser(null);
+      setLoading(false);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

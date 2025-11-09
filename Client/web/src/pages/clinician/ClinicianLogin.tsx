@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { useAuth } from "../auth/AuthContext";
-import "./Login.css";
+import { useAuth } from "../../auth/AuthContext";
+import "../Login.css";
 
-export default function Login() {
+export default function ClinicianLogin() {
   const [emailOrUsername, setEmailOrUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -20,16 +20,16 @@ export default function Login() {
     try {
       const userData = await login(emailOrUsername, password);
       
-      // Redirect based on user role
-      if (userData.role === "ADMIN") {
-        navigate("/admin/dashboard");
-      } else if (userData.role === "CLINICIAN") {
-        navigate("/clinician/dashboard");
-      } else if (userData.role === "PATIENT" || userData.role === "CAREGIVER") {
-        navigate("/patient/dashboard");
-      } else {
-        navigate("/dashboard");
+      // In dev mode, check if user is clinician
+      // In production, verify role is CLINICIAN
+      if (userData.role !== "CLINICIAN") {
+        setError("Access denied. Clinician privileges required.");
+        setLoading(false);
+        return;
       }
+      
+      // User is clinician, navigate to dashboard
+      navigate('/clinician/dashboard');
     } catch (err: any) {
       setError(err.message || "Invalid credentials. Please try again.");
       setLoading(false);
@@ -44,32 +44,32 @@ export default function Login() {
             <div className="brand-logo">
               <span className="logo-text">MediHealth</span>
             </div>
-            <h1 className="login-title">Welcome Back</h1>
+            <h1 className="login-title">Clinician Portal</h1>
             <p className="login-subtitle">
-              Sign in to access your health portal and connect with your care team
+              Access your clinician dashboard to manage patient visits, communications, and care plans
             </p>
           </div>
           
           <div className="login-features">
             <div className="feature-item">
-              <span>Secure & HIPAA Compliant</span>
+              <span>Patient Visits Management</span>
             </div>
             <div className="feature-item">
-              <span>Connect with Care Team</span>
+              <span>Secure Communication</span>
             </div>
             <div className="feature-item">
-              <span>Manage Appointments</span>
+              <span>AI-Powered Assistance</span>
             </div>
             <div className="feature-item">
-              <span>Access Medical Records</span>
+              <span>Care Plan Tracking</span>
             </div>
           </div>
         </div>
 
         <div className="login-right">
           <div className="login-form-container">
-            <h2 className="form-title">Sign In</h2>
-            <p className="form-subtitle">Enter your credentials to access your account</p>
+            <h2 className="form-title">Clinician Sign In</h2>
+            <p className="form-subtitle">Enter your credentials to access your dashboard</p>
 
             {error && (
               <div className="error-message">
@@ -140,36 +140,21 @@ export default function Login() {
                 className="btn-login-submit"
                 disabled={loading}
               >
-                {loading ? "Signing in..." : "Sign In"}
+                {loading ? "Signing in..." : "Sign In as Clinician"}
               </button>
             </form>
 
             <div className="login-divider">
-              <span>Don't have an account?</span>
+              <span>Don't have a clinician account?</span>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1.5rem" }}>
-              <Link to="/register" className="btn-signup-link">
-                Sign Up as Patient
-              </Link>
-              <Link to="/register/clinician" className="btn-signup-link" style={{ background: "transparent", border: "2px solid #B29CE4", color: "#6E5B9A" }}>
-                Sign Up as Clinician
-              </Link>
-              <Link to="/register/caregiver" className="btn-signup-link" style={{ background: "transparent", border: "2px solid #B29CE4", color: "#6E5B9A" }}>
-                Sign Up as Caregiver
-              </Link>
-            </div>
+            <Link to="/register/clinician" className="btn-signup-link">
+              Register as Clinician
+            </Link>
 
-            <div className="role-info">
-              <p className="role-info-title">Admin Access:</p>
-              <Link to="/admin/login" style={{ color: "#6E5B9A", textDecoration: "none", fontWeight: "500" }}>
-                Admin Login
-              </Link>
-            </div>
-            <div className="role-info" style={{ marginTop: "1rem" }}>
-              <p className="role-info-title">Clinician Access:</p>
-              <Link to="/clinician/login" style={{ color: "#6E5B9A", textDecoration: "none", fontWeight: "500" }}>
-                Clinician Login
+            <div className="role-info" style={{ marginTop: "1.5rem" }}>
+              <Link to="/" style={{ color: "#6E5B9A", textDecoration: "none", fontWeight: "500" }}>
+                ← Back to Homepage
               </Link>
             </div>
           </div>
