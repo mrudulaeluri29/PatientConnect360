@@ -183,9 +183,10 @@ Manage medications
 
 ### Caregiver
 Manage care recipients
-Schedule appointments for patients
 Update care plans
 Communicate with care team
+Schedule appointments for patients
+
 
 ### Clinician
 View patient list
