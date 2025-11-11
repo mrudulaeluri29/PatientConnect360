@@ -5,11 +5,15 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import authRoutes from "./auth";
+import passwordResetRoutes from "./passwordReset";
 
 // Import our Prisma database client
 import { prisma } from "./db";
 
-const app = express(); //Creates an Express “application” this is our server.
+// Import mailer initialization
+import { mailerReady } from "./mailer";
+
+const app = express(); //Creates an Express "application" this is our server.
 
 
 app.use(cors({ origin: "http://localhost:5173", credentials: true })); //allows requests from our React app.
@@ -35,8 +39,20 @@ app.get("/db/ping", async (_req, res) => {
   }
 });
 app.use("/api/auth", authRoutes);
+app.use("/api/password-reset", passwordResetRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
-app.listen(PORT, () => { //start listening for requests on this port
-  console.log(`API running at http://localhost:${PORT}`);
-});
+
+// Wait for mailer to be ready before starting server
+mailerReady
+  .then(() => {
+    app.listen(PORT, () => { //start listening for requests on this port
+      console.log(`API running at http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Failed to initialize mailer, but starting server anyway:", err);
+    app.listen(PORT, () => {
+      console.log(`API running at http://localhost:${PORT} (email may not work)`);
+    });
+  });

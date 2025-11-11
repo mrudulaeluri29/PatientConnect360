@@ -30,7 +30,82 @@ model User {
   role         Role     @default(PATIENT)
   createdAt    DateTime @default(now()) //Automatically stores the date/time when the user row is first created.
   updatedAt    DateTime @updatedAt //Automatically updates to the current time whenever that row changes.
+
+  // Login tracking
+  lastLogin           DateTime? // timestamp of the last successful login
+  failedLoginAttempts Int      @default(0) // number of consecutive failed login attempts
+  lastFailedAt        DateTime? // timestamp of the last failed login attempt
+
+  // Password reset tracking
+  passwordResetToken  String?   // OTP token for password reset
+  passwordResetExpiry DateTime? // Expiry time for the OTP token (15 minutes)
+  passwordResetAttempts Int     @default(0) // Number of failed OTP attempts
+
+  // Relations to profile tables
+  patientProfile   PatientProfile?
+  clinicianProfile ClinicianProfile?
+  caregiverProfile CaregiverProfile?
 }
+
+// Patient-specific profile information
+model PatientProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Personal Information
+  legalName             String
+  dateOfBirth           DateTime
+  phoneNumber           String
+  homeAddress           String
+  apartmentSuite        String?
+  
+  // Insurance Information
+  insuranceProvider     String
+  insurancePolicyNumber String
+  
+  // Pharmacy Information
+  preferredPharmacyName String
+  pharmacyAddress       String
+  pharmacyPhoneNumber   String
+  
+  // Optional file attachment (for insurance card, etc.)
+  uploadedFileName      String?
+  uploadedFileUrl       String?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Clinician-specific profile information
+model ClinicianProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Professional Information (can be expanded later)
+  specialization        String?
+  licenseNumber         String?
+  hospitalAffiliation   String?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Caregiver-specific profile information
+model CaregiverProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Professional Information (can be expanded later)
+  relationship          String?  // e.g., "family member", "professional caregiver"
+  certifications        String?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
 
 
 

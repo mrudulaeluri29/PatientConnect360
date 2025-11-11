@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import { api } from "../lib/axios";
 
 interface User {
@@ -12,21 +13,21 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (emailOrUsername: string, password: string) => Promise<User>;
-  register: (email: string, username: string, password: string, role?: string) => Promise<User>;
+  register: (email: string, username: string, password: string, role?: string, profileData?: any) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Development mode: Set to true to use mock authentication (no backend required)
-const DEV_MODE = true;
+// Development mode: controlled via Vite env var VITE_DEV_AUTH (set to "true" to use mock auth)
+// Default is false so the app will use the real backend when deployed.
+const DEV_MODE = import.meta.env.VITE_DEV_AUTH === "true";
 
 // Mock storage for development (stores in localStorage)
 const STORAGE_KEY = "dev_auth_user";
 
-// Mock users for development
-const mockUsers: User[] = [];
+// Mock users for development (not used currently)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -144,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (email: string, username: string, password: string, role?: string) => {
+  const register = async (email: string, username: string, password: string, role?: string, profileData?: any) => {
     setLoading(true);
     
     if (DEV_MODE) {
@@ -171,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username,
         password,
         role,
+        profileData,
       });
       const userData = response.data.user;
       setUser(userData);

@@ -183,12 +183,27 @@ export default function Signup() {
     setLoading(true);
 
     try {
-      // Register patient with AuthContext
-      const userData = await register(formData.email, formData.username, formData.password, "PATIENT");
+      // Prepare patient profile data
+      const profileData = {
+        legalName: formData.legalName,
+        dateOfBirth: formData.dateOfBirth?.toISOString(),
+        phoneNumber: formData.phoneNumber,
+        homeAddress: formData.homeAddress,
+        apartmentSuite: formData.apartmentSuite,
+        insuranceProvider: formData.insuranceProvider,
+        insurancePolicyNumber: formData.insurancePolicyNumber,
+        preferredPharmacyName: formData.preferredPharmacyName,
+        pharmacyAddress: formData.pharmacyAddress,
+        pharmacyPhoneNumber: formData.pharmacyPhoneNumber,
+        // TODO: Handle file upload for insurance card
+        uploadedFileName: uploadedFile?.name || null,
+        uploadedFileUrl: null, // Will be implemented with file upload service
+      };
+
+      // Register patient with AuthContext and profile data
+      await register(formData.email, formData.username, formData.password, "PATIENT", profileData);
       
       // After successful registration, navigate to patient dashboard
-      // Note: In a real app, you would also send the patient-specific data (legalName, dateOfBirth, etc.)
-      // to the backend to create the patient profile
       navigate("/patient/dashboard");
     } catch (err: any) {
       setErrors({ submit: err.message || "Registration failed. Please try again." });

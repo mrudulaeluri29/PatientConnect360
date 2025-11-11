@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import SignupClinician from "./pages/SignupClinician";
 import SignupCaregiver from "./pages/SignupCaregiver";
+import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import AdminSignup from "./pages/admin/AdminSignup";
 import AdminLogin from "./pages/admin/AdminLogin";
@@ -61,7 +62,7 @@ export default function App() {
               </RequirePatient>
             }
           />
-          <Route path="/forgot-password" element={<div className="page pad">Forgot Password (coming up)</div>} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route
             path="/dashboard"
             element={

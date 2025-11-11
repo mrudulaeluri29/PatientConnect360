@@ -23,10 +23,10 @@ function setAuthCookie(res: Response, userId: string, role: string) {
 }
 
 // POST /api/auth/register
-// Body: { email, username, password, role? } -> role is optional; defaults to PATIENT
+// Body: { email, username, password, role?, profileData? }
 router.post("/register", async (req: Request, res: Response) => {
   try {
-    const { email, username, password, role } = req.body || {};
+    const { email, username, password, role, profileData } = req.body || {};
     if (!email || !username || !password) {
       return res.status(400).json({ error: "email, username, and password are required" });
     }
@@ -41,8 +41,51 @@ router.post("/register", async (req: Request, res: Response) => {
     if (existing) return res.status(409).json({ error: "email or username already in use" });
 
     const passwordHash = await bcrypt.hash(password, 12);
+    
+    // Create user with profile data based on role
     const user = await prisma.user.create({
-      data: { email, username, passwordHash, role: roleToUse as any },
+      data: { 
+        email, 
+        username, 
+        passwordHash, 
+        role: roleToUse as any,
+        // Create profile based on role
+        ...(roleToUse === "PATIENT" && profileData ? {
+          patientProfile: {
+            create: {
+              legalName: profileData.legalName,
+              dateOfBirth: new Date(profileData.dateOfBirth),
+              phoneNumber: profileData.phoneNumber,
+              homeAddress: profileData.homeAddress,
+              apartmentSuite: profileData.apartmentSuite || null,
+              insuranceProvider: profileData.insuranceProvider,
+              insurancePolicyNumber: profileData.insurancePolicyNumber,
+              preferredPharmacyName: profileData.preferredPharmacyName,
+              pharmacyAddress: profileData.pharmacyAddress,
+              pharmacyPhoneNumber: profileData.pharmacyPhoneNumber,
+              uploadedFileName: profileData.uploadedFileName || null,
+              uploadedFileUrl: profileData.uploadedFileUrl || null,
+            }
+          }
+        } : {}),
+        ...(roleToUse === "CLINICIAN" && profileData ? {
+          clinicianProfile: {
+            create: {
+              specialization: profileData.specialization || null,
+              licenseNumber: profileData.licenseNumber || null,
+              hospitalAffiliation: profileData.hospitalAffiliation || null,
+            }
+          }
+        } : {}),
+        ...(roleToUse === "CAREGIVER" && profileData ? {
+          caregiverProfile: {
+            create: {
+              relationship: profileData.relationship || null,
+              certifications: profileData.certifications || null,
+            }
+          }
+        } : {}),
+      },
       select: { id: true, email: true, username: true, role: true }
     });
 
@@ -66,10 +109,41 @@ router.post("/login", async (req: Request, res: Response) => {
     const user = await prisma.user.findFirst({
       where: { OR: [{ email: emailOrUsername }, { username: emailOrUsername }] }
     });
+
+    // If user does not exist, return generic invalid credentials (don't reveal which)
     if (!user) return res.status(401).json({ error: "invalid credentials" });
 
     const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) return res.status(401).json({ error: "invalid credentials" });
+
+    // If password is incorrect, increment failed counter and record time
+    if (!ok) {
+      try {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            failedLoginAttempts: { increment: 1 },
+            lastFailedAt: new Date()
+          }
+        });
+      } catch (e) {
+        console.error("Failed to update failed login counter:", e);
+      }
+      return res.status(401).json({ error: "invalid credentials" });
+    }
+
+    // Successful login — reset failed attempts and record last login
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          lastLogin: new Date(),
+          failedLoginAttempts: 0,
+          lastFailedAt: null
+        }
+      });
+    } catch (e) {
+      console.error("Failed to update login metadata:", e);
+    }
 
     setAuthCookie(res, user.id, user.role);
     res.json({ user: { id: user.id, email: user.email, username: user.username, role: user.role } });
