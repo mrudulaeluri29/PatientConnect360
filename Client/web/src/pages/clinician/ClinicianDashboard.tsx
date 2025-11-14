@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { api } from "../../lib/axios";
 import "./ClinicianDashboard.css";
 
 export default function ClinicianDashboard() {
@@ -433,119 +434,348 @@ function PatientSnapshot() {
 // Communication Hub Component
 function CommunicationHub() {
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [sentConversations, setSentConversations] = useState<any[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<any>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [sentLoading, setSentLoading] = useState<boolean>(false);
+  const [activeFolder, setActiveFolder] = useState<"inbox" | "sent">("inbox");
+  const [showNewMessageModal, setShowNewMessageModal] = useState<boolean>(false);
+  const [assignedPatients, setAssignedPatients] = useState<{ id: string; username: string; email: string }[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<string>("");
+  const [subject, setSubject] = useState<string>("");
+  const [messageBody, setMessageBody] = useState<string>("");
+  const [sending, setSending] = useState<boolean>(false);
   
-  const messages = [
-    {
-      id: "1",
-      from: "Admin",
-      subject: "New patient assignment",
-      preview: "You have been assigned to care for a new patient...",
-      time: "2 hours ago",
-      unread: true,
-    },
-    {
-      id: "2",
-      from: "Dr. Smith",
-      subject: "Medication order approval",
-      preview: "Please review and approve the medication order for...",
-      time: "5 hours ago",
-      unread: true,
-    },
-    {
-      id: "3",
-      from: "Vendor - Medical Supplies",
-      subject: "Supply order status",
-      preview: "Your order #12345 has been shipped and will arrive...",
-      time: "1 day ago",
-      unread: false,
-    },
-  ];
+  // Fetch inbox
+  useEffect(() => {
+    async function fetchInbox() {
+      setLoading(true);
+      try {
+        const res = await api.get("/api/simple-messages/inbox");
+        setConversations(res.data.conversations || []);
+      } catch (e: any) {
+        console.error("Failed to fetch inbox:", e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchInbox();
+  }, []);
 
-  const templates = [
-    "Patient visit completed successfully",
-    "Requesting medication order approval",
-    "Patient condition update",
-    "Supply order request",
-  ];
+  const fetchSent = async () => {
+    setSentLoading(true);
+    try {
+      const res = await api.get("/api/simple-messages/sent");
+      setSentConversations(res.data.conversations || []);
+    } catch (e: any) {
+      console.error("Failed to fetch sent:", e);
+    } finally {
+      setSentLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeFolder === "sent" && sentConversations.length === 0 && !sentLoading) {
+      fetchSent();
+    }
+  }, [activeFolder]);
+
+  // Fetch assigned patients when opening compose or once on mount
+  useEffect(() => {
+    async function fetchAssignedPatients() {
+      try {
+        const res = await api.get("/api/simple-messages/assigned-patients");
+        setAssignedPatients(res.data.patients || []);
+      } catch (e: any) {
+        console.error("Failed to fetch assigned patients:", e);
+      }
+    }
+    fetchAssignedPatients();
+  }, []);
+
+  // Fetch full conversation when selected
+  const handleSelectConversation = async (convId: string, messageId?: string) => {
+    setSelectedMessage(convId);
+    setSelectedMessageId(messageId || null);
+    try {
+      const res = await api.get(`/api/simple-messages/conversation/${convId}`);
+      setSelectedConversation(res.data.conversation);
+      // Refresh inbox to update unread count
+      const inboxRes = await api.get("/api/simple-messages/inbox");
+      setConversations(inboxRes.data.conversations || []);
+    } catch (e: any) {
+      console.error("Failed to fetch conversation:", e);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!selectedPatient || !subject || !messageBody) {
+      alert("Please fill in all fields");
+      return;
+    }
+    setSending(true);
+    try {
+      await api.post("/api/simple-messages/send", {
+        recipientId: selectedPatient,
+        subject,
+        body: messageBody,
+      });
+      setShowNewMessageModal(false);
+      setSelectedPatient("");
+      setSubject("");
+      setMessageBody("");
+      // Refresh Sent
+      await fetchSent();
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to send message");
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div className="clinician-content">
-      <div className="content-header">
-        <h2 className="section-title">Communication Hub</h2>
-        <button className="btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          New Message
-        </button>
-      </div>
-
-      <div className="communication-container">
-        <div className="messages-list">
-          <div className="messages-header">
-            <h3>Inbox</h3>
-            <span className="unread-count">{messages.filter(m => m.unread).length} unread</span>
+      {/* Folder Tabs */}
+      {!selectedMessage && (
+        <div className="message-folder-tabs">
+          <button 
+            className={`folder-tab ${activeFolder === "inbox" ? "active" : ""}`}
+            onClick={() => setActiveFolder("inbox")}
+          >
+            Inbox {conversations.some((c: any) => c.unread) && (
+              <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c: any) => c.unread).length}</span>
+            )}
+          </button>
+          <button 
+            className={`folder-tab ${activeFolder === "sent" ? "active" : ""}`}
+            onClick={() => setActiveFolder("sent")}
+          >
+            Sent
+          </button>
+          <div style={{ marginLeft: "auto" }}>
+            <button className="btn-primary" onClick={() => setShowNewMessageModal(true)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              New Message
+            </button>
           </div>
-          {messages.map((message) => (
-            <div 
-              key={message.id}
-              className={`message-item ${message.unread ? "unread" : ""} ${selectedMessage === message.id ? "selected" : ""}`}
-              onClick={() => setSelectedMessage(message.id)}
-            >
-              <div className="message-from">{message.from}</div>
-              <div className="message-subject">{message.subject}</div>
-              <div className="message-preview">{message.preview}</div>
-              <div className="message-time">{message.time}</div>
-            </div>
-          ))}
         </div>
+      )}
 
-        <div className="message-view">
-          {selectedMessage ? (
-            <div className="message-detail">
-              <div className="message-header">
-                <div>
-                  <div className="message-from-large">{messages.find(m => m.id === selectedMessage)?.from}</div>
-                  <div className="message-subject-large">{messages.find(m => m.id === selectedMessage)?.subject}</div>
-                </div>
-                <div className="message-actions">
-                  <button className="btn-secondary">Reply</button>
-                  <button className="btn-secondary">Forward</button>
-                </div>
-              </div>
-              <div className="message-body">
-                <p>This is the message content. In a real application, this would contain the full message text from the sender.</p>
-              </div>
-              <div className="ai-suggestions">
-                <h4>AI Suggested Replies</h4>
-                <div className="suggestion-replies">
-                  <button className="suggestion-reply">Thank you for the update. I will review and respond shortly.</button>
-                  <button className="suggestion-reply">I acknowledge receipt of this message and will take appropriate action.</button>
-                  <button className="suggestion-reply">Please provide additional details so I can assist effectively.</button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="message-placeholder">
-              <p>Select a message to view</p>
-            </div>
-          )}
-        </div>
+      {!selectedMessage && activeFolder === "inbox" ? (
+        // Inbox List View (Gmail-style)
+        <>
 
-        <div className="templates-panel">
-          <h3>Quick Templates</h3>
-          <div className="templates-list">
-            {templates.map((template, idx) => (
-              <button key={idx} className="template-item">
-                {template}
-              </button>
+          <div className="inbox-list">
+            {loading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading messages...</p>}
+            {!loading && conversations.length === 0 && (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ margin: '0 auto 1rem', opacity: 0.3 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <p>No messages yet</p>
+              </div>
+            )}
+            {!loading && conversations.map((conv: any) => (
+              <div 
+                key={conv.id}
+                className={`inbox-row ${conv.unread ? "unread" : ""}`}
+                onClick={() => handleSelectConversation(conv.conversationId || conv.id, conv.conversationId ? conv.id : undefined)}
+              >
+                <div className="inbox-row-left">
+                  {conv.unread && <span className="unread-dot"></span>}
+                  <div className="inbox-from">{conv.from}</div>
+                </div>
+                <div className="inbox-row-middle">
+                  <span className="inbox-subject">{conv.subject}</span>
+                  <span className="inbox-preview"> - {conv.preview}</span>
+                </div>
+                <div className="inbox-row-right">
+                  <span className="inbox-time">{formatTime(conv.time)}</span>
+                </div>
+              </div>
             ))}
           </div>
+        </>
+      ) : !selectedMessage && activeFolder === "sent" ? (
+        // Sent List View
+        <>
+          <div className="inbox-list">
+            {sentLoading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading sent messages...</p>}
+            {!sentLoading && sentConversations.length === 0 && (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ margin: '0 auto 1rem', opacity: 0.3 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <p>No sent messages</p>
+              </div>
+            )}
+            {!sentLoading && sentConversations.map((conv: any) => (
+              <div 
+                key={conv.id}
+                className={`inbox-row`}
+                onClick={() => handleSelectConversation(conv.conversationId, conv.id)}
+              >
+                <div className="inbox-row-left">
+                  <div className="inbox-from">To: {conv.to}</div>
+                </div>
+                <div className="inbox-row-middle">
+                  <span className="inbox-subject">{conv.subject}</span>
+                  <span className="inbox-preview"> - {conv.preview}</span>
+                </div>
+                <div className="inbox-row-right">
+                  <span className="inbox-time">{formatTime(conv.time)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        // Message Detail View (Full Screen)
+        <>
+          <div className="message-detail-header">
+            <button className="btn-back" onClick={() => { setSelectedMessage(null); setSelectedConversation(null); }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              Back to {activeFolder === "sent" ? "Sent" : "Inbox"}
+            </button>
+          </div>
+          
+          {selectedConversation && (
+            <div className="message-detail-full">
+              <div className="message-detail-subject">
+                <h2>{selectedConversation.subject}</h2>
+                <div className="message-detail-meta">
+                  From: <strong>{selectedConversation.participants?.find((p: any) => p.userId !== selectedConversation.id)?.user?.username || "Unknown"}</strong>
+                </div>
+              </div>
+              
+              <div className="message-thread">
+                {selectedConversation.messages
+                  ?.filter((msg: any) => (selectedMessageId ? msg.id === selectedMessageId : true))
+                  .map((msg: any) => (
+                  <div key={msg.id} className="message-bubble">
+                    <div className="message-bubble-header">
+                      <div className="message-sender">
+                        <div className="sender-avatar">{msg.sender.username.charAt(0).toUpperCase()}</div>
+                        <div>
+                          <div className="sender-name">{msg.sender.username}</div>
+                          <div className="sender-email">{msg.sender.email}</div>
+                        </div>
+                      </div>
+                      <div className="message-timestamp">{new Date(msg.createdAt).toLocaleString()}</div>
+                    </div>
+                    <div className="message-bubble-body">
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="message-reply-section">
+                <button className="btn-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 14 4 9 9 4"></polyline>
+                    <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+                  </svg>
+                  Reply
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* New Message Modal */}
+      {showNewMessageModal && (
+        <div className="modal-overlay" onClick={() => setShowNewMessageModal(false)}>
+          <div className="modal-content new-message-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>New Message</h3>
+              <button className="modal-close" onClick={() => setShowNewMessageModal(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>To: (Select Patient)</label>
+                <select 
+                  value={selectedPatient}
+                  onChange={(e) => setSelectedPatient(e.target.value)}
+                  className="form-select"
+                >
+                  <option value="">-- Select a patient --</option>
+                  {assignedPatients.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.username} ({p.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Subject</label>
+                <input 
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Enter message subject"
+                  className="form-input"
+                />
+              </div>
+              <div className="form-group">
+                <label>Message</label>
+                <textarea 
+                  value={messageBody}
+                  onChange={(e) => setMessageBody(e.target.value)}
+                  placeholder="Type your message here..."
+                  rows={8}
+                  className="form-textarea"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowNewMessageModal(false)}>
+                Cancel
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={handleSendMessage}
+                disabled={sending || !selectedPatient || !subject || !messageBody}
+              >
+                {sending ? "Sending..." : "Send Message"}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
+}
+
+// Helper function to format time Gmail-style
+function formatTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  
+  return date.toLocaleDateString();
 }
 
 // Flagged Tasks Component

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { api } from "../../lib/axios";
 import "./AdminDashboard.css";
 
 export default function AdminDashboard() {
@@ -23,6 +24,9 @@ export default function AdminDashboard() {
             </button>
             <button className={`nav-item ${activeTab === "users" ? "active" : ""}`} onClick={() => setActiveTab("users")}>
               Users
+            </button>
+            <button className={`nav-item ${activeTab === "assign" ? "active" : ""}`} onClick={() => setActiveTab("assign")}>
+              Assign Patients
             </button>
             <button className={`nav-item ${activeTab === "reports" ? "active" : ""}`} onClick={() => setActiveTab("reports")}>
               Reports
@@ -381,6 +385,11 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {activeTab === "assign" && (
+          <div className="admin-content">
+            <AssignmentManager />
+          </div>
+        )}
         {activeTab === "reports" && (
           <div className="admin-content">
             <ReportsAnalytics />
@@ -397,56 +406,203 @@ export default function AdminDashboard() {
   );
 }
 
+// Assignment Manager Component
+function AssignmentManager() {
+  const [patients, setPatients] = useState<{ id: string; username: string; email: string }[]>([]);
+  const [clinicians, setClinicians] = useState<{ id: string; username: string; email: string }[]>([]);
+  const [assignments, setAssignments] = useState<{ id: string; patient: any; clinician: any; isActive: boolean }[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<string>("");
+  const [selectedClinician, setSelectedClinician] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch users + assignments
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [usersRes, assignRes] = await Promise.all([
+          api.get("/api/admin/users"),
+          api.get("/api/admin/assignments"),
+        ]);
+        if (!mounted) return;
+        const allUsers: any[] = usersRes.data.users || [];
+        setPatients(allUsers.filter(u => u.role === "PATIENT"));
+        setClinicians(allUsers.filter(u => u.role === "CLINICIAN"));
+        setAssignments(assignRes.data.assignments || []);
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e.response?.data?.error || "Failed to load data");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    load();
+    return () => { mounted = false; };
+  }, []);
+
+  const handleCreate = async () => {
+    if (!selectedPatient || !selectedClinician) return;
+    try {
+      await api.post("/api/admin/assignments", { 
+        patientId: selectedPatient, 
+        clinicianId: selectedClinician
+      });
+      // Refresh assignments list
+      const refreshed = await api.get("/api/admin/assignments");
+      setAssignments(refreshed.data.assignments || []);
+      setSelectedPatient("");
+      setSelectedClinician("");
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to assign");
+    }
+  };
+
+  const handleRemove = async (assignmentId: string) => {
+    if (!window.confirm("Remove this assignment?")) return;
+    try {
+      await api.delete(`/api/admin/assignments/${assignmentId}`);
+      setAssignments(prev => prev.filter(a => a.id !== assignmentId));
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to remove assignment");
+    }
+  };
+
+  const handleToggleActive = async (assignmentId: string, currentStatus: boolean) => {
+    try {
+      await api.patch(`/api/admin/assignments/${assignmentId}`, { isActive: !currentStatus });
+      // Update local state
+      setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, isActive: !currentStatus } : a));
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to update assignment");
+    }
+  };
+
+  return (
+    <div className="assignment-manager">
+      <h2 className="section-title">Patient–Clinician Assignments</h2>
+      {loading && <p>Loading...</p>}
+      {error && <p style={{ color: '#dc2626' }}>{error}</p>}
+      {!loading && !error && (
+        <>
+          <div className="assignment-form">
+            <select value={selectedPatient} onChange={(e) => setSelectedPatient(e.target.value)}>
+              <option value="">Select Patient</option>
+              {patients.map(p => <option key={p.id} value={p.id}>{p.username} ({p.email})</option>)}
+            </select>
+            <select value={selectedClinician} onChange={(e) => setSelectedClinician(e.target.value)}>
+              <option value="">Select Clinician</option>
+              {clinicians.map(c => <option key={c.id} value={c.id}>{c.username} ({c.email})</option>)}
+            </select>
+            <button className="btn-primary" disabled={!selectedPatient || !selectedClinician} onClick={handleCreate}>Assign</button>
+          </div>
+          <div className="assignments-table" style={{ marginTop: '1.5rem' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Patient</th>
+                  <th>Clinician</th>
+                  <th>Active</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assignments.length === 0 ? (
+                  <tr><td colSpan={4} style={{ textAlign: 'center', padding: '1rem', color: '#6b7280' }}>No assignments yet</td></tr>
+                ) : assignments.map(a => (
+                  <tr key={a.id}>
+                    <td>{a.patient.username} ({a.patient.email})</td>
+                    <td>{a.clinician.username} ({a.clinician.email})</td>
+                    <td>
+                      <select 
+                        value={a.isActive ? "true" : "false"} 
+                        onChange={() => handleToggleActive(a.id, a.isActive)}
+                        style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
+                      >
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </td>
+                    <td><button className="btn-remove" onClick={() => handleRemove(a.id)}>Remove</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // User Management Component
 function UserManagement() {
-  const [users, setUsers] = useState([
-    { id: "1", name: "John Doe", email: "john@example.com", role: "PATIENT", status: "active" },
-    { id: "2", name: "Dr. Jane Smith", email: "jane@example.com", role: "CLINICIAN", status: "active" },
-    { id: "3", name: "Mary Johnson", email: "mary@example.com", role: "CAREGIVER", status: "active" },
-    { id: "4", name: "Dr. Robert Williams", email: "robert@example.com", role: "CLINICIAN", status: "active" },
-    { id: "5", name: "Sarah Connor", email: "sarah@example.com", role: "PATIENT", status: "active" },
-  ]);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterRole, setFilterRole] = useState("ALL");
-  
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = filterRole === "ALL" || user.role === filterRole;
+  const [users, setUsers] = useState<{ id: string; username: string; email: string; role: string; createdAt: string }[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState<boolean>(false);
+  const [inviteEmail, setInviteEmail] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [filterRole, setFilterRole] = useState<string>("ALL");
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchUsers() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await api.get("/api/admin/users");
+        if (!mounted) return;
+        setUsers(res.data.users || []);
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e.response?.data?.error || "Failed to load users");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    fetchUsers();
+    return () => { mounted = false; };
+  }, []);
+
+  const filteredUsers = users.filter((u) => {
+    const q = searchTerm.toLowerCase();
+    const matchesSearch = u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    const matchesRole = filterRole === "ALL" || u.role === filterRole;
     return matchesSearch && matchesRole;
   });
 
-  const handleRemoveUser = (userId: string) => {
-    if (window.confirm("Are you sure you want to remove this user?")) {
-      setUsers(users.filter(u => u.id !== userId));
+  const handleRemoveUser = async (userId: string) => {
+    if (!window.confirm("Are you sure you want to remove this user?")) return;
+    try {
+      await api.delete(`/api/admin/users/${userId}`);
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to remove user");
     }
   };
 
   const handleSendInvite = () => {
-    if (inviteEmail) {
-      // TODO: Implement API call to send invite
-      console.log("Sending invite to:", inviteEmail);
-      alert(`Invitation sent to ${inviteEmail}`);
-      setInviteEmail("");
-      setShowInviteModal(false);
-    }
+    if (!inviteEmail) return;
+    // TODO: Implement API call to send invite
+    alert(`Invitation sent to ${inviteEmail}`);
+    setInviteEmail("");
+    setShowInviteModal(false);
   };
 
   return (
     <div className="user-management">
       <div className="section-header">
         <h2 className="section-title">User Management</h2>
-        <button className="btn-primary" onClick={() => setShowInviteModal(true)}>
-          + Invite Clinician
-        </button>
+        <button className="btn-primary" onClick={() => setShowInviteModal(true)}>+ Invite Clinician</button>
       </div>
 
       <div className="user-filters">
         <input
           type="text"
-          placeholder="Search by name or email..."
+          placeholder="Search by username or email..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="search-input"
@@ -460,6 +616,7 @@ function UserManagement() {
           <option value="PATIENT">Patient</option>
           <option value="CLINICIAN">Clinician</option>
           <option value="CAREGIVER">Caregiver</option>
+          <option value="ADMIN">Admin</option>
         </select>
       </div>
 
@@ -489,39 +646,40 @@ function UserManagement() {
         <table>
           <thead>
             <tr>
-              <th>Name</th>
+              <th>Username</th>
               <th>Email</th>
               <th>Role</th>
-              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.length === 0 ? (
+            {loading && (
               <tr>
-                <td colSpan={5} style={{ textAlign: "center", padding: "2rem", color: "#6b7280" }}>
-                  No users found
+                <td colSpan={4} style={{ textAlign: "center", padding: "2rem" }}>Loading users...</td>
+              </tr>
+            )}
+            {!loading && error && (
+              <tr>
+                <td colSpan={4} style={{ textAlign: "center", padding: "2rem", color: "#dc2626" }}>{error}</td>
+              </tr>
+            )}
+            {!loading && !error && filteredUsers.length === 0 && (
+              <tr>
+                <td colSpan={4} style={{ textAlign: "center", padding: "2rem", color: "#6b7280" }}>No users found</td>
+              </tr>
+            )}
+            {!loading && !error && filteredUsers.map((u) => (
+              <tr key={u.id}>
+                <td>{u.username}</td>
+                <td>{u.email}</td>
+                <td>
+                  <span className={`role-badge role-${u.role.toLowerCase()}`}>{u.role}</span>
+                </td>
+                <td>
+                  <button className="btn-remove" onClick={() => handleRemoveUser(u.id)}>Remove</button>
                 </td>
               </tr>
-            ) : (
-              filteredUsers.map(user => (
-                <tr key={user.id}>
-                  <td>{user.name}</td>
-                  <td>{user.email}</td>
-                  <td>
-                    <span className={`role-badge role-${user.role.toLowerCase()}`}>{user.role}</span>
-                  </td>
-                  <td>
-                    <span className={`status-badge status-${user.status}`}>{user.status}</span>
-                  </td>
-                  <td>
-                    <button className="btn-remove" onClick={() => handleRemoveUser(user.id)}>
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       </div>

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { api } from "../../lib/axios";
 import "./PatientDashboard.css";
 
 export default function PatientDashboard() {
@@ -563,39 +564,122 @@ function HealthSummary() {
 // Communication Center Component
 function CommunicationCenter() {
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
+  const [showNewMessageModal, setShowNewMessageModal] = useState<boolean>(false);
+  const [assignedClinicians, setAssignedClinicians] = useState<{ id: string; username: string; email: string }[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [sentConversations, setSentConversations] = useState<any[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<any>(null);
+    const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+    const [activeFolder, setActiveFolder] = useState<"inbox" | "sent">("inbox");
+  const [selectedClinician, setSelectedClinician] = useState<string>("");
+  const [subject, setSubject] = useState<string>("");
+  const [messageBody, setMessageBody] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [inboxLoading, setInboxLoading] = useState<boolean>(true);
+  const [sentLoading, setSentLoading] = useState<boolean>(false);
 
-  const messages = [
-    {
-      id: "1",
-      from: "Dr. Sarah Johnson",
-      subject: "Visit reminder for tomorrow",
-      preview: "This is a reminder about your wound care visit scheduled for...",
-      time: "2 hours ago",
-      unread: true,
-    },
-    {
-      id: "2",
-      from: "Admin",
-      subject: "Visit rescheduled",
-      preview: "Your visit with Nurse Mary Smith has been rescheduled to...",
-      time: "1 day ago",
-      unread: false,
-    },
-    {
-      id: "3",
-      from: "Dr. David Williams",
-      subject: "Test results available",
-      preview: "Your recent lab test results are now available in your portal...",
-      time: "3 days ago",
-      unread: false,
-    },
-  ];
+  // Fetch assigned clinicians
+  useEffect(() => {
+    async function fetchAssignedClinicians() {
+      try {
+        const res = await api.get("/api/simple-messages/assigned-clinicians");
+        setAssignedClinicians(res.data.clinicians || []);
+      } catch (e: any) {
+        console.error("Failed to fetch assigned clinicians:", e);
+      }
+    }
+    fetchAssignedClinicians();
+  }, []);
+
+  // Fetch inbox
+  useEffect(() => {
+    async function fetchInbox() {
+      setInboxLoading(true);
+      try {
+        const res = await api.get("/api/simple-messages/inbox");
+        setConversations(res.data.conversations || []);
+      } catch (e: any) {
+        console.error("Failed to fetch inbox:", e);
+      } finally {
+        setInboxLoading(false);
+      }
+    }
+    fetchInbox();
+  }, []);
+
+  // Fetch sent (on demand when switching tabs)
+  const fetchSent = async () => {
+    setSentLoading(true);
+    try {
+      const res = await api.get("/api/simple-messages/sent");
+      setSentConversations(res.data.conversations || []);
+    } catch (e: any) {
+      console.error("Failed to fetch sent:", e);
+    } finally {
+      setSentLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeFolder === "sent" && sentConversations.length === 0 && !sentLoading) {
+      fetchSent();
+    }
+  }, [activeFolder]);
+
+  // Fetch full conversation when selected
+  const handleSelectConversation = async (convId: string, messageId?: string) => {
+    setSelectedMessage(convId);
+      setSelectedMessageId(messageId || null);
+    try {
+      const res = await api.get(`/api/simple-messages/conversation/${convId}`);
+      setSelectedConversation(res.data.conversation);
+      // Refresh inbox to update unread count
+      const inboxRes = await api.get("/api/simple-messages/inbox");
+      setConversations(inboxRes.data.conversations || []);
+    } catch (e: any) {
+      console.error("Failed to fetch conversation:", e);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!selectedClinician || !subject || !messageBody) {
+      alert("Please fill in all fields");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.post("/api/simple-messages/send", {
+        recipientId: selectedClinician,
+        subject: subject,
+        body: messageBody,
+      });
+      alert("Message sent successfully!");
+      setShowNewMessageModal(false);
+      setSelectedClinician("");
+      setSubject("");
+      setMessageBody("");
+      
+      // Refresh inbox and sent - wrap in try/catch to prevent error alert on refresh failure
+      try {
+        const inboxRes = await api.get("/api/simple-messages/inbox");
+        setConversations(inboxRes.data.conversations || []);
+        await fetchSent();
+      } catch (refreshError) {
+        console.error("Failed to refresh after sending:", refreshError);
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to send message");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="patient-content">
       <div className="content-header">
         <h2 className="section-title">Secure Communication Center</h2>
-        <button className="btn-primary">
+        <button className="btn-primary" onClick={() => setShowNewMessageModal(true)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -604,88 +688,237 @@ function CommunicationCenter() {
         </button>
       </div>
 
-      <div className="communication-container-patient">
-        <div className="messages-list-patient">
-          <div className="messages-header">
-            <h3>Messages</h3>
-            <span className="unread-count">{messages.filter(m => m.unread).length} unread</span>
+      {/* New Message Modal */}
+      {showNewMessageModal && (
+        <div className="modal-overlay" onClick={() => setShowNewMessageModal(false)}>
+          <div className="modal-content new-message-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>New Message</h3>
+              <button className="modal-close" onClick={() => setShowNewMessageModal(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>To: (Select Clinician)</label>
+                <select 
+                  value={selectedClinician} 
+                  onChange={(e) => setSelectedClinician(e.target.value)}
+                  className="form-select"
+                >
+                  <option value="">-- Select a clinician --</option>
+                  {assignedClinicians.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.username} ({c.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Subject</label>
+                <input 
+                  type="text" 
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Enter message subject"
+                  className="form-input"
+                />
+              </div>
+              <div className="form-group">
+                <label>Message</label>
+                <textarea 
+                  value={messageBody}
+                  onChange={(e) => setMessageBody(e.target.value)}
+                  placeholder="Type your message here..."
+                  rows={8}
+                  className="form-textarea"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowNewMessageModal(false)}>
+                Cancel
+              </button>
+              <button 
+                className="btn-primary" 
+                onClick={handleSendMessage}
+                disabled={loading || !selectedClinician || !subject || !messageBody}
+              >
+                {loading ? "Sending..." : "Send Message"}
+              </button>
+            </div>
           </div>
-          {messages.map((message) => (
-            <div 
-              key={message.id}
-              className={`message-item-patient ${message.unread ? "unread" : ""} ${selectedMessage === message.id ? "selected" : ""}`}
-              onClick={() => setSelectedMessage(message.id)}
-            >
-              <div className="message-from-patient">{message.from}</div>
-              <div className="message-subject-patient">{message.subject}</div>
-              <div className="message-preview-patient">{message.preview}</div>
-              <div className="message-time-patient">{message.time}</div>
-            </div>
-          ))}
         </div>
+      )}
 
-        <div className="message-view-patient">
-          {selectedMessage ? (
-            <div className="message-detail-patient">
-              <div className="message-header-patient">
-                <div>
-                  <div className="message-from-large-patient">{messages.find(m => m.id === selectedMessage)?.from}</div>
-                  <div className="message-subject-large-patient">{messages.find(m => m.id === selectedMessage)?.subject}</div>
+      {/* Folder Tabs */}
+      {!selectedMessage && (
+        <div className="message-folder-tabs-patient">
+          <button 
+            className={`folder-tab-patient ${activeFolder === "inbox" ? "active" : ""}`}
+            onClick={() => setActiveFolder("inbox")}
+          >
+            Inbox {conversations.some((c: any) => c.unread) && (
+              <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c: any) => c.unread).length}</span>
+            )}
+          </button>
+          <button 
+            className={`folder-tab-patient ${activeFolder === "sent" ? "active" : ""}`}
+            onClick={() => setActiveFolder("sent")}
+          >
+            Sent
+          </button>
+        </div>
+      )}
+
+      {!selectedMessage && activeFolder === "inbox" ? (
+        // Inbox List View (Gmail-style)
+        <>
+          <div className="inbox-list-patient">
+            {inboxLoading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading messages...</p>}
+            {!inboxLoading && conversations.length === 0 && (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ margin: '0 auto 1rem', opacity: 0.3 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <p>No messages yet</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Send a message to your clinician to get started</p>
+              </div>
+            )}
+            {!inboxLoading && conversations.map((conv: any) => (
+              <div 
+                key={conv.id}
+                className={`inbox-row-patient ${conv.unread ? "unread" : ""}`}
+                onClick={() => handleSelectConversation(conv.conversationId || conv.id, conv.conversationId ? conv.id : conv.messageId)}
+              >
+                <div className="inbox-row-left-patient">
+                  {conv.unread && <span className="unread-dot-patient"></span>}
+                  <div className="inbox-from-patient">{conv.from}</div>
                 </div>
-                <div className="message-actions-patient">
-                  <button className="btn-secondary">Reply</button>
+                <div className="inbox-row-middle-patient">
+                  <span className="inbox-subject-patient">{conv.subject}</span>
+                  <span className="inbox-preview-patient"> - {conv.preview}</span>
+                </div>
+                <div className="inbox-row-right-patient">
+                  <span className="inbox-time-patient">{formatTime(conv.time)}</span>
                 </div>
               </div>
-              <div className="message-body-patient">
-                <p>This is the message content. In a real application, this would contain the full message text from the clinician, admin, or physician.</p>
+            ))}
+          </div>
+        </>
+      ) : !selectedMessage && activeFolder === "sent" ? (
+        // Sent List View
+        <>
+          <div className="inbox-list-patient">
+            {sentLoading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading sent messages...</p>}
+            {!sentLoading && sentConversations.length === 0 && (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ margin: '0 auto 1rem', opacity: 0.3 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <p>No sent messages</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Compose a new message to contact your clinician</p>
               </div>
-            </div>
-          ) : (
-            <div className="message-placeholder-patient">
-              <p>Select a message to view</p>
+            )}
+            {!sentLoading && sentConversations.map((conv: any) => (
+              <div 
+                key={conv.id}
+                className={`inbox-row-patient`}
+                onClick={() => handleSelectConversation(conv.conversationId, conv.id)}
+              >
+                <div className="inbox-row-left-patient">
+                  <div className="inbox-from-patient">To: {conv.to}</div>
+                </div>
+                <div className="inbox-row-middle-patient">
+                  <span className="inbox-subject-patient">{conv.subject}</span>
+                  <span className="inbox-preview-patient"> - {conv.preview}</span>
+                </div>
+                <div className="inbox-row-right-patient">
+                  <span className="inbox-time-patient">{formatTime(conv.time)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        // Message Detail View (Full Screen)
+        <>
+          <div className="message-detail-header-patient">
+            <button className="btn-back-patient" onClick={() => { setSelectedMessage(null); setSelectedConversation(null); setSelectedMessageId(null); }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              Back to {activeFolder === "sent" ? "Sent" : "Inbox"}
+            </button>
+          </div>
+          
+          {selectedConversation && (
+            <div className="message-detail-full-patient">
+              <div className="message-detail-subject-patient">
+                <h2>{selectedConversation.subject}</h2>
+                <div className="message-detail-meta-patient">
+                  From: <strong>{selectedConversation.participants?.find((p: any) => p.userId !== selectedConversation.id)?.user?.username || "Unknown"}</strong>
+                </div>
+              </div>
+              
+              <div className="message-thread-patient">
+                {selectedConversation.messages
+                  ?.filter((msg: any) => (selectedMessageId ? msg.id === selectedMessageId : true))
+                  .map((msg: any) => (
+                  <div key={msg.id} className="message-bubble-patient">
+                    <div className="message-bubble-header-patient">
+                      <div className="message-sender-patient">
+                        <div className="sender-avatar-patient">{msg.sender.username.charAt(0).toUpperCase()}</div>
+                        <div>
+                          <div className="sender-name-patient">{msg.sender.username}</div>
+                          <div className="sender-email-patient">{msg.sender.email}</div>
+                        </div>
+                      </div>
+                      <div className="message-timestamp-patient">{new Date(msg.createdAt).toLocaleString()}</div>
+                    </div>
+                    <div className="message-bubble-body-patient">
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="message-reply-section-patient">
+                <button className="btn-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 14 4 9 9 4"></polyline>
+                    <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+                  </svg>
+                  Reply
+                </button>
+              </div>
             </div>
           )}
-        </div>
-
-        <div className="requests-panel">
-          <h3>Submit Request</h3>
-          <div className="request-options">
-            <button className="request-option">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-              Need Earlier Visit
-            </button>
-            <button className="request-option">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-              </svg>
-              Have New Symptom
-            </button>
-            <button className="request-option">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-              </svg>
-              Upload Document
-            </button>
-          </div>
-          <div className="upload-area">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            <p>Drag and drop files here or click to upload</p>
-            <span>Supported: PDF, JPG, PNG (Max 10MB)</span>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
+}
+
+// Helper function to format time Gmail-style
+function formatTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  
+  return date.toLocaleDateString();
 }
 
 // Family Access Panel Component
