@@ -1,11 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { api } from "../../lib/axios";
+import NotificationBell from "../../components/NotificationBell";
 import "./PatientDashboard.css";
 
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
+  const [pendingConversation, setPendingConversation] = useState<{ convId: string; messageId?: string } | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { user, logout } = useAuth();
-  
+
   const handleLogout = async () => {
     await logout();
     window.location.href = "/";
@@ -18,38 +22,38 @@ export default function PatientDashboard() {
         <div className="patient-header-left">
           <h1 className="patient-logo">MediHealth</h1>
           <nav className="patient-nav">
-            <button 
-              className={`nav-item ${activeTab === "overview" ? "active" : ""}`} 
+            <button
+              className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
               onClick={() => setActiveTab("overview")}
             >
               Overview
             </button>
-            <button 
-              className={`nav-item ${activeTab === "visits" ? "active" : ""}`} 
+            <button
+              className={`nav-item ${activeTab === "visits" ? "active" : ""}`}
               onClick={() => setActiveTab("visits")}
             >
               Visits
             </button>
-            <button 
-              className={`nav-item ${activeTab === "medications" ? "active" : ""}`} 
+            <button
+              className={`nav-item ${activeTab === "medications" ? "active" : ""}`}
               onClick={() => setActiveTab("medications")}
             >
               Medications
             </button>
-            <button 
-              className={`nav-item ${activeTab === "health" ? "active" : ""}`} 
+            <button
+              className={`nav-item ${activeTab === "health" ? "active" : ""}`}
               onClick={() => setActiveTab("health")}
             >
               Health
             </button>
-            <button 
-              className={`nav-item ${activeTab === "messages" ? "active" : ""}`} 
+            <button
+              className={`nav-item ${activeTab === "messages" ? "active" : ""}`}
               onClick={() => setActiveTab("messages")}
             >
               Messages
             </button>
-            <button 
-              className={`nav-item ${activeTab === "family" ? "active" : ""}`} 
+            <button
+              className={`nav-item ${activeTab === "family" ? "active" : ""}`}
               onClick={() => setActiveTab("family")}
             >
               Family
@@ -57,6 +61,14 @@ export default function PatientDashboard() {
           </nav>
         </div>
         <div className="patient-header-right">
+          <NotificationBell
+            onMessageClick={(view, conversationId, messageId) => {
+              setActiveTab("messages");
+              if (conversationId) {
+                setPendingConversation({ convId: conversationId, messageId });
+              }
+            }}
+          />
           <div className="patient-user-info">
             <span className="patient-user-name">{user?.username || user?.email || "Patient"}</span>
             <div className="patient-user-badges">
@@ -75,7 +87,12 @@ export default function PatientDashboard() {
         {activeTab === "visits" && <UpcomingVisits />}
         {activeTab === "medications" && <MedicationsSupplies />}
         {activeTab === "health" && <HealthSummary />}
-        {activeTab === "messages" && <CommunicationCenter />}
+        {activeTab === "messages" && (
+          <SimpleMessages
+            pendingConversation={pendingConversation}
+            onConversationOpened={() => setPendingConversation(null)}
+          />
+        )}
         {activeTab === "family" && <FamilyAccessPanel />}
       </main>
     </div>
@@ -192,8 +209,6 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
 
 // Upcoming Visits Component
 function UpcomingVisits() {
-  const [selectedVisit, setSelectedVisit] = useState<string | null>(null);
-
   const visits = [
     {
       id: "1",
@@ -252,7 +267,7 @@ function UpcomingVisits() {
               </div>
               <span className="visit-status-badge">{visit.status}</span>
             </div>
-            
+
             <div className="visit-clinician-info">
               <div className="clinician-avatar-large">{visit.clinician.avatar}</div>
               <div className="clinician-details">
@@ -349,7 +364,7 @@ function MedicationsSupplies() {
             <h3 className="subsection-title">Active Medications</h3>
             <button className="btn-text">View Full List</button>
           </div>
-          
+
           <div className="medications-list-full">
             {medications.map((med) => (
               <div key={med.id} className={`medication-card ${med.riskLevel}`}>
@@ -398,7 +413,7 @@ function MedicationsSupplies() {
             <h3 className="subsection-title">DME Supplies</h3>
             <button className="btn-text">Track All Orders</button>
           </div>
-          
+
           <div className="supplies-list">
             {supplies.map((supply) => (
               <div key={supply.id} className="supply-card">
@@ -560,42 +575,233 @@ function HealthSummary() {
   );
 }
 
-// Communication Center Component
-function CommunicationCenter() {
-  const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
+interface SimpleMessagesProps {
+  pendingConversation: { convId: string; messageId?: string } | null;
+  onConversationOpened: () => void;
+}
 
-  const messages = [
-    {
-      id: "1",
-      from: "Dr. Sarah Johnson",
-      subject: "Visit reminder for tomorrow",
-      preview: "This is a reminder about your wound care visit scheduled for...",
-      time: "2 hours ago",
-      unread: true,
-    },
-    {
-      id: "2",
-      from: "Admin",
-      subject: "Visit rescheduled",
-      preview: "Your visit with Nurse Mary Smith has been rescheduled to...",
-      time: "1 day ago",
-      unread: false,
-    },
-    {
-      id: "3",
-      from: "Dr. David Williams",
-      subject: "Test results available",
-      preview: "Your recent lab test results are now available in your portal...",
-      time: "3 days ago",
-      unread: false,
-    },
-  ];
+function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMessagesProps) {
+  const { user } = useAuth();
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [sentConversations, setSentConversations] = useState<any[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<any | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [inboxLoading, setInboxLoading] = useState<boolean>(true);
+  const [sentLoading, setSentLoading] = useState<boolean>(false);
+  const [activeFolder, setActiveFolder] = useState<"inbox" | "sent">("inbox");
+  const [showNewMessageModal, setShowNewMessageModal] = useState<boolean>(false);
+  const [assignedClinicians, setAssignedClinicians] = useState<{ id: string; username: string; email: string }[]>([]);
+  const [selectedClinician, setSelectedClinician] = useState<string>("");
+  const [subject, setSubject] = useState<string>("");
+  const [messageBody, setMessageBody] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+
+  // Fetch inbox
+  useEffect(() => {
+    async function fetchInbox() {
+      setInboxLoading(true);
+      try {
+        const res = await api.get("/api/simple-messages/inbox");
+        console.log("📥 PATIENT INBOX API Response:", res.data);
+        const conversations = res.data.conversations || [];
+        // Debug: Check if any messages are from current user (shouldn't be in inbox)
+        conversations.forEach((conv: any) => {
+          if (conv.from === user?.username) {
+            console.warn("⚠️ FOUND SENT MESSAGE IN INBOX:", conv);
+          }
+        });
+        setConversations(conversations);
+        
+        // Refresh notification bell count after loading inbox
+        if ((window as any).refreshNotifications) {
+          (window as any).refreshNotifications();
+        }
+      } catch (e: any) {
+        console.error("Failed to fetch inbox:", e);
+      } finally {
+        setInboxLoading(false);
+      }
+    }
+    fetchInbox();
+  }, []);
+
+  // Handle pending conversation from notification click
+  useEffect(() => {
+    if (pendingConversation) {
+      handleSelectConversation(pendingConversation.convId, pendingConversation.messageId);
+      onConversationOpened();
+    }
+  }, [pendingConversation]);
+
+  const fetchSent = async () => {
+    setSentLoading(true);
+    try {
+      const res = await api.get("/api/simple-messages/sent");
+      setSentConversations(res.data.conversations || []);
+    } catch (e: any) {
+      console.error("Failed to fetch sent:", e);
+    } finally {
+      setSentLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeFolder === "sent" && sentConversations.length === 0 && !sentLoading) {
+      fetchSent();
+    }
+  }, [activeFolder]);
+
+  // Fetch assigned clinicians
+  useEffect(() => {
+    async function fetchAssignedClinicians() {
+      try {
+        // Note: Assuming this endpoint exists for patients to get their clinicians
+        const res = await api.get("/api/simple-messages/assigned-clinicians");
+        setAssignedClinicians(res.data.clinicians || []);
+      } catch (e: any) {
+        console.error("Failed to fetch assigned clinicians:", e);
+      }
+    }
+    fetchAssignedClinicians();
+  }, []);
+
+  // Fetch full conversation when selected
+  const handleSelectConversation = async (convId: string, messageId?: string) => {
+    // If messageId is provided, we want to show only that specific message
+    if (messageId) {
+      setSelectedMessage(messageId);
+      setSelectedMessageId(messageId);
+    } else {
+      setSelectedMessage(convId);
+      setSelectedMessageId(null);
+    }
+
+    try {
+      const res = await api.get(`/api/simple-messages/conversation/${convId}`);
+      setSelectedConversation(res.data.conversation);
+
+      if (messageId) {
+        try {
+          await api.post("/api/simple-messages/mark-read", {
+            messageIds: [messageId],
+            conversationId: convId,
+          });
+          
+          // Dispatch global event for immediate notification update
+          window.dispatchEvent(new CustomEvent('messageRead', { detail: { messageId, convId } }));
+          
+          // Also call the refresh function as backup
+          if ((window as any).refreshNotifications) {
+            (window as any).refreshNotifications();
+          }
+        } catch (markError) {
+          console.error("Failed to mark message as read:", markError);
+        }
+      }
+
+      // Refresh inbox
+      const inboxRes = await api.get("/api/simple-messages/inbox");
+      setConversations(inboxRes.data.conversations || []);
+    } catch (e: any) {
+      console.error("Failed to fetch conversation:", e);
+    }
+  };
+
+  const markAllMessagesAsRead = async (convId: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      const unreadMessageIds = selectedConversation.messages
+        ?.filter((msg: any) => !msg.isRead && msg.senderId !== user?.uid)
+        .map((msg: any) => msg.id) || [];
+
+      if (unreadMessageIds.length > 0) {
+        await api.post("/api/simple-messages/mark-read", {
+          messageIds: unreadMessageIds,
+          conversationId: convId,
+        });
+        
+        // Dispatch global event for immediate notification update
+        window.dispatchEvent(new CustomEvent('messageRead', { detail: { messageIds: unreadMessageIds, convId } }));
+
+        const res = await api.get(`/api/simple-messages/conversation/${convId}`);
+        setSelectedConversation(res.data.conversation);
+        const inboxRes = await api.get("/api/simple-messages/inbox");
+        setConversations(inboxRes.data.conversations || []);
+        
+        // Refresh notification bell count
+        if ((window as any).refreshNotifications) {
+          (window as any).refreshNotifications();
+        }
+      }
+    } catch (error) {
+      console.error("Failed to mark all messages as read:", error);
+    }
+  };
+
+  const markMessageAsRead = async (messageId: string, convId: string) => {
+    try {
+      await api.post("/api/simple-messages/mark-read", {
+        messageIds: [messageId],
+        conversationId: convId,
+      });
+      
+      // Dispatch global event for immediate notification update
+      window.dispatchEvent(new CustomEvent('messageRead', { detail: { messageId, convId } }));
+
+      const res = await api.get(`/api/simple-messages/conversation/${convId}`);
+      setSelectedConversation(res.data.conversation);
+      const inboxRes = await api.get("/api/simple-messages/inbox");
+      setConversations(inboxRes.data.conversations || []);
+      
+      // Refresh notification bell count
+      if ((window as any).refreshNotifications) {
+        (window as any).refreshNotifications();
+      }
+    } catch (error) {
+      console.error("Failed to mark message as read:", error);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!selectedClinician || !subject || !messageBody) {
+      alert("Please fill in all fields");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.post("/api/simple-messages/send", {
+        recipientId: selectedClinician,
+        subject: subject,
+        body: messageBody,
+      });
+      alert("Message sent successfully!");
+      setShowNewMessageModal(false);
+      setSelectedClinician("");
+      setSubject("");
+      setMessageBody("");
+
+      try {
+        const inboxRes = await api.get("/api/simple-messages/inbox");
+        setConversations(inboxRes.data.conversations || []);
+        await fetchSent();
+      } catch (refreshError) {
+        console.error("Failed to refresh after sending:", refreshError);
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to send message");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="patient-content">
       <div className="content-header">
         <h2 className="section-title">Secure Communication Center</h2>
-        <button className="btn-primary">
+        <button className="btn-primary" onClick={() => setShowNewMessageModal(true)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -604,88 +810,285 @@ function CommunicationCenter() {
         </button>
       </div>
 
-      <div className="communication-container-patient">
-        <div className="messages-list-patient">
-          <div className="messages-header">
-            <h3>Messages</h3>
-            <span className="unread-count">{messages.filter(m => m.unread).length} unread</span>
-          </div>
-          {messages.map((message) => (
-            <div 
-              key={message.id}
-              className={`message-item-patient ${message.unread ? "unread" : ""} ${selectedMessage === message.id ? "selected" : ""}`}
-              onClick={() => setSelectedMessage(message.id)}
-            >
-              <div className="message-from-patient">{message.from}</div>
-              <div className="message-subject-patient">{message.subject}</div>
-              <div className="message-preview-patient">{message.preview}</div>
-              <div className="message-time-patient">{message.time}</div>
+      {/* New Message Modal */}
+      {showNewMessageModal && (
+        <div className="modal-overlay" onClick={() => setShowNewMessageModal(false)}>
+          <div className="modal-content new-message-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>New Message</h3>
+              <button className="modal-close" onClick={() => setShowNewMessageModal(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
             </div>
-          ))}
+            <div className="modal-body">
+              <div className="form-group">
+                <label>To: (Select Clinician)</label>
+                <select
+                  value={selectedClinician}
+                  onChange={(e) => setSelectedClinician(e.target.value)}
+                  className="form-select"
+                >
+                  <option value="">-- Select a clinician --</option>
+                  {assignedClinicians.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.username} ({c.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Subject</label>
+                <input
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Enter message subject"
+                  className="form-input"
+                />
+              </div>
+              <div className="form-group">
+                <label>Message</label>
+                <textarea
+                  value={messageBody}
+                  onChange={(e) => setMessageBody(e.target.value)}
+                  placeholder="Type your message here..."
+                  rows={8}
+                  className="form-textarea"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowNewMessageModal(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleSendMessage}
+                disabled={loading || !selectedClinician || !subject || !messageBody}
+              >
+                {loading ? "Sending..." : "Send Message"}
+              </button>
+            </div>
+          </div>
         </div>
+      )}
 
-        <div className="message-view-patient">
-          {selectedMessage ? (
-            <div className="message-detail-patient">
-              <div className="message-header-patient">
-                <div>
-                  <div className="message-from-large-patient">{messages.find(m => m.id === selectedMessage)?.from}</div>
-                  <div className="message-subject-large-patient">{messages.find(m => m.id === selectedMessage)?.subject}</div>
-                </div>
-                <div className="message-actions-patient">
-                  <button className="btn-secondary">Reply</button>
-                </div>
-              </div>
-              <div className="message-body-patient">
-                <p>This is the message content. In a real application, this would contain the full message text from the clinician, admin, or physician.</p>
-              </div>
+      {/* Folder Tabs */}
+      {!selectedMessage && (
+        <div className="message-folder-tabs-patient">
+          <button
+            className={`folder-tab-patient ${activeFolder === "inbox" ? "active" : ""}`}
+            onClick={() => setActiveFolder("inbox")}
+          >
+            Inbox {conversations.some((c: any) => c.unread) && (
+              <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c: any) => c.unread).length}</span>
+            )}
+          </button>
+          <button
+            className={`folder-tab-patient ${activeFolder === "sent" ? "active" : ""}`}
+            onClick={() => setActiveFolder("sent")}
+          >
+            Sent
+          </button>
+        </div>
+      )}
+
+      {selectedMessage ? (
+        // Message Detail View (Full Screen)
+        <>
+          <div className="message-detail-header-patient">
+            <button className="btn-back-patient" onClick={() => { setSelectedMessage(null); setSelectedConversation(null); setSelectedMessageId(null); }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              Back to {activeFolder === "sent" ? "Sent" : "Inbox"}
+            </button>
+            {selectedConversation && activeFolder === "inbox" && (
+              <button
+                className="btn-secondary"
+                onClick={() => markAllMessagesAsRead(selectedMessage!)}
+                style={{ marginLeft: 'auto' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                Mark all as read
+              </button>
+            )}
+          </div>
+
+          {!selectedConversation ? (
+            <div style={{ padding: '2rem', textAlign: 'center' }}>
+              <p>Loading conversation...</p>
             </div>
           ) : (
-            <div className="message-placeholder-patient">
-              <p>Select a message to view</p>
+            <div className="message-detail-full-patient">
+              <div className="message-detail-subject-patient">
+                <h2>{selectedConversation.subject}</h2>
+                <div className="message-detail-meta-patient">
+                  From: <strong>{selectedConversation.participants?.find((p: any) => p.userId !== selectedConversation.id)?.user?.username || "Unknown"}</strong>
+                </div>
+              </div>
+
+              <div className="message-thread-patient">
+                {selectedConversation.messages
+                  ?.filter((msg: any) => {
+                    // If we have a specific messageId, show only that message
+                    if (selectedMessageId) {
+                      return msg.id === selectedMessageId;
+                    }
+                    // If selectedMessage matches a message ID, show only that message
+                    const messageExists = selectedConversation.messages.some((m: any) => m.id === selectedMessage);
+                    if (messageExists) {
+                      return msg.id === selectedMessage;
+                    }
+                    // Otherwise show all messages (fallback)
+                    return true;
+                  })
+                  .map((msg: any) => (
+                    <div
+                      key={msg.id}
+                      className={`message-bubble-patient ${!msg.isRead && msg.senderId !== user?.uid ? 'unread-message' : ''}`}
+                      onClick={() => {
+                        if (!msg.isRead && msg.senderId !== user?.uid) {
+                          markMessageAsRead(msg.id, selectedMessage!);
+                          // Immediate notification refresh when clicking message bubble
+                          setTimeout(() => {
+                            if ((window as any).refreshNotifications) {
+                              (window as any).refreshNotifications();
+                            }
+                          }, 100);
+                        }
+                      }}
+                      style={{ cursor: (!msg.isRead && msg.senderId !== user?.uid) ? 'pointer' : 'default' }}
+                    >
+                      <div className="message-bubble-header-patient">
+                        <div className="message-sender-patient">
+                          <div className="sender-avatar-patient">{msg.sender.username.charAt(0).toUpperCase()}</div>
+                          <div>
+                            <div className="sender-name-patient">{msg.sender.username}</div>
+                            <div className="sender-email-patient">{msg.sender.email}</div>
+                          </div>
+                        </div>
+                        <div className="message-timestamp-patient">
+                          {new Date(msg.createdAt).toLocaleString()}
+                          {!msg.isRead && msg.senderId !== user?.uid && (
+                            <span className="unread-indicator-patient">● NEW</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="message-bubble-body-patient">
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+
+              <div className="message-reply-section-patient">
+                <button className="btn-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 14 4 9 9 4"></polyline>
+                    <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+                  </svg>
+                  Reply
+                </button>
+              </div>
             </div>
           )}
-        </div>
-
-        <div className="requests-panel">
-          <h3>Submit Request</h3>
-          <div className="request-options">
-            <button className="request-option">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-              Need Earlier Visit
-            </button>
-            <button className="request-option">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-              </svg>
-              Have New Symptom
-            </button>
-            <button className="request-option">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-              </svg>
-              Upload Document
-            </button>
+        </>
+      ) : activeFolder === "inbox" ? (
+        // Inbox List View (Gmail-style)
+        <>
+          <div className="inbox-list-patient">
+            {inboxLoading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading messages...</p>}
+            {!inboxLoading && conversations.length === 0 && (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ margin: '0 auto 1rem', opacity: 0.3 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <p>No messages yet</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Send a message to your clinician to get started</p>
+              </div>
+            )}
+            {!inboxLoading && conversations.map((conv: any) => (
+              <div
+                key={conv.id}
+                className={`inbox-row-patient ${conv.unread ? "unread" : ""}`}
+                onClick={() => handleSelectConversation(conv.conversationId || conv.id, conv.id)}
+              >
+                <div className="inbox-row-left-patient">
+                  {conv.unread && <span className="unread-dot-patient"></span>}
+                  <div className="inbox-from-patient">{conv.from}</div>
+                </div>
+                <div className="inbox-row-middle-patient">
+                  <span className="inbox-subject-patient">{conv.subject}</span>
+                  <span className="inbox-preview-patient"> - {conv.preview}</span>
+                </div>
+                <div className="inbox-row-right-patient">
+                  <span className="inbox-time-patient">{formatTime(conv.time)}</span>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="upload-area">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            <p>Drag and drop files here or click to upload</p>
-            <span>Supported: PDF, JPG, PNG (Max 10MB)</span>
+        </>
+      ) : activeFolder === "sent" ? (
+        // Sent List View
+        <>
+          <div className="inbox-list-patient">
+            {sentLoading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading sent messages...</p>}
+            {!sentLoading && sentConversations.length === 0 && (
+              <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ margin: '0 auto 1rem', opacity: 0.3 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <p>No sent messages</p>
+                <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Compose a new message to contact your clinician</p>
+              </div>
+            )}
+            {!sentLoading && sentConversations.map((conv: any) => (
+              <div
+                key={conv.id}
+                className={`inbox-row-patient`}
+                onClick={() => handleSelectConversation(conv.conversationId, conv.id)}
+              >
+                <div className="inbox-row-left-patient">
+                  <div className="inbox-from-patient">To: {conv.to}</div>
+                </div>
+                <div className="inbox-row-middle-patient">
+                  <span className="inbox-subject-patient">{conv.subject}</span>
+                  <span className="inbox-preview-patient"> - {conv.preview}</span>
+                </div>
+                <div className="inbox-row-right-patient">
+                  <span className="inbox-time-patient">{formatTime(conv.time)}</span>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      </div>
+        </>
+      ) : null}
     </div>
   );
+}
+
+// Helper function to format time Gmail-style
+function formatTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return date.toLocaleDateString();
 }
 
 // Family Access Panel Component
@@ -728,13 +1131,13 @@ function FamilyAccessPanel() {
           <div className="toggle-header">
             <h3>Account View</h3>
             <div className="toggle-switch">
-              <button 
+              <button
                 className={`toggle-option ${!isCaregiverView ? "active" : ""}`}
                 onClick={() => setIsCaregiverView(false)}
               >
                 Patient View
               </button>
-              <button 
+              <button
                 className={`toggle-option ${isCaregiverView ? "active" : ""}`}
                 onClick={() => setIsCaregiverView(true)}
               >
@@ -743,7 +1146,7 @@ function FamilyAccessPanel() {
             </div>
           </div>
           <p className="toggle-description">
-            {isCaregiverView 
+            {isCaregiverView
               ? "You are viewing as a caregiver. You can manage patient care, view medical records, and communicate with the care team."
               : "You are viewing as the patient. Switch to caregiver view to manage care on behalf of the patient."
             }
@@ -832,4 +1235,3 @@ function FamilyAccessPanel() {
     </div>
   );
 }
-

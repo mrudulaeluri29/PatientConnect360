@@ -3,21 +3,21 @@
 // Used to protect admin routes and other role-based routes
 
 import { Request, Response, NextFunction } from "express";
-// import jwt from "jsonwebtoken";
-// import { prisma } from "../db";
+import * as jwt from "jsonwebtoken";
 
 export function requireRole(role: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    // TODO: Implement role checking logic
-    // 1. Get JWT token from cookies
-    // 2. Verify token
-    // 3. Get user from database
-    // 4. Check if user.role matches required role
-    // 5. If not, return 403 Forbidden
-    // 6. If yes, attach user to request and call next()
-    
-    // Placeholder - always allow for now
-    next();
+    try {
+      const token = (req as any).cookies?.auth;
+      if (!token) return res.status(401).json({ error: "Unauthorized" });
+      const payload = jwt.verify(token, process.env.JWT_SECRET || "dev_secret") as any;
+      if (!payload?.role) return res.status(401).json({ error: "Unauthorized" });
+      if (role && payload.role !== role) return res.status(403).json({ error: "Forbidden" });
+      (req as any).user = { id: payload.uid, role: payload.role };
+      next();
+    } catch (e) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
   };
 }
 

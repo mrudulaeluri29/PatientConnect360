@@ -1129,3 +1129,316 @@
   }
 }
 
+/* Gmail-style Inbox */
+.inbox-list {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.inbox-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 120px;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  align-items: center;
+}
+
+.inbox-row:hover {
+  background-color: #f9fafb;
+}
+
+.inbox-row.unread {
+  background-color: #f0f4ff;
+  font-weight: 500;
+}
+
+.inbox-row.unread:hover {
+  background-color: #e8f0ff;
+}
+
+.inbox-row-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  background: #6E5B9A;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.inbox-from {
+  font-size: 0.95rem;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-row-middle {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.inbox-subject {
+  font-size: 0.95rem;
+  color: #111827;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.inbox-preview {
+  font-size: 0.95rem;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-row-right {
+  text-align: right;
+}
+
+.inbox-time {
+  font-size: 0.85rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.unread-badge {
+  background: #6E5B9A;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* Message Detail Full Screen */
+.message-detail-header {
+  padding: 1rem 0;
+  margin-bottom: 1rem;
+}
+
+.btn-back {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #6E5B9A;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.btn-back:hover {
+  background-color: #f3f4f6;
+}
+
+.message-detail-full {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.message-detail-subject {
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.message-detail-subject h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  color: #111827;
+}
+
+.message-detail-meta {
+  font-size: 0.95rem;
+  color: #6b7280;
+}
+
+.message-thread {
+  padding: 1.5rem 2rem;
+}
+
+.message-bubble {
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.message-bubble:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.message-bubble-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.message-sender {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.sender-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6E5B9A 0%, #42326E 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.sender-name {
+  font-weight: 600;
+  color: #111827;
+  font-size: 0.95rem;
+}
+
+.sender-email {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.message-timestamp {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.message-bubble-body {
+  padding-left: 3.25rem;
+  color: #374151;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.message-reply-section {
+  padding: 1.5rem 2rem;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+/* Folder Tabs for Clinician */
+.message-folder-tabs {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.5rem;
+}
+
+.folder-tab {
+  background: transparent;
+  border: none;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #6b7280;
+  border-radius: 6px;
+  position: relative;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.folder-tab:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.folder-tab.active {
+  background: #6E5B9A;
+  color: white;
+}
+
+.folder-tab.active:hover {
+  background: #5a4786;
+}
+
+/* Unread message indicators */
+.unread-message {
+  border-left: 4px solid #6E5B9A !important;
+  background: #f9f7fc !important;
+}
+
+.unread-indicator {
+  color: #6E5B9A;
+  font-weight: 600;
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+  background: #6E5B9A;
+  color: white;
+  padding: 0.1rem 0.4rem;
+  border-radius: 8px;
+}
+
+.user-role {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 400;
+}
+
+.header-left-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.single-message-indicator {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: #f3f4f6;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.indicator-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.btn-view-full {
+  background: white;
+  border: 1px solid #d1d5db;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #374151;
+  transition: all 0.2s;
+}
+
+.btn-view-full:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+

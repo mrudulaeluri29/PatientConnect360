@@ -1284,3 +1284,404 @@
   }
 }
 
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.new-message-modal {
+  max-width: 700px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #1f2937;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  color: #6b7280;
+  transition: color 0.2s;
+}
+
+.modal-close:hover {
+  color: #111827;
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #374151;
+  font-size: 0.95rem;
+}
+
+.form-select,
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: #1f2937;
+  background-color: white;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-select:focus,
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: #6E5B9A;
+  box-shadow: 0 0 0 3px rgba(110, 91, 154, 0.1);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 120px;
+  font-family: inherit;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-primary {
+  background: #6E5B9A;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #42326E;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.btn-secondary:hover {
+  background: #e5e7eb;
+}
+
+/* Gmail-style Inbox Styles for Patient Dashboard */
+
+.inbox-list-patient {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.inbox-row-patient {
+  display: grid;
+  grid-template-columns: 200px 1fr 120px;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  align-items: center;
+}
+
+.inbox-row-patient:hover {
+  background-color: #f9fafb;
+}
+
+.inbox-row-patient.unread {
+  background-color: #f0f4ff;
+  font-weight: 500;
+}
+
+.inbox-row-patient.unread:hover {
+  background-color: #e8f0ff;
+}
+
+.inbox-row-left-patient {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.unread-dot-patient {
+  width: 8px;
+  height: 8px;
+  background: #6E5B9A;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.inbox-from-patient {
+  font-size: 0.95rem;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-row-middle-patient {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.inbox-subject-patient {
+  font-size: 0.95rem;
+  color: #111827;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.inbox-preview-patient {
+  font-size: 0.95rem;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-row-right-patient {
+  text-align: right;
+}
+
+.inbox-time-patient {
+  font-size: 0.85rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* Message Detail Full Screen for Patient */
+.message-detail-header-patient {
+  padding: 1rem 0;
+  margin-bottom: 1rem;
+}
+
+.btn-back-patient {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #6E5B9A;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.btn-back-patient:hover {
+  background-color: #f3f4f6;
+}
+
+.message-detail-full-patient {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.message-detail-subject-patient {
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.message-detail-subject-patient h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  color: #111827;
+}
+
+.message-detail-meta-patient {
+  font-size: 0.95rem;
+  color: #6b7280;
+}
+
+.message-thread-patient {
+  padding: 1.5rem 2rem;
+}
+
+.message-bubble-patient {
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.message-bubble-patient:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.message-bubble-header-patient {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.message-sender-patient {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.sender-avatar-patient {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6E5B9A 0%, #42326E 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.sender-name-patient {
+  font-weight: 600;
+  color: #111827;
+  font-size: 0.95rem;
+}
+
+.sender-email-patient {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.message-timestamp-patient {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.message-bubble-body-patient {
+  padding-left: 3.25rem;
+  color: #374151;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.message-reply-section-patient {
+  padding: 1.5rem 2rem;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+/* Folder Tabs */
+.message-folder-tabs-patient {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.5rem;
+}
+
+.folder-tab-patient {
+  background: transparent;
+  border: none;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #6b7280;
+  border-radius: 6px;
+  position: relative;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.folder-tab-patient:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.folder-tab-patient.active {
+  background: #6E5B9A;
+  color: white;
+}
+
+.folder-tab-patient.active:hover {
+  background: #5a4786;
+}
+
+/* Unread message indicators */
+.unread-message {
+  border-left: 4px solid #6E5B9A !important;
+  background: #f9f7fc !important;
+}
+
+.unread-indicator-patient {
+  color: #6E5B9A;
+  font-weight: 600;
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+  background: #6E5B9A;
+  color: white;
+  padding: 0.1rem 0.4rem;
+  border-radius: 8px;
+}

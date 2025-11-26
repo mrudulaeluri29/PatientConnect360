@@ -1,8 +1,12 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // API configuration for mobile
+// For Android emulator: use 10.0.2.2 instead of localhost
+// For iOS simulator: use localhost
+// For physical device: use your computer's IP address (e.g., 192.168.1.x)
 const API_URL = __DEV__ 
-  ? 'http://localhost:4000' // Development
+  ? 'http://10.0.2.2:4000' // Android emulator
   : 'https://api.medihealth.com'; // Production - update this
 
 export const api = axios.create({
@@ -11,16 +15,13 @@ export const api = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 10000,
+  withCredentials: true, // For cookie-based auth
 });
 
-// Request interceptor to add auth token
+// Request interceptor
 api.interceptors.request.use(
-  (config) => {
-    // TODO: Add token from storage
-    // const token = AsyncStorage.getItem('auth_token');
-    // if (token) {
-    //   config.headers.Authorization = `Bearer ${token}`;
-    // }
+  async (config) => {
+    // Cookies are handled automatically with withCredentials: true
     return config;
   },
   (error) => {

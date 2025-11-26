@@ -52,7 +52,8 @@ router.post("/register", async (req: Request, res: Response) => {
         // Create profile based on role
         ...(roleToUse === "PATIENT" && profileData ? {
           patientProfile: {
-            create: {
+            create: ({
+              username: username,
               legalName: profileData.legalName,
               dateOfBirth: new Date(profileData.dateOfBirth),
               phoneNumber: profileData.phoneNumber,
@@ -65,16 +66,17 @@ router.post("/register", async (req: Request, res: Response) => {
               pharmacyPhoneNumber: profileData.pharmacyPhoneNumber,
               uploadedFileName: profileData.uploadedFileName || null,
               uploadedFileUrl: profileData.uploadedFileUrl || null,
-            }
+            } as any)
           }
         } : {}),
         ...(roleToUse === "CLINICIAN" && profileData ? {
           clinicianProfile: {
-            create: {
+            create: ({
+              username: username,
               specialization: profileData.specialization || null,
               licenseNumber: profileData.licenseNumber || null,
               hospitalAffiliation: profileData.hospitalAffiliation || null,
-            }
+            } as any)
           }
         } : {}),
         ...(roleToUse === "CAREGIVER" && profileData ? {

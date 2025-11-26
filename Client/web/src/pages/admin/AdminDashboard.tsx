@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { api } from "../../lib/axios";
 import "./AdminDashboard.css";
 
 export default function AdminDashboard() {
@@ -23,6 +24,12 @@ export default function AdminDashboard() {
             </button>
             <button className={`nav-item ${activeTab === "users" ? "active" : ""}`} onClick={() => setActiveTab("users")}>
               Users
+            </button>
+            <button className={`nav-item ${activeTab === "assign" ? "active" : ""}`} onClick={() => setActiveTab("assign")}>
+              Assign Patients
+            </button>
+            <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
+              Messages
             </button>
             <button className={`nav-item ${activeTab === "reports" ? "active" : ""}`} onClick={() => setActiveTab("reports")}>
               Reports
@@ -381,6 +388,16 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {activeTab === "assign" && (
+          <div className="admin-content">
+            <AssignmentManager />
+          </div>
+        )}
+        {activeTab === "messages" && (
+          <div className="admin-content">
+            <AdminMessages />
+          </div>
+        )}
         {activeTab === "reports" && (
           <div className="admin-content">
             <ReportsAnalytics />
@@ -397,56 +414,824 @@ export default function AdminDashboard() {
   );
 }
 
+// Assignment Manager Component
+function AssignmentManager() {
+  const [patients, setPatients] = useState<{ id: string; username: string; email: string }[]>([]);
+  const [clinicians, setClinicians] = useState<{ id: string; username: string; email: string }[]>([]);
+  const [assignments, setAssignments] = useState<{ id: string; patient: any; clinician: any; isActive: boolean }[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<string>("");
+  const [selectedClinician, setSelectedClinician] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch users + assignments
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [usersRes, assignRes] = await Promise.all([
+          api.get("/api/admin/users"),
+          api.get("/api/admin/assignments"),
+        ]);
+        if (!mounted) return;
+        const allUsers: any[] = usersRes.data.users || [];
+        setPatients(allUsers.filter(u => u.role === "PATIENT"));
+        setClinicians(allUsers.filter(u => u.role === "CLINICIAN"));
+        setAssignments(assignRes.data.assignments || []);
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e.response?.data?.error || "Failed to load data");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    load();
+    return () => { mounted = false; };
+  }, []);
+
+  const handleCreate = async () => {
+    if (!selectedPatient || !selectedClinician) return;
+    try {
+      await api.post("/api/admin/assignments", { 
+        patientId: selectedPatient, 
+        clinicianId: selectedClinician
+      });
+      // Refresh assignments list
+      const refreshed = await api.get("/api/admin/assignments");
+      setAssignments(refreshed.data.assignments || []);
+      setSelectedPatient("");
+      setSelectedClinician("");
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to assign");
+    }
+  };
+
+  const handleRemove = async (assignmentId: string) => {
+    if (!window.confirm("Remove this assignment?")) return;
+    try {
+      await api.delete(`/api/admin/assignments/${assignmentId}`);
+      setAssignments(prev => prev.filter(a => a.id !== assignmentId));
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to remove assignment");
+    }
+  };
+
+  const handleToggleActive = async (assignmentId: string, currentStatus: boolean) => {
+    try {
+      await api.patch(`/api/admin/assignments/${assignmentId}`, { isActive: !currentStatus });
+      // Update local state
+      setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, isActive: !currentStatus } : a));
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to update assignment");
+    }
+  };
+
+  return (
+    <div className="assignment-manager">
+      <h2 className="section-title">Patient–Clinician Assignments</h2>
+      {loading && <p>Loading...</p>}
+      {error && <p style={{ color: '#dc2626' }}>{error}</p>}
+      {!loading && !error && (
+        <>
+          <div className="assignment-form">
+            <select value={selectedPatient} onChange={(e) => setSelectedPatient(e.target.value)}>
+              <option value="">Select Patient</option>
+              {patients.map(p => <option key={p.id} value={p.id}>{p.username} ({p.email})</option>)}
+            </select>
+            <select value={selectedClinician} onChange={(e) => setSelectedClinician(e.target.value)}>
+              <option value="">Select Clinician</option>
+              {clinicians.map(c => <option key={c.id} value={c.id}>{c.username} ({c.email})</option>)}
+            </select>
+            <button className="btn-primary" disabled={!selectedPatient || !selectedClinician} onClick={handleCreate}>Assign</button>
+          </div>
+          <div className="assignments-table" style={{ marginTop: '1.5rem' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Patient</th>
+                  <th>Clinician</th>
+                  <th>Active</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assignments.length === 0 ? (
+                  <tr><td colSpan={4} style={{ textAlign: 'center', padding: '1rem', color: '#6b7280' }}>No assignments yet</td></tr>
+                ) : assignments.map(a => (
+                  <tr key={a.id}>
+                    <td>{a.patient.username} ({a.patient.email})</td>
+                    <td>{a.clinician.username} ({a.clinician.email})</td>
+                    <td>
+                      <select 
+                        value={a.isActive ? "true" : "false"} 
+                        onChange={() => handleToggleActive(a.id, a.isActive)}
+                        style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
+                      >
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </td>
+                    <td><button className="btn-remove" onClick={() => handleRemove(a.id)}>Remove</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Admin Messages Component
+function AdminMessages() {
+  const { user } = useAuth();
+  const [activeView, setActiveView] = useState<"all-messages" | "broadcast">("all-messages");
+  const [messages, setMessages] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  
+  // Filtering states
+  const [selectedFromType, setSelectedFromType] = useState<string>("all");
+  const [selectedFromUser, setSelectedFromUser] = useState<string>("all");
+  const [selectedToType, setSelectedToType] = useState<string>("all");
+  const [selectedToUser, setSelectedToUser] = useState<string>("all");
+
+  const [fromUsers, setFromUsers] = useState<any[]>([]);
+  const [toUsers, setToUsers] = useState<any[]>([]);
+
+  // Broadcast states
+  const [broadcastRecipients, setBroadcastRecipients] = useState<string[]>([]);
+  const [broadcastSubject, setBroadcastSubject] = useState<string>("");
+  const [broadcastMessage, setBroadcastMessage] = useState<string>("");
+
+  const [sendingBroadcast, setSendingBroadcast] = useState<boolean>(false);
+
+  // Message actions states
+  const [viewingMessage, setViewingMessage] = useState<any>(null);
+  const [showMessageModal, setShowMessageModal] = useState<boolean>(false);
+
+
+  // Fetch all messages from database
+  const fetchAllMessages = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/api/admin/messages', {
+        params: {
+          fromType: selectedFromType !== 'all' ? selectedFromType : undefined,
+          fromUser: selectedFromUser !== 'all' ? selectedFromUser : undefined,
+          toType: selectedToType !== 'all' ? selectedToType : undefined,
+          toUser: selectedToUser !== 'all' ? selectedToUser : undefined,
+          search: searchTerm || undefined
+        }
+      });
+      console.log("Fetched messages:", response.data.messages);
+      setMessages(response.data.messages || []);
+    } catch (error) {
+      console.error("Failed to fetch messages:", error);
+      setMessages([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+
+  // Fetch users by role for filtering dropdowns
+  const fetchUsersByRole = async (role: string) => {
+    try {
+      if (!user || user.role !== 'ADMIN') {
+        console.log('User is not admin or not logged in:', user);
+        return [];
+      }
+      
+      console.log(`Fetching users for role: ${role}`);
+      const response = await api.get('/api/admin/users/by-role', {
+        params: { role: role.toLowerCase() }
+      });
+      
+      console.log(`Found ${response.data.users?.length || 0} ${role} users`);
+      return response.data.users || [];
+    } catch (error: any) {
+      console.error(`Failed to fetch ${role} users:`, error);
+      if (error.response?.status === 404) {
+        console.error('API endpoint not found - check server routing');
+      }
+      return [];
+    }
+  };
+
+  // Handle role filter changes
+  const handleFromTypeChange = async (roleType: string) => {
+    setSelectedFromType(roleType);
+    setSelectedFromUser('all');
+    
+    // Reset To selection when From changes and check for incompatible combinations
+    const shouldResetTo = () => {
+      if (selectedToType === 'all') return false;
+      
+      // Check if current To selection is incompatible with new From selection
+      if (roleType === 'patient' && selectedToType === 'admin') return true;
+      if (roleType === 'clinician' && selectedToType === 'admin') return true;
+      if (roleType === 'caregiver' && selectedToType === 'admin') return true;
+      if (roleType === 'admin' && selectedToType === 'admin') return true; // admin can't message admin
+      
+      return false;
+    };
+    
+    if (shouldResetTo()) {
+      setSelectedToType('all');
+      setSelectedToUser('all');
+      setToUsers([]);
+    }
+    
+    if (roleType !== 'all') {
+      try {
+        console.log(`[DEBUG] handleFromTypeChange: roleType = ${roleType}`);
+        const roleUsers = await fetchUsersByRole(roleType);
+        console.log(`[DEBUG] handleFromTypeChange: Received users:`, roleUsers);
+        console.log(`[DEBUG] handleFromTypeChange: Setting fromUsers state with ${roleUsers.length} users`);
+        setFromUsers(roleUsers);
+      } catch (error) {
+        console.error(`[ERROR] Failed to fetch ${roleType} users:`, error);
+        setFromUsers([]);
+      }
+    } else {
+      console.log(`[DEBUG] handleFromTypeChange: roleType is 'all', clearing fromUsers`);
+      setFromUsers([]);
+    }
+  };
+
+  const handleToTypeChange = async (roleType: string) => {
+    setSelectedToType(roleType);
+    setSelectedToUser('all');
+    
+    // Reset From selection when To changes and check for incompatible combinations
+    const shouldResetFrom = () => {
+      if (selectedFromType === 'all') return false;
+      
+      // Check if current From selection is incompatible with new To selection
+      if (roleType === 'patient' && !['clinician', 'caregiver', 'admin'].includes(selectedFromType)) return true;
+      if (roleType === 'clinician' && !['patient', 'caregiver', 'admin'].includes(selectedFromType)) return true;
+      if (roleType === 'caregiver' && !['patient', 'clinician', 'admin'].includes(selectedFromType)) return true;
+      // admin cannot be selected as To, so no check needed
+      
+      return false;
+    };
+    
+    if (shouldResetFrom()) {
+      setSelectedFromType('all');
+      setSelectedFromUser('all');
+      setFromUsers([]);
+    }
+    
+    if (roleType !== 'all') {
+      try {
+        const roleUsers = await fetchUsersByRole(roleType);
+        setToUsers(roleUsers);
+      } catch (error) {
+        console.error(`Failed to fetch ${roleType} users:`, error);
+        setToUsers([]);
+      }
+    } else {
+      setToUsers([]);
+    }
+  };
+
+  // Message actions
+  const handleMarkAsRead = async (messageId: string) => {
+    try {
+      await api.put(`/messages/${messageId}/read`);
+      fetchAllMessages(); // Refresh messages list
+    } catch (error) {
+      console.error("Failed to mark message as read:", error);
+    }
+  };
+
+
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (confirm("Are you sure you want to delete this message?")) {
+      try {
+        await api.delete(`/messages/${messageId}`);
+        fetchAllMessages(); // Refresh messages list
+      } catch (error) {
+        console.error("Failed to delete message:", error);
+      }
+    }
+  };
+
+  const handleViewMessage = (message: any) => {
+    setViewingMessage(message);
+    setShowMessageModal(true);
+    if (!message.isRead) {
+      handleMarkAsRead(message.id);
+    }
+  };
+
+
+
+  // Broadcast functionality
+  const handleBroadcastRecipientChange = (value: string) => {
+    setBroadcastRecipients(prev => 
+      prev.includes(value) 
+        ? prev.filter(r => r !== value)
+        : [...prev, value]
+    );
+  };
+
+  const sendBroadcast = async () => {
+    console.log("🚀 sendBroadcast started");
+    console.log("Subject:", broadcastSubject);
+    console.log("Message:", broadcastMessage);
+    console.log("Recipients:", broadcastRecipients);
+    
+    if (!broadcastSubject.trim() || !broadcastMessage.trim() || broadcastRecipients.length === 0) {
+      console.log("❌ Validation failed");
+      alert("Please fill in all fields and select recipients");
+      return;
+    }
+
+    setSendingBroadcast(true);
+    try {
+      console.log("📡 Starting broadcast to recipients:", broadcastRecipients);
+      
+      // Send to each recipient type
+      for (const recipientType of broadcastRecipients) {
+        console.log("📋 Fetching users for role:", recipientType);
+        const recipients = await fetchUsersByRole(recipientType);
+        console.log("👥 Found recipients:", recipients);
+        
+        for (const recipient of recipients) {
+          console.log("📤 Sending message to:", recipient.username, recipient.id);
+          const response = await api.post('/messages/send', {
+            to: recipient.id,
+            subject: `[ADMIN BROADCAST] ${broadcastSubject}`,
+            content: broadcastMessage
+          });
+          console.log("✅ Message sent, response:", response.data);
+        }
+      }
+      
+      // Reset form
+      setBroadcastSubject("");
+      setBroadcastMessage("");
+      setBroadcastRecipients([]);
+      
+      console.log("🎉 Broadcast completed successfully!");
+      alert("Broadcast sent successfully!");
+    } catch (error: any) {
+      console.error("❌ Failed to send broadcast:", error);
+      console.error("Error details:", error.response?.data || error.message);
+      alert("Failed to send broadcast");
+    } finally {
+      setSendingBroadcast(false);
+    }
+  };
+
+  // Load data on component mount and when filters change
+  useEffect(() => {
+    if (user && user.role === 'ADMIN') {
+      fetchAllMessages();
+    }
+  }, [selectedFromType, selectedFromUser, selectedToType, selectedToUser, searchTerm, user]);
+
+
+
+  return (
+    <div className="admin-messages">
+      {/* Header */}
+      <div className="section-header">
+        <h2 className="section-title">System Messages</h2>
+        <div className="message-tabs">
+          <button 
+            className={`tab-btn ${activeView === "all-messages" ? "active" : ""}`}
+            onClick={() => setActiveView("all-messages")}
+          >
+            All Messages
+          </button>
+          <button 
+            className={`tab-btn ${activeView === "broadcast" ? "active" : ""}`}
+            onClick={() => setActiveView("broadcast")}
+          >
+            Broadcast Message
+          </button>
+        </div>
+      </div>
+
+      {/* All Messages View */}
+      {activeView === "all-messages" && (
+        <div className="all-messages">
+          {/* Search and Filters */}
+          <div className="messages-toolbar">
+            <div className="search-filters">
+              <input 
+                type="text" 
+                placeholder="Search messages..." 
+                className="search-input"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              
+              <div className="filter-group">
+                <label className="filter-label">From:</label>
+                <select 
+                  className="filter-select"
+                  value={selectedFromType}
+                  onChange={(e) => handleFromTypeChange(e.target.value)}
+                >
+                  <option value="all">All Roles</option>
+                  {/* Patient can send to: clinician, caregiver */}
+                  {(selectedToType === 'all' || selectedToType === 'clinician' || selectedToType === 'caregiver') && (
+                    <option value="patient">Patients</option>
+                  )}
+                  {/* Clinician can send to: patient, caregiver */}
+                  {(selectedToType === 'all' || selectedToType === 'patient' || selectedToType === 'caregiver') && (
+                    <option value="clinician">Clinicians</option>
+                  )}
+                  {/* Caregiver can send to: patient, clinician */}
+                  {(selectedToType === 'all' || selectedToType === 'patient' || selectedToType === 'clinician') && (
+                    <option value="caregiver">Caregivers</option>
+                  )}
+                  {/* Admin can send to: patient, clinician, caregiver */}
+                  {(selectedToType === 'all' || selectedToType === 'patient' || selectedToType === 'clinician' || selectedToType === 'caregiver') && (
+                    <option value="admin">Admins</option>
+                  )}
+                </select>
+                
+                {selectedFromType !== 'all' && (
+                  <select 
+                    className="filter-select"
+                    value={selectedFromUser}
+                    onChange={(e) => setSelectedFromUser(e.target.value)}
+                  >
+                    <option value="all">All {selectedFromType}s</option>
+                    {fromUsers.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.username || user.email}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="filter-group">
+                <label className="filter-label">To:</label>
+                <select 
+                  className="filter-select"
+                  value={selectedToType}
+                  onChange={(e) => handleToTypeChange(e.target.value)}
+                >
+                  <option value="all">All Roles</option>
+                  {/* Patient can receive from: clinician, caregiver, admin */}
+                  {(selectedFromType === 'all' || selectedFromType === 'clinician' || selectedFromType === 'caregiver' || selectedFromType === 'admin') && (
+                    <option value="patient">Patients</option>
+                  )}
+                  {/* Clinician can receive from: patient, caregiver, admin */}
+                  {(selectedFromType === 'all' || selectedFromType === 'patient' || selectedFromType === 'caregiver' || selectedFromType === 'admin') && (
+                    <option value="clinician">Clinicians</option>
+                  )}
+                  {/* Caregiver can receive from: patient, clinician, admin */}
+                  {(selectedFromType === 'all' || selectedFromType === 'patient' || selectedFromType === 'clinician' || selectedFromType === 'admin') && (
+                    <option value="caregiver">Caregivers</option>
+                  )}
+                  {/* Admin cannot be selected as To recipient */}
+                </select>
+                
+                {selectedToType !== 'all' && (
+                  <select 
+                    className="filter-select"
+                    value={selectedToUser}
+                    onChange={(e) => setSelectedToUser(e.target.value)}
+                  >
+                    <option value="all">All {selectedToType}s</option>
+                    {toUsers.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.username || user.email}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+
+            </div>
+          </div>
+
+          {/* Messages Table */}
+          {loading ? (
+            <div className="loading-state">
+              <div className="spinner"></div>
+              <p>Loading messages...</p>
+            </div>
+          ) : (
+            <div className="messages-table-container">
+              <table className="messages-table">
+                <thead>
+                  <tr>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Subject</th>
+                    <th>Preview</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {messages.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="no-messages">
+                        No messages found
+                      </td>
+                    </tr>
+                  ) : (
+                    messages.map((message) => (
+                      <tr key={message.id} className={!message.isRead ? "unread" : ""}>
+                        <td>
+                          <div className="user-info">
+                            <span className="username">{message.fromUser?.username || message.from}</span>
+                            <span className={`role-badge role-${message.fromUser?.role?.toLowerCase() || 'unknown'}`}>
+                              {message.fromUser?.role || 'Unknown'}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="user-info">
+                            <span className="username">{message.toUser?.username || message.to}</span>
+                            <span className={`role-badge role-${message.toUser?.role?.toLowerCase() || 'unknown'}`}>
+                              {message.toUser?.role || 'Unknown'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="subject-cell">
+                          <span className="subject-text">{message.subject}</span>
+                        </td>
+                        <td className="preview-cell">
+                          {(message.content || message.preview || "").substring(0, 80)}...
+                        </td>
+                        <td className="time-cell">
+                          {new Date(message.createdAt || message.timestamp).toLocaleDateString()}
+                        </td>
+                        <td>
+                          <span className={`status-badge ${message.isRead ? "read" : "unread"}`}>
+                            {message.isRead ? "Read" : "Unread"}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="action-buttons">
+                            <button 
+                              className="btn-action view"
+                              title="View Message"
+                              onClick={() => handleViewMessage(message)}
+                            >
+                              👁️
+                            </button>
+
+                            {!message.isRead && (
+                              <button 
+                                className="btn-action mark-read"
+                                title="Mark as Read"
+                                onClick={() => handleMarkAsRead(message.id)}
+                              >
+                                📬
+                              </button>
+                            )}
+                            <button 
+                              className="btn-action delete"
+                              title="Delete Message"
+                              onClick={() => handleDeleteMessage(message.id)}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Broadcast Message View */}
+      {activeView === "broadcast" && (
+        <div className="broadcast-view">
+          <div className="broadcast-form">
+            <h3>Send Broadcast Message</h3>
+            <p className="broadcast-description">
+              Send important announcements to multiple users at once. Select recipient groups and compose your message.
+            </p>
+            
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Recipients</label>
+                <div className="recipient-options">
+                  <label className="checkbox-label">
+                    <input 
+                      type="checkbox" 
+                      checked={broadcastRecipients.includes('patient')}
+                      onChange={() => handleBroadcastRecipientChange('patient')}
+                    />
+                    <span>All Patients</span>
+                  </label>
+                  <label className="checkbox-label">
+                    <input 
+                      type="checkbox"
+                      checked={broadcastRecipients.includes('clinician')}
+                      onChange={() => handleBroadcastRecipientChange('clinician')}
+                    />
+                    <span>All Clinicians</span>
+                  </label>
+                  <label className="checkbox-label">
+                    <input 
+                      type="checkbox"
+                      checked={broadcastRecipients.includes('caregiver')}
+                      onChange={() => handleBroadcastRecipientChange('caregiver')}
+                    />
+                    <span>All Caregivers</span>
+                  </label>
+                </div>
+              </div>
+
+
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">Subject</label>
+              <input 
+                type="text" 
+                className="form-input"
+                placeholder="Enter broadcast subject..."
+                value={broadcastSubject}
+                onChange={(e) => setBroadcastSubject(e.target.value)}
+              />
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">Message</label>
+              <textarea 
+                className="form-textarea" 
+                rows={8}
+                placeholder="Compose your broadcast message here..."
+                value={broadcastMessage}
+                onChange={(e) => setBroadcastMessage(e.target.value)}
+              />
+            </div>
+            
+            <div className="form-actions">
+              <button 
+                className="btn-secondary"
+                onClick={() => {
+                  setBroadcastSubject("");
+                  setBroadcastMessage("");
+                  setBroadcastRecipients([]);
+                }}
+              >
+                Clear
+              </button>
+              <button 
+                className="btn-primary"
+                onClick={sendBroadcast}
+                disabled={sendingBroadcast || !broadcastSubject.trim() || !broadcastMessage.trim() || broadcastRecipients.length === 0}
+              >
+                {sendingBroadcast ? "Sending..." : "Send Broadcast"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Message View Modal */}
+      {showMessageModal && viewingMessage && (
+        <div className="modal-overlay" onClick={() => setShowMessageModal(false)}>
+          <div className="modal-content message-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>View Message</h3>
+              <button className="close-btn" onClick={() => setShowMessageModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="message-details">
+                <div className="detail-row">
+                  <span className="detail-label">From:</span>
+                  <span className="detail-value">
+                    {viewingMessage.fromUser?.username || viewingMessage.from}
+                    <span className={`role-badge role-${viewingMessage.fromUser?.role?.toLowerCase()}`}>
+                      {viewingMessage.fromUser?.role}
+                    </span>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">To:</span>
+                  <span className="detail-value">
+                    {viewingMessage.toUser?.username || viewingMessage.to}
+                    <span className={`role-badge role-${viewingMessage.toUser?.role?.toLowerCase()}`}>
+                      {viewingMessage.toUser?.role}
+                    </span>
+                  </span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Subject:</span>
+                  <span className="detail-value">{viewingMessage.subject}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">Date:</span>
+                  <span className="detail-value">
+                    {new Date(viewingMessage.createdAt || viewingMessage.timestamp).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <div className="message-content">
+                <h4>Message:</h4>
+                <div className="message-text">
+                  {viewingMessage.content || viewingMessage.preview}
+                </div>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowMessageModal(false)}>
+                📖 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+    </div>
+  );
+}
+
 // User Management Component
 function UserManagement() {
-  const [users, setUsers] = useState([
-    { id: "1", name: "John Doe", email: "john@example.com", role: "PATIENT", status: "active" },
-    { id: "2", name: "Dr. Jane Smith", email: "jane@example.com", role: "CLINICIAN", status: "active" },
-    { id: "3", name: "Mary Johnson", email: "mary@example.com", role: "CAREGIVER", status: "active" },
-    { id: "4", name: "Dr. Robert Williams", email: "robert@example.com", role: "CLINICIAN", status: "active" },
-    { id: "5", name: "Sarah Connor", email: "sarah@example.com", role: "PATIENT", status: "active" },
-  ]);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterRole, setFilterRole] = useState("ALL");
-  
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = filterRole === "ALL" || user.role === filterRole;
+  const [users, setUsers] = useState<{ id: string; username: string; email: string; role: string; createdAt: string }[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState<boolean>(false);
+  const [inviteEmail, setInviteEmail] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [filterRole, setFilterRole] = useState<string>("ALL");
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchUsers() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await api.get("/api/admin/users");
+        if (!mounted) return;
+        setUsers(res.data.users || []);
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e.response?.data?.error || "Failed to load users");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    fetchUsers();
+    return () => { mounted = false; };
+  }, []);
+
+  const filteredUsers = users.filter((u) => {
+    const q = searchTerm.toLowerCase();
+    const matchesSearch = u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    const matchesRole = filterRole === "ALL" || u.role === filterRole;
     return matchesSearch && matchesRole;
   });
 
-  const handleRemoveUser = (userId: string) => {
-    if (window.confirm("Are you sure you want to remove this user?")) {
-      setUsers(users.filter(u => u.id !== userId));
+  const handleRemoveUser = async (userId: string) => {
+    if (!window.confirm("Are you sure you want to remove this user?")) return;
+    try {
+      await api.delete(`/api/admin/users/${userId}`);
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Failed to remove user");
     }
   };
 
   const handleSendInvite = () => {
-    if (inviteEmail) {
-      // TODO: Implement API call to send invite
-      console.log("Sending invite to:", inviteEmail);
-      alert(`Invitation sent to ${inviteEmail}`);
-      setInviteEmail("");
-      setShowInviteModal(false);
-    }
+    if (!inviteEmail) return;
+    // TODO: Implement API call to send invite
+    alert(`Invitation sent to ${inviteEmail}`);
+    setInviteEmail("");
+    setShowInviteModal(false);
   };
 
   return (
     <div className="user-management">
       <div className="section-header">
         <h2 className="section-title">User Management</h2>
-        <button className="btn-primary" onClick={() => setShowInviteModal(true)}>
-          + Invite Clinician
-        </button>
+        <button className="btn-primary" onClick={() => setShowInviteModal(true)}>+ Invite Clinician</button>
       </div>
 
       <div className="user-filters">
         <input
           type="text"
-          placeholder="Search by name or email..."
+          placeholder="Search by username or email..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="search-input"
@@ -460,6 +1245,7 @@ function UserManagement() {
           <option value="PATIENT">Patient</option>
           <option value="CLINICIAN">Clinician</option>
           <option value="CAREGIVER">Caregiver</option>
+          <option value="ADMIN">Admin</option>
         </select>
       </div>
 
@@ -489,39 +1275,40 @@ function UserManagement() {
         <table>
           <thead>
             <tr>
-              <th>Name</th>
+              <th>Username</th>
               <th>Email</th>
               <th>Role</th>
-              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.length === 0 ? (
+            {loading && (
               <tr>
-                <td colSpan={5} style={{ textAlign: "center", padding: "2rem", color: "#6b7280" }}>
-                  No users found
+                <td colSpan={4} style={{ textAlign: "center", padding: "2rem" }}>Loading users...</td>
+              </tr>
+            )}
+            {!loading && error && (
+              <tr>
+                <td colSpan={4} style={{ textAlign: "center", padding: "2rem", color: "#dc2626" }}>{error}</td>
+              </tr>
+            )}
+            {!loading && !error && filteredUsers.length === 0 && (
+              <tr>
+                <td colSpan={4} style={{ textAlign: "center", padding: "2rem", color: "#6b7280" }}>No users found</td>
+              </tr>
+            )}
+            {!loading && !error && filteredUsers.map((u) => (
+              <tr key={u.id}>
+                <td>{u.username}</td>
+                <td>{u.email}</td>
+                <td>
+                  <span className={`role-badge role-${u.role.toLowerCase()}`}>{u.role}</span>
+                </td>
+                <td>
+                  <button className="btn-remove" onClick={() => handleRemoveUser(u.id)}>Remove</button>
                 </td>
               </tr>
-            ) : (
-              filteredUsers.map(user => (
-                <tr key={user.id}>
-                  <td>{user.name}</td>
-                  <td>{user.email}</td>
-                  <td>
-                    <span className={`role-badge role-${user.role.toLowerCase()}`}>{user.role}</span>
-                  </td>
-                  <td>
-                    <span className={`status-badge status-${user.status}`}>{user.status}</span>
-                  </td>
-                  <td>
-                    <button className="btn-remove" onClick={() => handleRemoveUser(user.id)}>
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       </div>

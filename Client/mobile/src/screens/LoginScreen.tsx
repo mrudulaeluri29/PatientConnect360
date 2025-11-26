@@ -3,23 +3,20 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
-  TouchableOpacity,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
-  Dimensions,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../styles/colors';
 import { spacing } from '../styles/spacing';
-import { login } from '../api/auth';
+import { useAuth } from '../auth/AuthContext';
 import { RootStackParamList } from '../navigation/AppNavigator';
-
-const { width } = Dimensions.get('window');
+import Button from '../components/Button';
+import InputField from '../components/InputField';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -28,9 +25,9 @@ interface Props {
 }
 
 export default function LoginScreen({ navigation }: Props) {
+  const { login } = useAuth();
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -44,24 +41,19 @@ export default function LoginScreen({ navigation }: Props) {
     setLoading(true);
 
     try {
-      // TODO: Implement actual login API call
-      // const response = await login({ emailOrUsername, password });
-      // await AsyncStorage.setItem('auth_token', response.token);
+      const user = await login(emailOrUsername, password);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // TODO: Navigate based on role
-      // if (response.user.role === 'ADMIN') {
-      //   navigation.navigate('AdminDashboard');
-      // } else {
-      //   navigation.navigate('Dashboard');
-      // }
-      
-      // Temporary: navigate to dashboard
-      navigation.navigate('Dashboard');
+      // Navigate based on role
+      if (user.role === 'ADMIN') {
+        navigation.replace('AdminDashboard');
+      } else if (user.role === 'CLINICIAN') {
+        navigation.replace('ClinicianDashboard');
+      } else {
+        navigation.replace('PatientDashboard');
+      }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Invalid credentials. Please try again.');
+      setError(err.message || 'Invalid credentials. Please try again.');
+      Alert.alert('Login Failed', err.message || 'Please check your credentials and try again.');
     } finally {
       setLoading(false);
     }
@@ -75,142 +67,97 @@ export default function LoginScreen({ navigation }: Props) {
       <ScrollView 
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <LinearGradient
-          colors={[colors.secondaryVeryLight, colors.secondaryLight]}
+          colors={[colors.secondaryVeryLight, colors.white]}
           style={styles.background}
         >
-          <View style={styles.loginContainer}>
-            {/* Left Panel - Branding */}
-            <LinearGradient
-              colors={[colors.primary, colors.primaryDark]}
-              style={styles.leftPanel}
-            >
-              <View style={styles.branding}>
-                <Text style={styles.logo}>MediHealth</Text>
-                <Text style={styles.welcomeTitle}>Welcome Back</Text>
-                <Text style={styles.welcomeSubtitle}>
-                  Sign in to access your health portal and connect with your care team
-                </Text>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.logo}>MediHealth</Text>
+            <Text style={styles.tagline}>Your Health, Connected</Text>
+          </View>
+
+          {/* Login Card */}
+          <View style={styles.loginCard}>
+            <View style={styles.titleContainer}>
+              <Text style={styles.title}>Welcome Back</Text>
+              <Text style={styles.subtitle}>
+                Sign in to access your health portal
+              </Text>
+            </View>
+
+            {error ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
               </View>
-              
-              <View style={styles.features}>
-                <Text style={styles.featureItem}>Secure & HIPAA Compliant</Text>
-                <Text style={styles.featureItem}>Connect with Care Team</Text>
-                <Text style={styles.featureItem}>Manage Appointments</Text>
-                <Text style={styles.featureItem}>Access Medical Records</Text>
-              </View>
-            </LinearGradient>
+            ) : null}
 
-            {/* Right Panel - Login Form */}
-            <View style={styles.rightPanel}>
-              <View style={styles.formContainer}>
-                <Text style={styles.formTitle}>Sign In</Text>
-                <Text style={styles.formSubtitle}>
-                  Enter your credentials to access your account
+            <View style={styles.form}>
+              <InputField
+                label="Email or Username"
+                placeholder="Enter your email or username"
+                value={emailOrUsername}
+                onChangeText={setEmailOrUsername}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+              />
+
+              <InputField
+                label="Password"
+                placeholder="Enter your password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+
+              <TouchableOpacity
+                style={styles.forgotPassword}
+                onPress={() => navigation.navigate('ForgotPassword')}
+              >
+                <Text style={styles.forgotPasswordText}>
+                  Forgot Password?
                 </Text>
+              </TouchableOpacity>
 
-                {error ? (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                  </View>
-                ) : null}
+              <Button
+                title="Sign In"
+                onPress={handleLogin}
+                loading={loading}
+                disabled={loading}
+                fullWidth
+                style={styles.loginButton}
+              />
 
-                <View style={styles.form}>
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Email or Username</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter your email or username"
-                      placeholderTextColor={colors.textLight}
-                      value={emailOrUsername}
-                      onChangeText={setEmailOrUsername}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      editable={!loading}
-                    />
-                  </View>
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
 
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Password</Text>
-                    <View style={styles.passwordInputWrapper}>
-                      <TextInput
-                        style={styles.passwordInput}
-                        placeholder="Enter your password"
-                        placeholderTextColor={colors.textLight}
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry={!showPassword}
-                        autoCapitalize="none"
-                        editable={!loading}
-                      />
-                      <TouchableOpacity
-                        style={styles.passwordToggle}
-                        onPress={() => setShowPassword(!showPassword)}
-                        disabled={loading}
-                      >
-                        <Text style={styles.passwordToggleText}>
-                          {showPassword ? 'Hide' : 'Show'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+              <Button
+                title="Create Account"
+                onPress={() => navigation.navigate('Register')}
+                variant="outline"
+                fullWidth
+              />
+            </View>
 
-                  <View style={styles.formOptions}>
-                    <TouchableOpacity style={styles.checkboxContainer}>
-                      <Text style={styles.checkboxLabel}>Remember me</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => {
-                      // TODO: Navigate to ForgotPassword screen when implemented
-                      Alert.alert('Forgot Password', 'Forgot password screen coming soon');
-                    }}>
-                      <Text style={styles.forgotPassword}>Forgot password?</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.loginButton, loading && styles.loginButtonDisabled]}
-                    onPress={handleLogin}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color={colors.background} />
-                    ) : (
-                      <Text style={styles.loginButtonText}>Sign In</Text>
-                    )}
-                  </TouchableOpacity>
-
-                  <View style={styles.divider}>
-                    <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>Don't have an account?</Text>
-                    <View style={styles.dividerLine} />
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.signupButton}
-                    onPress={() => navigation.navigate('Register')}
-                  >
-                    <Text style={styles.signupButtonText}>Create an account</Text>
-                  </TouchableOpacity>
-
-                  <View style={styles.roleInfo}>
-                    <Text style={styles.roleInfoTitle}>Available for:</Text>
-                    <View style={styles.roleBadges}>
-                      <View style={styles.roleBadge}>
-                        <Text style={styles.roleBadgeText}>Patient</Text>
-                      </View>
-                      <View style={styles.roleBadge}>
-                        <Text style={styles.roleBadgeText}>Caregiver</Text>
-                      </View>
-                      <View style={styles.roleBadge}>
-                        <Text style={styles.roleBadgeText}>Clinician</Text>
-                      </View>
-                      <View style={[styles.roleBadge, styles.roleBadgeAdmin]}>
-                        <Text style={[styles.roleBadgeText, styles.roleBadgeAdminText]}>Admin</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
+            <View style={styles.features}>
+              <View style={styles.featureItem}>
+                <Text style={styles.featureIcon}>🔒</Text>
+                <Text style={styles.featureText}>Secure & HIPAA Compliant</Text>
+              </View>
+              <View style={styles.featureItem}>
+                <Text style={styles.featureIcon}>💬</Text>
+                <Text style={styles.featureText}>Connect with Care Team</Text>
+              </View>
+              <View style={styles.featureItem}>
+                <Text style={styles.featureIcon}>📅</Text>
+                <Text style={styles.featureText}>Manage Appointments</Text>
               </View>
             </View>
           </View>
@@ -223,182 +170,86 @@ export default function LoginScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.white,
   },
   scrollContent: {
     flexGrow: 1,
   },
   background: {
     flex: 1,
-    padding: spacing.md,
+    minHeight: '100%',
   },
-  loginContainer: {
-    flex: 1,
-    flexDirection: width > 768 ? 'row' : 'column',
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: colors.background,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.1,
-    shadowRadius: 60,
-    elevation: 20,
-    minHeight: 600,
-  },
-  leftPanel: {
-    flex: 1,
-    padding: spacing.xl,
-    justifyContent: 'space-between',
-  },
-  branding: {
-    gap: spacing.md,
+  header: {
+    alignItems: 'center',
+    paddingTop: spacing.xl * 2,
+    paddingBottom: spacing.xl,
   },
   logo: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.background,
-    marginBottom: spacing.lg,
-  },
-  welcomeTitle: {
     fontSize: 32,
-    fontWeight: '800',
-    color: colors.background,
-    marginBottom: spacing.sm,
+    fontWeight: '700',
+    color: colors.primary,
+    marginBottom: spacing.xs,
   },
-  welcomeSubtitle: {
-    fontSize: 16,
-    color: colors.background,
-    opacity: 0.95,
-    lineHeight: 24,
+  tagline: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
-  features: {
-    gap: spacing.md,
+  loginCard: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  featureItem: {
-    fontSize: 16,
-    color: colors.background,
-    opacity: 0.95,
+  titleContainer: {
+    marginBottom: spacing.xl,
   },
-  rightPanel: {
-    flex: 1,
-    padding: spacing.xl,
-    justifyContent: 'center',
-  },
-  formContainer: {
-    width: '100%',
-    maxWidth: 400,
-    alignSelf: 'center',
-  },
-  formTitle: {
+  title: {
     fontSize: 28,
     fontWeight: '700',
     color: colors.text,
     marginBottom: spacing.xs,
   },
-  formSubtitle: {
-    fontSize: 14,
+  subtitle: {
+    fontSize: 16,
     color: colors.textSecondary,
-    marginBottom: spacing.xl,
   },
   errorContainer: {
     backgroundColor: colors.errorLight,
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    borderRadius: 8,
     padding: spacing.md,
+    borderRadius: 8,
     marginBottom: spacing.md,
   },
   errorText: {
     color: colors.error,
     fontSize: 14,
+    textAlign: 'center',
   },
   form: {
-    gap: spacing.md,
-  },
-  inputGroup: {
-    marginBottom: spacing.md,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  input: {
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: spacing.md,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.background,
-  },
-  passwordInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderRadius: 8,
-    backgroundColor: colors.background,
-  },
-  passwordInput: {
-    flex: 1,
-    padding: spacing.md,
-    fontSize: 16,
-    color: colors.text,
-  },
-  passwordToggle: {
-    padding: spacing.md,
-    paddingLeft: spacing.sm,
-  },
-  passwordToggleText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  formOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  checkboxContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  checkboxLabel: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    marginBottom: spacing.xl,
   },
   forgotPassword: {
-    fontSize: 14,
+    alignSelf: 'flex-end',
+    marginBottom: spacing.lg,
+  },
+  forgotPasswordText: {
     color: colors.primary,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
   },
   loginButton: {
-    backgroundColor: colors.primary,
-    padding: spacing.md,
-    borderRadius: 8,
-    alignItems: 'center',
     marginBottom: spacing.md,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  loginButtonDisabled: {
-    opacity: 0.6,
-  },
-  loginButtonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '600',
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
     marginVertical: spacing.lg,
-    gap: spacing.sm,
   },
   dividerLine: {
     flex: 1,
@@ -406,56 +257,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   dividerText: {
+    marginHorizontal: spacing.md,
+    color: colors.textSecondary,
+    fontSize: 14,
+  },
+  features: {
+    marginTop: spacing.xl,
+    gap: spacing.md,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  featureIcon: {
+    fontSize: 20,
+    marginRight: spacing.sm,
+  },
+  featureText: {
     fontSize: 14,
     color: colors.textSecondary,
   },
-  signupButton: {
-    borderWidth: 2,
-    borderColor: colors.primaryLight,
-    padding: spacing.md,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  signupButtonText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  roleInfo: {
-    marginTop: spacing.xl,
-    paddingTop: spacing.xl,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    alignItems: 'center',
-  },
-  roleInfoTitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-    fontWeight: '500',
-  },
-  roleBadges: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  roleBadge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.borderLight,
-    borderRadius: 6,
-  },
-  roleBadgeText: {
-    fontSize: 12,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  roleBadgeAdmin: {
-    backgroundColor: colors.secondaryLight,
-  },
-  roleBadgeAdminText: {
-    color: colors.primaryDark,
-  },
 });
-

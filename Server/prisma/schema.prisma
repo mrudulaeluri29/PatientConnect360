@@ -23,7 +23,7 @@ enum Role {
 
 //Each model in Prisma corresponds to a table in PostgreSQL.
 model User {
-  id           String   @id @default(cuid()) //Creates a column named id of type String. It’s the primary key (@id). @default(cuid()) means Prisma will auto-generate a random unique ID like ckz7x0m8d0000vsf78xyz2h6f
+  id           String   @id @default(cuid()) //Creates a column named id of type String. It's the primary key (@id). @default(cuid()) means Prisma will auto-generate a random unique ID like ckz7x0m8d0000vsf78xyz2h6f
   email        String   @unique //A column called email of type String. It must be unique—no two users can share the same email.
   username     String   @unique //Same rule as above for usernames.
   passwordHash String //Stores the hashed password, never the plain password.
@@ -45,6 +45,13 @@ model User {
   patientProfile   PatientProfile?
   clinicianProfile ClinicianProfile?
   caregiverProfile CaregiverProfile?
+  adminProfile    AdminProfile?
+  
+  // Relations for messaging
+  sentMessages     Message[]        @relation("SentMessages")
+  conversations    ConversationParticipant[]
+  assignments      PatientAssignment[] @relation("AssignedPatients")
+  assignedTo       PatientAssignment[] @relation("AssignedClinician")
 }
 
 // Patient-specific profile information
@@ -52,6 +59,7 @@ model PatientProfile {
   id                    String   @id @default(cuid())
   userId                String   @unique
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username              String?  // Duplicate of User.username for quicker profile queries (optional; populated at registration)
   
   // Personal Information
   legalName             String
@@ -82,8 +90,9 @@ model ClinicianProfile {
   id                    String   @id @default(cuid())
   userId                String   @unique
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username              String?  // Duplicate of User.username for quicker profile queries (optional; populated at registration)
   
-  // Professional Information (can be expanded later)
+  // Professional Information
   specialization        String?
   licenseNumber         String?
   hospitalAffiliation   String?
@@ -106,6 +115,92 @@ model CaregiverProfile {
   updatedAt             DateTime @updatedAt
 }
 
+// Admin-specific profile information (optional metadata kept separate from core User fields)
+model AdminProfile {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Presentation / contact
+  displayName            String?
+  phoneNumber            String?
+  emergencyContactEmail  String?
+  emergencyContactPhone  String?
 
+  // Privilege & notes
+  superAdmin             Boolean  @default(false) // Can manage other admins, perform high-risk ops
+  notes                  String?  @db.Text        // Internal operational notes
 
+  // Audit / tracking
+  lastSecurityAudit      DateTime? // Timestamp of last manual or automated security review
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+// Patient-Clinician Assignment
+// Links patients to their assigned clinicians (many-to-many)
+model PatientAssignment {
+  id            String   @id @default(cuid())
+  patientId     String
+  clinicianId   String
+  assignedAt    DateTime @default(now())
+  assignedBy    String?  // Admin user ID who made the assignment
+  isActive      Boolean  @default(true)
+  
+  patient       User     @relation("AssignedPatients", fields: [patientId], references: [id], onDelete: Cascade)
+  clinician     User     @relation("AssignedClinician", fields: [clinicianId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([patientId, clinicianId])
+  @@index([patientId])
+  @@index([clinicianId])
+}
+
+// Conversation (thread between users)
+model Conversation {
+  id           String                     @id @default(cuid())
+  subject      String?                    // Optional subject line
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+// Links users to conversations (many-to-many)
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  unreadCount    Int          @default(0)  // Track unread messages for this user
+  lastReadAt     DateTime?
+  joinedAt       DateTime     @default(now())
+  
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+// Individual message in a conversation
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String       @db.Text
+  attachmentUrl  String?      // Optional file attachment
+  attachmentName String?
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  
+  @@index([conversationId])
+  @@index([senderId])
+}
