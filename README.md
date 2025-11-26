@@ -15,7 +15,7 @@ Completed Features
 - **Dashboard**: Role-specific dashboards with relevant features
 - **Responsive Design**: Optimized for mobile, tablet, and desktop
 - **Backend API**: Complete REST API with SQLite database
-
+Updated the notification system. 
 
 ## Development Guidelines
 
@@ -195,4 +195,5 @@ Full system access
 User management
 System configuration
 Analytics and reporting
+
 
