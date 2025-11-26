@@ -15,19 +15,7 @@ Completed Features
 - **Dashboard**: Role-specific dashboards with relevant features
 - **Responsive Design**: Optimized for mobile, tablet, and desktop
 - **Backend API**: Complete REST API with SQLite database
-
-
-## Project Structure
-
-PatientConnect360/
-├── App.tsx                 # Main application component
-├── backend/
-│   ├── server.js          # Express API server
-│   ├── package.json       # Backend dependencies
-│   └── database.sqlite    # SQLite database (auto-generated)
-├── package.json           # Frontend dependencies
-├── app.json              # Expo configuration
-└── README.md             # This file
+Updated the notification system. 
 
 ## Development Guidelines
 
@@ -48,6 +36,18 @@ The SQLite database includes:
 users table for user accounts
 password_reset_tokens table for password reset functionality
 Automatic timestamping for created/updated records
+
+## Project Structure
+
+PatientConnect360/
+├── App.tsx                 # Main application component
+├── backend/
+│   ├── server.js          # Express API server
+│   ├── package.json       # Backend dependencies
+│   └── database.sqlite    # SQLite database (auto-generated)
+├── package.json           # Frontend dependencies
+├── app.json              # Expo configuration
+└── README.md             # This file
 
 ## Contributing
 
@@ -195,3 +195,5 @@ Full system access
 User management
 System configuration
 Analytics and reporting
+
+
