@@ -1,5 +1,6 @@
 //backend Authentication Controller
 //It handles all the user login, signup, and session logic.
+
 import { Router, Request, Response } from "express";
 import { prisma } from "./db";
 import bcrypt from "bcrypt";
@@ -179,3 +180,4 @@ router.get("/me", async (req: Request, res: Response) => {
 });
 
 export default router;
+
