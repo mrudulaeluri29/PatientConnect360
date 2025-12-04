@@ -158,7 +158,7 @@ npx expo start -c
 4. **Errors**: Check the terminal and device screen for error messages
 
 ## Next Steps
-
+ 
 - [ ] Install dependencies: `npm install`
 - [ ] Test on physical device
 - [ ] Implement Register screen
@@ -176,3 +176,4 @@ npx expo start -c
 - [Expo Documentation](https://docs.expo.dev/)
 - [React Native Documentation](https://reactnative.dev/)
 - [React Navigation](https://reactnavigation.org/)
+
