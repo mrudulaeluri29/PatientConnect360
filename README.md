@@ -197,5 +197,7 @@ System configuration
 Analytics and reporting
 
 ### New Agency Profile Registration Flow
+For every company to setup their own admin page
+
 
 
