@@ -198,17 +198,18 @@ The data layer prioritizes integrity, access control, and security, aligning wit
 
 This setup enables full end to end testing of application workflows across web and mobile platforms using a shared backend.
 
+
+## Current Status and Limitations
+- Several user interface pages are implemented as placeholders to prioritize backend architecture and authentication flows
+- The application is not yet deployed to a public production environment
+- Advanced compliance features such as audit logging and regulatory reporting are outside the scope of the current version
+
 ## Health Tech and HIPAA Alignment
 PatientConnect360 is intentionally designed with healthcare security and privacy considerations in mind.
 
 The application follows HIPAA aligned best practices, including encrypted password storage, strict role based access control, backend enforced authorization, and environment based secret management.
 
 While this project is not a certified HIPAA compliant system, its architecture and security practices reflect the foundational requirements expected of healthcare software systems and can be extended to meet formal compliance standards.
-
-## Current Status and Limitations
-- Several user interface pages are implemented as placeholders to prioritize backend architecture and authentication flows
-- The application is not yet deployed to a public production environment
-- Advanced compliance features such as audit logging and regulatory reporting are outside the scope of the current version
 
 ## Future Enhancements
 - Containerized deployment using Docker
@@ -222,3 +223,4 @@ While this project is not a certified HIPAA compliant system, its architecture a
 PatientConnect360 was built as a flagship portfolio project to demonstrate the ability to design and implement a realistic, scalable, and secure full stack application within the health tech domain.
 
 It highlights hands on experience with modern frontend and backend technologies, mobile development, authentication and security, database modeling, and system architecture, all within a domain that demands reliability, privacy, and thoughtful design.
+
