@@ -93,6 +93,7 @@ This approach ensures that sensitive healthcare data and system operations are a
 - Designing relational data models using Prisma ORM
 - Managing schema migrations and database seeding
 - Ensuring type safe data access across the application
+- it follows referential integration
 
 ### Security and Access Control
 - Encrypting all user passwords using secure hashing algorithms
@@ -223,5 +224,6 @@ While this project is not a certified HIPAA compliant system, its architecture a
 PatientConnect360 was built as a flagship portfolio project to demonstrate the ability to design and implement a realistic, scalable, and secure full stack application within the health tech domain.
 
 It highlights hands on experience with modern frontend and backend technologies, mobile development, authentication and security, database modeling, and system architecture, all within a domain that demands reliability, privacy, and thoughtful design.
+
 
 
