@@ -217,10 +217,11 @@ While this project is not a certified HIPAA compliant system, its architecture a
 - Expanded messaging and notification workflows
 - Appointment scheduling and care plan management
 - Improved UI polish, accessibility, and usability
-- Public demo deployment for recruiter and reviewer access
+- Public demo deployment for recruiter and revieweraccess
 
 ## Why This Project Matters
 PatientConnect360 was built as a flagship portfolio project to demonstrate the ability to design and implement a realistic, scalable, and secure full stack application within the health tech domain.
 
 It highlights hands on experience with modern frontend and backend technologies, mobile development, authentication and security, database modeling, and system architecture, all within a domain that demands reliability, privacy, and thoughtful design.
+
 
