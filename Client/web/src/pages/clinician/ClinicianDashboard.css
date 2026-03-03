@@ -108,6 +108,19 @@
   margin: 0 auto;
 }
 
+.clinician-main-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) 360px;
+  gap: 2rem;
+  align-items: flex-start;
+}
+
+.clinician-main-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
 .clinician-content {
   display: flex;
   flex-direction: column;
@@ -155,7 +168,8 @@
 
 .visit-card:hover {
   border-color: #6E5B9A;
-  box-shadow: 0 4px 8px rgba(110, 91, 154, 0.2);
+  box-shadow: 0 6px 16px rgba(110, 91, 154, 0.25);
+  transform: translateY(-2px);
 }
 
 .visit-card.selected {
@@ -252,6 +266,7 @@
   border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-top: 3px solid #6E5B9A;
   height: fit-content;
 }
 
@@ -339,6 +354,13 @@
   border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-left: 3px solid #6E5B9A;
+}
+
+.assistant-subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 1rem;
 }
 
 .panel-title {
@@ -427,6 +449,8 @@
 
 .patient-card:hover {
   border-color: #6E5B9A;
+  box-shadow: 0 6px 16px rgba(110, 91, 154, 0.25);
+  transform: translateY(-2px);
 }
 
 .patient-card.selected {
@@ -496,12 +520,14 @@
   border-radius: 12px;
   padding: 2rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-top: 3px solid #6E5B9A;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
 .patient-header h3 {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1f2937;
+  color: rgba(255, 255, 255, 1);
   margin-bottom: 0.5rem;
 }
 
@@ -511,6 +537,10 @@
   align-items: center;
   margin-bottom: 2rem;
   color: #6b7280;
+}
+
+.patient-meta span {
+  color: rgba(255, 255, 255, 1);
 }
 
 .detail-section {
@@ -821,6 +851,14 @@
   border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.3s ease, transform 0.3s ease, border-color 0.3s ease;
+  border: 1px solid #e5e7eb;
+}
+
+.task-card:hover {
+  box-shadow: 0 6px 16px rgba(110, 91, 154, 0.25);
+  border-color: #6E5B9A;
+  transform: translateY(-2px);
 }
 
 .task-header {
@@ -929,6 +967,7 @@
   border-radius: 12px;
   padding: 2rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-top: 3px solid #6E5B9A;
 }
 
 .risk-grid {
@@ -943,6 +982,11 @@
   padding: 1.5rem;
   border: 2px solid;
   transition: all 0.3s;
+}
+
+.risk-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(110, 91, 154, 0.25);
 }
 
 .risk-card.high-risk {
@@ -1124,6 +1168,14 @@
     padding: 1rem;
   }
 
+  .clinician-main-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-panel {
+    order: -1;
+  }
+
   .risk-grid {
     grid-template-columns: 1fr;
   }
@@ -1144,12 +1196,14 @@
   padding: 1rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, box-shadow 0.2s ease, transform 0.2s ease;
   align-items: center;
 }
 
 .inbox-row:hover {
   background-color: #f9fafb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
 }
 
 .inbox-row.unread {

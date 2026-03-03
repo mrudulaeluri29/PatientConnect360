@@ -69,17 +69,185 @@ export default function ClinicianDashboard() {
       </header>
 
       <main className="clinician-main">
-        {activeTab === "schedule" && <TodaySchedule />}
-        {activeTab === "patients" && <PatientSnapshot />}
-        {activeTab === "messages" && (
-          <SimpleMessages
-            pendingConversation={pendingConversation}
-            onConversationOpened={() => setPendingConversation(null)}
-          />
-        )}
-        {activeTab === "tasks" && <FlaggedTasks />}
+        <div className="clinician-main-layout">
+          <div className="clinician-main-content">
+            {activeTab === "schedule" && <TodaySchedule />}
+            {activeTab === "patients" && <PatientSnapshot />}
+            {activeTab === "messages" && (
+              <SimpleMessages
+                pendingConversation={pendingConversation}
+                onConversationOpened={() => setPendingConversation(null)}
+              />
+            )}
+            {activeTab === "tasks" && <FlaggedTasks />}
+          </div>
+          <AssistantSidebar activeTab={activeTab} />
+        </div>
       </main>
     </div>
+  );
+}
+
+// Context-aware AI Assistant Sidebar
+function AssistantSidebar({ activeTab }: { activeTab: string }) {
+  let title = "AI Visit Assistant";
+  let subtitle = "Suggestions tailored to your current view.";
+
+  if (activeTab === "patients") {
+    title = "AI Patient Assistant";
+    subtitle = "Focused on the selected patient's risk and care plan.";
+  } else if (activeTab === "messages") {
+    title = "AI Communication Assistant";
+    subtitle = "Helps you triage and respond to patient messages efficiently.";
+  } else if (activeTab === "tasks") {
+    title = "AI Task Assistant";
+    subtitle = "Keeps you focused on the most clinically important work.";
+  }
+
+  return (
+    <aside className="assistant-panel">
+      <h3 className="panel-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 1 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+        </svg>
+        {title}
+      </h3>
+      <p className="assistant-subtitle">{subtitle}</p>
+      <div className="assistant-suggestions">
+        {activeTab === "schedule" && (
+          <>
+            <div className="suggestion-item priority">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Start with your highest‑risk visit</div>
+                <div className="suggestion-text">
+                  Begin with patients flagged as high risk and with active alerts to reduce avoidable admissions.
+                </div>
+              </div>
+            </div>
+            <div className="suggestion-item">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Bundle documentation time</div>
+                <div className="suggestion-text">
+                  Block 10–15 minutes after each clustered set of visits for documentation to prevent end‑of‑day overload.
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === "patients" && (
+          <>
+            <div className="suggestion-item priority">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Open with today&apos;s top risk</div>
+                <div className="suggestion-text">
+                  Use the patient&apos;s risk level and active alerts to frame the visit: safety, medications, then long‑term goals.
+                </div>
+              </div>
+            </div>
+            <div className="suggestion-item">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Turn goals into visit actions</div>
+                <div className="suggestion-text">
+                  Pick 1–2 listed care goals and write down a concrete task for today&apos;s visit for each.
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === "messages" && (
+          <>
+            <div className="suggestion-item priority">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Triage unread messages first</div>
+                <div className="suggestion-text">
+                  Scan for messages from high‑risk patients and respond or schedule a visit before routine questions.
+                </div>
+              </div>
+            </div>
+            <div className="suggestion-item">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Use consistent closing language</div>
+                <div className="suggestion-text">
+                  End messages with clear next steps and when the patient should reach out again if symptoms change.
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === "tasks" && (
+          <>
+            <div className="suggestion-item priority">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Clear high‑risk follow‑ups first</div>
+                <div className="suggestion-text">
+                  Prioritize missed confirmations and supply issues for high‑risk patients before lower‑impact tasks.
+                </div>
+              </div>
+            </div>
+            <div className="suggestion-item">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Batch similar tasks together</div>
+                <div className="suggestion-text">
+                  Group phone calls, documentation, and orders to minimize context switching and save time.
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -223,59 +391,12 @@ function TodaySchedule() {
           </div>
         </div>
       </div>
-
-      {/* Smart Visit Assistant */}
-      <div className="assistant-panel">
-        <h3 className="panel-title">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 1 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-          </svg>
-          Smart Visit Assistant
-        </h3>
-        <div className="assistant-suggestions">
-          <div className="suggestion-item priority">
-            <div className="suggestion-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-            </div>
-            <div className="suggestion-content">
-              <div className="suggestion-title">High Priority: John Doe</div>
-              <div className="suggestion-text">Patient is overdue for HEP update. Review exercise plan during visit.</div>
-            </div>
-          </div>
-          <div className="suggestion-item">
-            <div className="suggestion-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </div>
-            <div className="suggestion-content">
-              <div className="suggestion-title">Discharge Readiness: Jane Smith</div>
-              <div className="suggestion-text">Patient showing 85% readiness. Consider discharge planning discussion.</div>
-            </div>
-          </div>
-          <div className="suggestion-item">
-            <div className="suggestion-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-              </svg>
-            </div>
-            <div className="suggestion-content">
-              <div className="suggestion-title">Visit Priorities</div>
-              <div className="suggestion-text">Focus on wound care for John Doe, medication reconciliation for Robert Johnson.</div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
+    
+
+  
   );
-}
+} 
 
 // Patient Snapshot Panel Component
 function PatientSnapshot() {
