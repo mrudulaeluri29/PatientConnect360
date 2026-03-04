@@ -941,8 +941,8 @@ function PatientSnapshot() {
         });
 
         setPatients(fetchedPatients);
-        if (!selectedPatient && fetchedPatients.length > 0) {
-          setSelectedPatient(fetchedPatients[0].id);
+        if (fetchedPatients.length > 0) {
+          setSelectedPatient((prev) => prev || fetchedPatients[0].id);
         }
       } catch (e: any) {
         console.error("Failed to fetch assigned patient details:", e);
