@@ -342,8 +342,8 @@
   border-radius: 14px;
   padding: 1.5rem;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-  border-top: 3px solid #6E5B9A;
   border: 1px solid #ebe7f6;
+  border-top: 3px solid #6E5B9A;
   height: fit-content;
 }
 
@@ -649,7 +649,7 @@
 .patient-header h3 {
   font-size: 1.5rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 1);
+  color: #1f2937;
   margin-bottom: 0.5rem;
 }
 
@@ -662,7 +662,7 @@
 }
 
 .patient-meta span {
-  color: rgba(255, 255, 255, 1);
+  color: #6b7280;
 }
 
 .detail-section {
