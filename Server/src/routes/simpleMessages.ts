@@ -74,10 +74,36 @@ router.get("/assigned-patients", async (req: Request, res: Response) => {
       },
     });
 
+    // Fetch patient profiles separately for reliability across Prisma relation edge cases
+    const patientIds = assignments.map((a: any) => a.patient.id);
+    const profiles = patientIds.length
+      ? await (prisma as any).patientProfile.findMany({
+          where: { userId: { in: patientIds } },
+          select: {
+            userId: true,
+            legalName: true,
+            dateOfBirth: true,
+            phoneNumber: true,
+            homeAddress: true,
+            apartmentSuite: true,
+            insuranceProvider: true,
+            insurancePolicyNumber: true,
+            preferredPharmacyName: true,
+            pharmacyAddress: true,
+            pharmacyPhoneNumber: true,
+            createdAt: true,
+          },
+        })
+      : [];
+
+    const profileByUserId = new Map<string, any>();
+    profiles.forEach((profile: any) => profileByUserId.set(profile.userId, profile));
+
     const patients = assignments.map((a: any) => ({
       id: a.patient.id,
       username: a.patient.username,
       email: a.patient.email,
+      profile: profileByUserId.get(a.patient.id) || null,
     }));
 
     res.json({ patients });

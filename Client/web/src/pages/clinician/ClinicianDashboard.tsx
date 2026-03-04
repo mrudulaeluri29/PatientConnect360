@@ -52,6 +52,18 @@ export default function ClinicianDashboard() {
             >
               Tasks
             </button>
+            <button
+              className={`nav-item ${activeTab === "appointments" ? "active" : ""}`}
+              onClick={() => setActiveTab("appointments")}
+            >
+              Appointments
+            </button>
+            <button
+              className={`nav-item ${activeTab === "contact-staff" ? "active" : ""}`}
+              onClick={() => setActiveTab("contact-staff")}
+            >
+              Contact Staff
+            </button>
           </nav>
         </div>
         <div className="clinician-header-right">
@@ -79,7 +91,14 @@ export default function ClinicianDashboard() {
                 onConversationOpened={() => setPendingConversation(null)}
               />
             )}
-            {activeTab === "tasks" && <FlaggedTasks />}
+            {activeTab === "tasks" && (
+              <FlaggedTasks
+                onNavigateToMessages={() => setActiveTab("messages")}
+                onNavigateToPatients={() => setActiveTab("patients")}
+              />
+            )}
+            {activeTab === "appointments" && <AppointmentsHub />}
+            {activeTab === "contact-staff" && <ContactStaffHub />}
           </div>
           <AssistantSidebar activeTab={activeTab} />
         </div>
@@ -102,6 +121,12 @@ function AssistantSidebar({ activeTab }: { activeTab: string }) {
   } else if (activeTab === "tasks") {
     title = "AI Task Assistant";
     subtitle = "Keeps you focused on the most clinically important work.";
+  } else if (activeTab === "appointments") {
+    title = "AI Appointment Assistant";
+    subtitle = "Support for schedule planning and clinician availability.";
+  } else if (activeTab === "contact-staff") {
+    title = "AI Staff Communication Assistant";
+    subtitle = "Guidance for clear, complete admin communications.";
   }
 
   return (
@@ -246,8 +271,422 @@ function AssistantSidebar({ activeTab }: { activeTab: string }) {
             </div>
           </>
         )}
+
+        {activeTab === "appointments" && (
+          <>
+            <div className="suggestion-item priority">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Keep availability windows realistic</div>
+                <div className="suggestion-text">
+                  Use slightly shorter clinical windows to account for travel, documentation, and urgent follow-ups.
+                </div>
+              </div>
+            </div>
+            <div className="suggestion-item">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Review high-demand days first</div>
+                <div className="suggestion-text">
+                  Set availability on your busiest days first so admin can quickly open slots for patient booking.
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === "contact-staff" && (
+          <>
+            <div className="suggestion-item priority">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Use specific, actionable details</div>
+                <div className="suggestion-text">
+                  Include patient context, incident timing, and exact request to help admin resolve quickly.
+                </div>
+              </div>
+            </div>
+            <div className="suggestion-item">
+              <div className="suggestion-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <div className="suggestion-content">
+                <div className="suggestion-title">Match priority to urgency</div>
+                <div className="suggestion-text">
+                  Reserve urgent requests for time-sensitive safety or operational issues needing immediate attention.
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </aside>
+  );
+}
+
+function SectionKpiChips({ chips }: { chips: Array<{ label: string; value: string | number }> }) {
+  return (
+    <div className="section-kpi-row">
+      {chips.map((chip) => (
+        <span key={chip.label} className="section-kpi-chip">
+          <strong>{chip.value}</strong> {chip.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Appointments Tab Component
+function AppointmentsHub() {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [availabilityByDate, setAvailabilityByDate] = useState<Record<string, { start: string; end: string }>>({});
+  const [submitMessage, setSubmitMessage] = useState("");
+
+  const upcomingAppointments = [
+    { id: "a1", patient: "John Doe", type: "Home Health Follow-up", date: "2026-03-05", time: "09:00 AM", location: "Phoenix, AZ", status: "Confirmed" },
+    { id: "a2", patient: "Jane Smith", type: "Medication Review", date: "2026-03-05", time: "11:30 AM", location: "Phoenix, AZ", status: "Confirmed" },
+    { id: "a3", patient: "Robert Johnson", type: "Post-Discharge Visit", date: "2026-03-06", time: "02:00 PM", location: "Scottsdale, AZ", status: "Pending" },
+    { id: "a4", patient: "Mary Williams", type: "Routine Check-in", date: "2026-03-07", time: "10:15 AM", location: "Mesa, AZ", status: "Confirmed" },
+    { id: "a5", patient: "Carlos Martinez", type: "Wound Care", date: "2026-03-08", time: "01:00 PM", location: "Tempe, AZ", status: "Confirmed" },
+  ];
+
+  const filteredAppointments = upcomingAppointments.filter((appt) =>
+    appt.patient.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  const confirmedAppointments = upcomingAppointments.filter((appt) => appt.status === "Confirmed").length;
+  const pendingAppointments = upcomingAppointments.filter((appt) => appt.status === "Pending").length;
+
+  const buildDateRange = (start: string, end: string) => {
+    const dates: string[] = [];
+    const current = new Date(`${start}T00:00:00`);
+    const last = new Date(`${end}T00:00:00`);
+
+    while (current <= last) {
+      dates.push(current.toISOString().split("T")[0]);
+      current.setDate(current.getDate() + 1);
+    }
+
+    return dates;
+  };
+
+  const handleApplyRange = () => {
+    if (!rangeStart || !rangeEnd || new Date(rangeStart) > new Date(rangeEnd)) {
+      setSubmitMessage("Please choose a valid start and end date range.");
+      return;
+    }
+
+    const dates = buildDateRange(rangeStart, rangeEnd);
+    setAvailabilityByDate((prev) => {
+      const next = { ...prev };
+      dates.forEach((date) => {
+        if (!next[date]) {
+          next[date] = { start: "09:00", end: "17:00" };
+        }
+      });
+      return next;
+    });
+    setSubmitMessage("");
+  };
+
+  const handleTimeChange = (date: string, key: "start" | "end", value: string) => {
+    setAvailabilityByDate((prev) => ({
+      ...prev,
+      [date]: {
+        ...prev[date],
+        [key]: value,
+      },
+    }));
+  };
+
+  const handleSubmitAvailability = () => {
+    if (Object.keys(availabilityByDate).length === 0) {
+      setSubmitMessage("Add an availability date range before submitting.");
+      return;
+    }
+    setSubmitMessage("Sent to admin.");
+  };
+
+  return (
+    <div className="clinician-content">
+      <div className="content-header">
+        <div className="content-header-main">
+          <h2 className="section-title">Appointments & Availability</h2>
+          <SectionKpiChips
+            chips={[
+              { label: "Upcoming", value: upcomingAppointments.length },
+              { label: "Confirmed", value: confirmedAppointments },
+              { label: "Pending", value: pendingAppointments },
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="appointments-grid">
+        <section className="appointments-panel">
+          <div className="appointments-panel-header">
+            <h3>Upcoming Appointments</h3>
+            <input
+              className="appointments-search"
+              type="text"
+              placeholder="Search patient name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="appointments-list">
+            {filteredAppointments.length === 0 ? (
+              <div className="appointments-empty">No appointments found for that patient.</div>
+            ) : (
+              filteredAppointments.map((appt) => (
+                <article key={appt.id} className="appointment-card">
+                  <div className="appointment-main">
+                    <h4 className="card-title-row">
+                      <span className="card-icon-badge">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M8 2v4M16 2v4M3 10h18"></path>
+                          <rect x="3" y="6" width="18" height="15" rx="2"></rect>
+                        </svg>
+                      </span>
+                      {appt.patient}
+                    </h4>
+                    <p>{appt.type}</p>
+                    <p>{formatDateForUi(appt.date)} at {appt.time}</p>
+                    <p>{appt.location}</p>
+                  </div>
+                  <span className={`appointment-status status-${appt.status.toLowerCase()}`}>{appt.status}</span>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="availability-panel">
+          <h3>Submit Availability to Admin</h3>
+          <p className="availability-subtitle">Select a date range, adjust daily hours, then submit.</p>
+          <div className="availability-range">
+            <div className="availability-field">
+              <label>Start Date</label>
+              <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} />
+            </div>
+            <div className="availability-field">
+              <label>End Date</label>
+              <input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} />
+            </div>
+            <button className="btn-secondary" onClick={handleApplyRange}>Apply Date Range</button>
+          </div>
+
+          <div className="availability-days">
+            {Object.keys(availabilityByDate).length === 0 ? (
+              <div className="availability-empty">No availability days added yet.</div>
+            ) : (
+              Object.keys(availabilityByDate)
+                .sort()
+                .map((date) => (
+                  <div key={date} className="availability-day-row">
+                    <div className="availability-day-label">{formatDateForUi(date)}</div>
+                    <div className="availability-time-controls">
+                      <label>
+                        Start
+                        <input
+                          type="time"
+                          value={availabilityByDate[date].start}
+                          onChange={(e) => handleTimeChange(date, "start", e.target.value)}
+                        />
+                      </label>
+                      <label>
+                        End
+                        <input
+                          type="time"
+                          value={availabilityByDate[date].end}
+                          onChange={(e) => handleTimeChange(date, "end", e.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))
+            )}
+          </div>
+
+          <div className="availability-actions">
+            <button className="btn-primary" onClick={handleSubmitAvailability}>Submit Availability</button>
+            {submitMessage && <span className="availability-message">{submitMessage}</span>}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function ContactStaffHub() {
+  const [reason, setReason] = useState("");
+  const [priority, setPriority] = useState("Medium");
+  const [preferredResponse, setPreferredResponse] = useState("email");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [inPersonDate, setInPersonDate] = useState("");
+  const [inPersonTime, setInPersonTime] = useState("");
+  const [messageBody, setMessageBody] = useState("");
+  const [submitMessage, setSubmitMessage] = useState("");
+
+  const reasonOptions = [
+    "Financial",
+    "Patient Incident",
+    "Staff Incident",
+    "Pharmacy Order",
+    "PTO Request",
+    "General Feedback",
+    "Schedule Change",
+    "Documentation Issue",
+    "IT / System Support",
+    "Equipment / Supply Request",
+    "Other",
+  ];
+
+  const formatPhone = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 10);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  };
+
+  const handleSubmit = () => {
+    setSubmitMessage("Sent to Admin! We will get back to you shortly");
+  };
+
+  return (
+    <div className="clinician-content">
+      <div className="content-header">
+        <div className="content-header-main">
+          <h2 className="section-title">Contact Staff</h2>
+          <SectionKpiChips
+            chips={[
+              { label: "Reason Categories", value: reasonOptions.length },
+              { label: "Priority Levels", value: 4 },
+              { label: "Response Modes", value: 3 },
+            ]}
+          />
+        </div>
+      </div>
+
+      <section className="contact-staff-panel">
+        <div className="contact-staff-grid">
+          <div className="form-group">
+            <label>Reason for Message</label>
+            <select className="form-select" value={reason} onChange={(e) => setReason(e.target.value)}>
+              <option value="">-- Select reason --</option>
+              {reasonOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Priority</label>
+            <select className="form-select" value={priority} onChange={(e) => setPriority(e.target.value)}>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Urgent">Urgent</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Preferred Response</label>
+            <select
+              className="form-select"
+              value={preferredResponse}
+              onChange={(e) => {
+                setPreferredResponse(e.target.value);
+                setSubmitMessage("");
+              }}
+            >
+              <option value="mobile">Mobile</option>
+              <option value="email">E-Mail</option>
+              <option value="in-person">In Person</option>
+            </select>
+          </div>
+        </div>
+
+        {preferredResponse === "mobile" && (
+          <div className="form-group">
+            <label>Mobile Number</label>
+            <input
+              className="form-input"
+              type="text"
+              placeholder="(555) 123-4567"
+              value={phone}
+              onChange={(e) => setPhone(formatPhone(e.target.value))}
+            />
+          </div>
+        )}
+
+        {preferredResponse === "email" && (
+          <div className="form-group">
+            <label>Email Address</label>
+            <input
+              className="form-input"
+              type="email"
+              placeholder="name@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+        )}
+
+        {preferredResponse === "in-person" && (
+          <div className="contact-inperson-grid">
+            <div className="form-group">
+              <label>Preferred Date</label>
+              <input className="form-input" type="date" value={inPersonDate} onChange={(e) => setInPersonDate(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Preferred Time</label>
+              <input className="form-input" type="time" value={inPersonTime} onChange={(e) => setInPersonTime(e.target.value)} />
+            </div>
+          </div>
+        )}
+
+        <div className="form-group">
+          <label>Message Body</label>
+          <textarea
+            className="form-textarea contact-staff-textarea"
+            placeholder="Describe your request for admin staff..."
+            rows={8}
+            value={messageBody}
+            onChange={(e) => setMessageBody(e.target.value)}
+          />
+        </div>
+
+        <div className="contact-staff-actions">
+          <button className="btn-primary" onClick={handleSubmit}>
+            Submit Message
+          </button>
+          {submitMessage && <span className="availability-message">{submitMessage}</span>}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -297,11 +736,21 @@ function TodaySchedule() {
       estimatedArrival: "4:30 PM",
     },
   ];
+  const totalScheduleAlerts = visits.reduce((sum, visit) => sum + visit.alerts.length, 0);
 
   return (
     <div className="clinician-content">
       <div className="content-header">
-        <h2 className="section-title">Today's Schedule</h2>
+        <div className="content-header-main">
+          <h2 className="section-title">Today's Schedule</h2>
+          <SectionKpiChips
+            chips={[
+              { label: "Visits", value: visits.length },
+              { label: "Active Alerts", value: totalScheduleAlerts },
+              { label: "Selected", value: selectedVisit ? 1 : 0 },
+            ]}
+          />
+        </div>
         <div className="header-actions">
           <button className="btn-secondary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -327,7 +776,15 @@ function TodaySchedule() {
                 <div className="time-secondary">ETA: {visit.estimatedArrival}</div>
               </div>
               <div className="visit-details">
-                <div className="visit-patient">{visit.patient}</div>
+                <div className="visit-patient card-title-row">
+                  <span className="card-icon-badge">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="8" r="4"></circle>
+                      <path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path>
+                    </svg>
+                  </span>
+                  {visit.patient}
+                </div>
                 <div className="visit-address">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
@@ -400,44 +857,150 @@ function TodaySchedule() {
 
 // Patient Snapshot Panel Component
 function PatientSnapshot() {
-  const [selectedPatient, setSelectedPatient] = useState("1");
+  type PatientSnapshotItem = {
+    id: string;
+    name: string;
+    age: number | null;
+    dateOfBirth: string;
+    status: string;
+    riskLevel: "High" | "Medium" | "Low";
+    alerts: string[];
+    insuranceDetails: string[];
+    contactDetails: string[];
+    pharmacyDetails: string[];
+  };
 
-  const patients = [
-    {
-      id: "1",
-      name: "John Doe",
-      age: 65,
-      status: "Active",
-      riskLevel: "High",
-      alerts: ["New fall risk", "Order pending from MD"],
-      medications: ["Metformin 500mg", "Lisinopril 10mg", "Aspirin 81mg"],
-      allergies: ["Penicillin", "Sulfa drugs"],
-      goals: ["Improve mobility", "Manage diabetes", "Wound healing"],
-    },
-    {
-      id: "2",
-      name: "Jane Smith",
-      age: 72,
-      status: "Active",
-      riskLevel: "Medium",
-      alerts: ["Medication adherence concern"],
-      medications: ["Atorvastatin 20mg", "Amlodipine 5mg"],
-      allergies: ["None known"],
-      goals: ["Blood pressure control", "Fall prevention"],
-    },
-  ];
+  const [patients, setPatients] = useState<PatientSnapshotItem[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<string>("");
+  const [loadingPatients, setLoadingPatients] = useState<boolean>(true);
 
-  const selectedPatientData = patients.find(p => p.id === selectedPatient) || patients[0];
-  const priorVisits = [
-    { date: "2024-01-15", summary: "Routine visit, vital signs stable, wound healing progressing" },
-    { date: "2024-01-08", summary: "Medication review, adjusted insulin dosage" },
-    { date: "2024-01-01", summary: "Initial assessment, care plan established" },
-  ];
+  const calculateAge = (dob: string | null | undefined) => {
+    if (!dob) return null;
+    const birth = new Date(dob);
+    if (Number.isNaN(birth.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - birth.getFullYear();
+    const monthDiff = now.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) {
+      age -= 1;
+    }
+    return age;
+  };
+
+  const getRiskLevel = (age: number | null, hasInsurance: boolean, hasPharmacy: boolean): "High" | "Medium" | "Low" => {
+    if (age !== null && age >= 75) return "High";
+    if (!hasInsurance || !hasPharmacy) return "High";
+    if (age !== null && age >= 65) return "Medium";
+    return "Low";
+  };
+
+  useEffect(() => {
+    async function fetchAssignedPatientDetails() {
+      setLoadingPatients(true);
+      try {
+        const res = await api.get("/api/simple-messages/assigned-patients");
+        const fetchedPatients = (res.data.patients || []).map((patient: any) => {
+          const profile = patient.profile || {};
+          const age = calculateAge(profile.dateOfBirth);
+          const dob = profile.dateOfBirth && !Number.isNaN(new Date(profile.dateOfBirth).getTime())
+            ? new Date(profile.dateOfBirth).toLocaleDateString()
+            : "Not provided";
+          const hasInsurance = Boolean(profile.insuranceProvider && profile.insurancePolicyNumber);
+          const hasPharmacy = Boolean(profile.preferredPharmacyName);
+          const alerts: string[] = [];
+          if (!profile.phoneNumber) alerts.push("Missing phone number");
+          if (!profile.homeAddress) alerts.push("Missing home address");
+          if (!hasInsurance) alerts.push("Insurance details incomplete");
+          if (!hasPharmacy) alerts.push("Preferred pharmacy not set");
+
+          return {
+            id: patient.id,
+            name: profile.legalName || patient.username || patient.email || "Patient",
+            age,
+            dateOfBirth: dob,
+            status: "Active",
+            riskLevel: getRiskLevel(age, hasInsurance, hasPharmacy),
+            alerts,
+            insuranceDetails: [
+              `Provider: ${profile.insuranceProvider || "Not provided"}`,
+              `Policy Number: ${profile.insurancePolicyNumber || "Not provided"}`,
+            ],
+            contactDetails: [
+              `Date of Birth: ${dob}`,
+              `Email: ${patient.email || "Not provided"}`,
+              `Phone: ${profile.phoneNumber || "Not provided"}`,
+              `Address: ${profile.homeAddress || "Not provided"}`,
+              `Apartment/Suite: ${profile.apartmentSuite || "Not provided"}`,
+            ],
+            pharmacyDetails: [
+              `Pharmacy: ${profile.preferredPharmacyName || "Not provided"}`,
+              `Address: ${profile.pharmacyAddress || "Not provided"}`,
+              `Phone: ${profile.pharmacyPhoneNumber || "Not provided"}`,
+            ],
+          } as PatientSnapshotItem;
+        });
+
+        setPatients(fetchedPatients);
+        if (!selectedPatient && fetchedPatients.length > 0) {
+          setSelectedPatient(fetchedPatients[0].id);
+        }
+      } catch (e: any) {
+        console.error("Failed to fetch assigned patient details:", e);
+        setPatients([]);
+      } finally {
+        setLoadingPatients(false);
+      }
+    }
+
+    fetchAssignedPatientDetails();
+  }, []);
+
+  const selectedPatientData = patients.find((p) => p.id === selectedPatient) || patients[0];
+  const highRiskPatients = patients.filter((patient) => patient.riskLevel === "High").length;
+
+  if (loadingPatients) {
+    return (
+      <div className="clinician-content">
+        <div className="content-header">
+          <div className="content-header-main">
+            <h2 className="section-title">Patient Snapshot</h2>
+          </div>
+        </div>
+        <div className="patient-details">
+          <p>Loading assigned patient data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!selectedPatientData) {
+    return (
+      <div className="clinician-content">
+        <div className="content-header">
+          <div className="content-header-main">
+            <h2 className="section-title">Patient Snapshot</h2>
+          </div>
+        </div>
+        <div className="patient-details">
+          <p>No assigned patients found for this clinician.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="clinician-content">
       <div className="content-header">
-        <h2 className="section-title">Patient Snapshot</h2>
+        <div className="content-header-main">
+          <h2 className="section-title">Patient Snapshot</h2>
+          <SectionKpiChips
+            chips={[
+              { label: "Patients", value: patients.length },
+              { label: "High Risk", value: highRiskPatients },
+              { label: "Alerts", value: selectedPatientData.alerts.length },
+            ]}
+          />
+        </div>
       </div>
 
       <div className="patient-container">
@@ -448,9 +1011,17 @@ function PatientSnapshot() {
               className={`patient-card ${selectedPatient === patient.id ? "selected" : ""} ${patient.riskLevel === "High" ? "high-risk" : ""}`}
               onClick={() => setSelectedPatient(patient.id)}
             >
-              <div className="patient-name">{patient.name}</div>
+              <div className="patient-name card-title-row">
+                <span className="card-icon-badge">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="8" r="4"></circle>
+                    <path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path>
+                  </svg>
+                </span>
+                {patient.name}
+              </div>
               <div className="patient-info">
-                <span>Age: {patient.age}</span>
+                <span>Age: {patient.age ?? "N/A"}</span>
                 <span className={`risk-badge risk-${patient.riskLevel.toLowerCase()}`}>
                   {patient.riskLevel} Risk
                 </span>
@@ -471,7 +1042,8 @@ function PatientSnapshot() {
             <div>
               <h3>{selectedPatientData.name}</h3>
               <div className="patient-meta">
-                <span>Age: {selectedPatientData.age}</span>
+                <span>Age: {selectedPatientData.age ?? "N/A"}</span>
+                <span>DOB: {selectedPatientData.dateOfBirth}</span>
                 <span className={`risk-badge risk-${selectedPatientData.riskLevel.toLowerCase()}`}>
                   {selectedPatientData.riskLevel} Risk
                 </span>
@@ -479,10 +1051,9 @@ function PatientSnapshot() {
             </div>
           </div>
 
-          {/* Key Alerts */}
           {selectedPatientData.alerts.length > 0 && (
             <div className="detail-section">
-              <h4 className="section-subtitle">Key Alerts</h4>
+              <h4 className="section-subtitle">Data Completeness Alerts</h4>
               <div className="alerts-list">
                 {selectedPatientData.alerts.map((alert, idx) => (
                   <div key={idx} className="alert-item">
@@ -498,64 +1069,44 @@ function PatientSnapshot() {
             </div>
           )}
 
-          {/* Prior Visit Summaries */}
           <div className="detail-section">
-            <h4 className="section-subtitle">Prior Visit Summaries</h4>
-            <div className="visits-list">
-              {priorVisits.map((visit, idx) => (
-                <div key={idx} className="visit-summary">
-                  <div className="visit-date">{visit.date}</div>
-                  <div className="visit-text">{visit.summary}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Medications */}
-          <div className="detail-section">
-            <h4 className="section-subtitle">Medications</h4>
+            <h4 className="section-subtitle">Insurance Information</h4>
             <div className="medications-list">
-              {selectedPatientData.medications.map((med, idx) => (
+              {selectedPatientData.insuranceDetails.map((detail, idx) => (
                 <div key={idx} className="medication-item">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                     <line x1="9" y1="3" x2="9" y2="21"></line>
                   </svg>
-                  {med}
+                  {detail}
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Allergies */}
           <div className="detail-section">
-            <h4 className="section-subtitle">Allergies</h4>
+            <h4 className="section-subtitle">Contact & Address</h4>
             <div className="allergies-list">
-              {selectedPatientData.allergies.length > 0 ? (
-                selectedPatientData.allergies.map((allergy, idx) => (
-                  <div key={idx} className="allergy-item">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                    </svg>
-                    {allergy}
-                  </div>
-                ))
-              ) : (
-                <span className="no-data">None known</span>
-              )}
+              {selectedPatientData.contactDetails.map((detail, idx) => (
+                <div key={idx} className="allergy-item">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  </svg>
+                  {detail}
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Goals */}
           <div className="detail-section">
-            <h4 className="section-subtitle">Care Goals</h4>
+            <h4 className="section-subtitle">Preferred Pharmacy</h4>
             <div className="goals-list">
-              {selectedPatientData.goals.map((goal, idx) => (
+              {selectedPatientData.pharmacyDetails.map((detail, idx) => (
                 <div key={idx} className="goal-item">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
-                  {goal}
+                  {detail}
                 </div>
               ))}
             </div>
@@ -1095,8 +1646,29 @@ function formatTime(dateString: string): string {
   return date.toLocaleDateString();
 }
 
+function formatDateForUi(dateString: string): string {
+  const date = new Date(`${dateString}T00:00:00`);
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 // Flagged Tasks Component
-function FlaggedTasks() {
+interface FlaggedTasksProps {
+  onNavigateToMessages: () => void;
+  onNavigateToPatients: () => void;
+}
+
+function FlaggedTasks({ onNavigateToMessages, onNavigateToPatients }: FlaggedTasksProps) {
+  const [completedTaskIds, setCompletedTaskIds] = useState<Set<string>>(new Set());
+
+  const toggleTaskComplete = (taskId: string) => {
+    setCompletedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
   const tasks = [
     {
       id: "1",
@@ -1123,41 +1695,89 @@ function FlaggedTasks() {
       dueDate: "Today",
     },
   ];
+  const openTasksCount = tasks.length - completedTaskIds.size;
 
   return (
     <div className="clinician-content">
       <div className="content-header">
-        <h2 className="section-title">Flagged Tasks & Follow-ups</h2>
+        <div className="content-header-main">
+          <h2 className="section-title">Flagged Tasks & Follow-ups</h2>
+          <SectionKpiChips
+            chips={[
+              { label: "Total Tasks", value: tasks.length },
+              { label: "Open", value: openTasksCount },
+              { label: "Completed", value: completedTaskIds.size },
+            ]}
+          />
+        </div>
       </div>
 
       <div className="tasks-container">
-        {tasks.map((task) => (
-          <div key={task.id} className="task-card">
-            <div className="task-header">
-              <div className="task-type">{task.type}</div>
-              <span className={`priority-badge priority-${task.priority.toLowerCase()}`}>
-                {task.priority}
-              </span>
-            </div>
-            <div className="task-patient">{task.patient}</div>
-            <div className="task-description">{task.description}</div>
-            <div className="task-footer">
-              <div className="task-due">Due: {task.dueDate}</div>
-              <div className="task-actions">
-                {task.type === "Reschedule Request" && (
-                  <button className="btn-reschedule">Reschedule</button>
-                )}
-                {task.type === "Supply Order" && (
-                  <button className="btn-followup">Follow Up</button>
-                )}
-                {task.type === "Missed Confirmation" && (
-                  <button className="btn-contact">Contact Patient</button>
-                )}
-                <button className="btn-complete">Mark Complete</button>
+        {tasks.map((task) => {
+          const isCompleted = completedTaskIds.has(task.id);
+          return (
+            <div
+              key={task.id}
+              className={`task-card ${isCompleted ? "task-card-completed" : ""}`}
+            >
+              <div className="task-header">
+                <div className="task-type card-title-row">
+                  <span className="card-icon-badge">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M9 11l3 3L22 4"></path>
+                      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                    </svg>
+                  </span>
+                  {task.type}
+                </div>
+                <span className={`priority-badge priority-${task.priority.toLowerCase()}`}>
+                  {task.priority}
+                </span>
+              </div>
+              <div className="task-patient">{task.patient}</div>
+              <div className="task-description">{task.description}</div>
+              <div className="task-footer">
+                <div className="task-due">Due: {task.dueDate}</div>
+                <div className="task-actions">
+                  {task.type === "Reschedule Request" && (
+                    <button className="btn-reschedule">Reschedule</button>
+                  )}
+                  {task.type === "Supply Order" && (
+                    <button
+                      className="btn-followup"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNavigateToMessages();
+                      }}
+                    >
+                      Follow Up
+                    </button>
+                  )}
+                  {task.type === "Missed Confirmation" && (
+                    <button
+                      className="btn-contact"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNavigateToMessages();
+                      }}
+                    >
+                      Contact Patient
+                    </button>
+                  )}
+                  <button
+                    className={isCompleted ? "btn-incomplete" : "btn-complete"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleTaskComplete(task.id);
+                    }}
+                  >
+                    {isCompleted ? "Mark Incomplete" : "Mark Complete"}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Patient Risk Panel */}
@@ -1166,6 +1786,13 @@ function FlaggedTasks() {
         <div className="risk-grid">
           <div className="risk-card high-risk">
             <div className="risk-header">
+              <span className="card-icon-badge risk-icon-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2l9 16H3L12 2z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </span>
               <div className="risk-indicator"></div>
               <span className="risk-label">High Risk</span>
             </div>
@@ -1175,10 +1802,19 @@ function FlaggedTasks() {
               <div className="risk-reason">Medication non-adherence</div>
               <div className="risk-reason">Missed visit likelihood</div>
             </div>
-            <button className="btn-view-patient">View Patient</button>
+            <button className="btn-view-patient" onClick={onNavigateToPatients}>
+              View Patient
+            </button>
           </div>
           <div className="risk-card medium-risk">
             <div className="risk-header">
+              <span className="card-icon-badge risk-icon-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2l9 16H3L12 2z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </span>
               <div className="risk-indicator"></div>
               <span className="risk-label">Medium Risk</span>
             </div>
@@ -1186,10 +1822,19 @@ function FlaggedTasks() {
             <div className="risk-reasons">
               <div className="risk-reason">Medication adherence concern</div>
             </div>
-            <button className="btn-view-patient">View Patient</button>
+            <button className="btn-view-patient" onClick={onNavigateToPatients}>
+              View Patient
+            </button>
           </div>
           <div className="risk-card high-risk">
             <div className="risk-header">
+              <span className="card-icon-badge risk-icon-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2l9 16H3L12 2z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </span>
               <div className="risk-indicator"></div>
               <span className="risk-label">High Risk</span>
             </div>
@@ -1198,7 +1843,9 @@ function FlaggedTasks() {
               <div className="risk-reason">Missed visit likelihood</div>
               <div className="risk-reason">Hospital readmission risk</div>
             </div>
-            <button className="btn-view-patient">View Patient</button>
+            <button className="btn-view-patient" onClick={onNavigateToPatients}>
+              View Patient
+            </button>
           </div>
         </div>
       </div>
