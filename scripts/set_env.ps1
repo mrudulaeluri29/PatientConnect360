@@ -20,8 +20,7 @@ if (-not (Test-Path $envDir)) {
 }
 
 # Default DB URL (edit if you want a different default)
-$defaultDb = 'postgres://c1997f40621e3820bf19c0b4d3d1e92c7341de58282aaa31c63661364a9c9666:sk_ZxYvOPbRSQwOrW6xyjdf6@db.prisma.io:5432/postgres?sslmode=require'
-
+$defaultDb = ''
 $db = Read-Host "Database URL [$defaultDb] (press Enter to accept default)"
 if ([string]::IsNullOrWhiteSpace($db)) { $db = $defaultDb }
 
