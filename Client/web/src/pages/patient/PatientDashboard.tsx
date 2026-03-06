@@ -99,7 +99,7 @@ export default function PatientDashboard() {
   );
 }
 
-// Overview Tab Component
+// overview Tab Component
 function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void }) {
   return (
     <div className="patient-content">
