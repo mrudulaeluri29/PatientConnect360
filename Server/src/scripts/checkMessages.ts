@@ -1,4 +1,4 @@
-// Script to check message and conversation data in the database
+// script to check message and conversation data in the database
 import { prisma } from '../db';
 
 async function checkMessages() {
