@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import SignupClinician from "./pages/SignupClinician";
 import SignupCaregiver from "./pages/SignupCaregiver";
+import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import AdminSignup from "./pages/admin/AdminSignup";
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/register" element={<Signup />} />
           <Route path="/register/clinician" element={<SignupClinician />} />
           <Route path="/register/caregiver" element={<SignupCaregiver />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/admin/signup" element={<AdminSignup />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route

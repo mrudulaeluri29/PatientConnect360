@@ -159,6 +159,17 @@ model PatientAssignment {
   @@index([clinicianId])
 }
 
+// Pending email verification for signup. Twilio Verify handles code generation
+// and validation; we store the pending user data until the email is verified.
+model PendingVerification {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  pending    Json
+  attempts   Int      @default(0)
+  lastSentAt DateTime?
+  createdAt  DateTime @default(now())
+}
+
 // Conversation (thread between users)
 model Conversation {
   id           String                     @id @default(cuid())

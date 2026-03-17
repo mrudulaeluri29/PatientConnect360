@@ -489,55 +489,147 @@ function AssignmentManager() {
   };
 
   return (
-    <div className="assignment-manager">
-      <h2 className="section-title">Patient–Clinician Assignments</h2>
-      {loading && <p>Loading...</p>}
-      {error && <p style={{ color: '#dc2626' }}>{error}</p>}
+    <div className="w-full space-y-6">
+      {/* Page Title */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Assign Patient to Clinician</h1>
+        <p className="text-gray-600 mt-1">Select a patient and clinician to create a care relationship</p>
+      </div>
+
+      {/* Loading & Error States */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      )}
+      
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-700">{error}</p>
+        </div>
+      )}
+
       {!loading && !error && (
         <>
-          <div className="assignment-form">
-            <select value={selectedPatient} onChange={(e) => setSelectedPatient(e.target.value)}>
-              <option value="">Select Patient</option>
-              {patients.map(p => <option key={p.id} value={p.id}>{p.username} ({p.email})</option>)}
-            </select>
-            <select value={selectedClinician} onChange={(e) => setSelectedClinician(e.target.value)}>
-              <option value="">Select Clinician</option>
-              {clinicians.map(c => <option key={c.id} value={c.id}>{c.username} ({c.email})</option>)}
-            </select>
-            <button className="btn-primary" disabled={!selectedPatient || !selectedClinician} onClick={handleCreate}>Assign</button>
+          {/* Assignment Form Card */}
+          <div className="bg-white rounded-lg shadow-md p-8 border border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              {/* Patient Dropdown */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Patient</label>
+                <select
+                  value={selectedPatient}
+                  onChange={(e) => setSelectedPatient(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent hover:border-gray-400 transition bg-white text-gray-900"
+                >
+                  <option value="">Choose a patient...</option>
+                  {patients.map(p => (
+                    <option key={p.id} value={p.id}>{p.username} ({p.email})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Clinician Dropdown */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Clinician</label>
+                <select
+                  value={selectedClinician}
+                  onChange={(e) => setSelectedClinician(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent hover:border-gray-400 transition bg-white text-gray-900"
+                >
+                  <option value="">Choose a clinician...</option>
+                  {clinicians.map(c => (
+                    <option key={c.id} value={c.id}>{c.username} ({c.email})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Assign Button */}
+            <div className="flex justify-end">
+              <button
+                onClick={handleCreate}
+                disabled={!selectedPatient || !selectedClinician}
+                className={`px-6 py-3 rounded-lg font-semibold transition ${
+                  selectedPatient && selectedClinician
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Assign
+              </button>
+            </div>
           </div>
-          <div className="assignments-table" style={{ marginTop: '1.5rem' }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Patient</th>
-                  <th>Clinician</th>
-                  <th>Active</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assignments.length === 0 ? (
-                  <tr><td colSpan={4} style={{ textAlign: 'center', padding: '1rem', color: '#6b7280' }}>No assignments yet</td></tr>
-                ) : assignments.map(a => (
-                  <tr key={a.id}>
-                    <td>{a.patient.username} ({a.patient.email})</td>
-                    <td>{a.clinician.username} ({a.clinician.email})</td>
-                    <td>
-                      <select 
-                        value={a.isActive ? "true" : "false"} 
+
+          {/* Active Assignments Section */}
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Active Assignments</h2>
+            
+            {assignments.length === 0 ? (
+              // Empty State
+              <div className="bg-white rounded-lg p-12 text-center border border-gray-200">
+                <div className="text-gray-400 text-4xl mb-3">📋</div>
+                <p className="text-gray-600 text-lg">No assignments yet</p>
+                <p className="text-gray-500 text-sm mt-1">Create your first assignment using the form above</p>
+              </div>
+            ) : (
+              // Assignments Grid
+              <div className="space-y-3">
+                {assignments.map(a => (
+                  <div key={a.id} className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 hover:shadow-md transition flex items-center justify-between">
+                    {/* Left: Patient Info */}
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 flex-shrink-0">
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
+                          <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"></path>
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-gray-900">{a.patient.username}</div>
+                        <div className="text-sm text-gray-500">{a.patient.email}</div>
+                      </div>
+                    </div>
+
+                    {/* Middle: Arrow */}
+                    <div className="text-gray-400 text-2xl mx-4 flex-shrink-0">→</div>
+
+                    {/* Right: Clinician Info */}
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 flex-shrink-0">
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M10.5 1.5H5.75A2.25 2.25 0 003.5 3.75v12.5A2.25 2.25 0 005.75 18.5h8.5a2.25 2.25 0 002.25-2.25V6.5m-10-3v3m0 4.5h6m-6 3h6m-6 3h3"></path>
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-gray-900">{a.clinician.username}</div>
+                        <div className="text-sm text-gray-500">{a.clinician.email}</div>
+                      </div>
+                    </div>
+
+                    {/* Status Toggle */}
+                    <div className="flex items-center gap-3 mx-4 flex-shrink-0">
+                      <select
+                        value={a.isActive ? "true" : "false"}
                         onChange={() => handleToggleActive(a.id, a.isActive)}
-                        style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}
+                        className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900"
                       >
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
+                        <option value="true">Active</option>
+                        <option value="false">Inactive</option>
                       </select>
-                    </td>
-                    <td><button className="btn-remove" onClick={() => handleRemove(a.id)}>Remove</button></td>
-                  </tr>
+                    </div>
+
+                    {/* Remove Button */}
+                    <button
+                      onClick={() => handleRemove(a.id)}
+                      className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition font-medium text-sm flex-shrink-0"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
         </>
       )}

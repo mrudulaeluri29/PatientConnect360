@@ -16,7 +16,7 @@ PatientConnect360 addresses this challenge by providing a centralized patient po
 - Role based authentication and authorization supporting Patients, Caregivers, Clinicians, and Admin users
 - Secure login and registration using JWT based authentication
 - Encrypted password storage using industry standard hashing techniques
-- Password reset functionality with email notifications
+- Password reset functionality with email OTP verification via Twilio Verify
 - Separate web and mobile applications connected to a shared backend API
 - Messaging endpoints to support secure communication between users
 - Administrative utilities for managing users and access levels
@@ -133,7 +133,7 @@ This approach ensures that sensitive healthcare data and system operations are a
 ### Tooling and Utilities
 - Nodemon and ts node for development
 - Environment variable management using dotenv
-- Email services via nodemailer
+- Email/OTP services via Twilio Verify (used for both signup verification and password reset)
 
 ## System Architecture Overview
 PatientConnect360 follows a client server architecture with a shared backend API.
@@ -179,11 +179,15 @@ The data layer prioritizes integrity, access control, and security, aligning wit
 
 ### Backend Setup
 - Clone the repository and navigate to the Server directory
-- Install backend dependencies
-- Create an environment configuration file containing database connection details, authentication secrets, and email service credentials
-- Initialize the database using Prisma by applying the schema and running migrations
-- Optionally run seed scripts to create admin and test users
-- Start the backend server in development mode using nodemon and ts node
+- Install backend dependencies (`npm install` or `yarn`)
+  - If you previously used SendGrid, you can remove it with `npm uninstall @sendgrid/mail` since it's no longer required.
+- Create an environment configuration file containing database connection details, authentication secrets, and Twilio credentials for OTP/email verification
+    - Required variables: `DATABASE_URL`, `JWT_SECRET`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`
+    - The `TWILIO_ACCOUNT_SID` must start with `AC` (Twilio will emit a warning otherwise and OTP routes will be disabled)
+    - **Important**: if you are sending OTPs via the email channel you must configure an email integration (SendGrid) for the Verify service in the Twilio console. Without it you'll see error 60217 and the backend will return a 500 response.  Alternatively, switch the code to use SMS or remove the email requirement.
+- Initialize the database using Prisma by applying the schema and running migrations (`npx prisma migrate dev`)
+- Optionally run seed scripts to create admin and test users (`npm run seed:admin`)
+- Start the backend server in development mode using nodemon and ts-node (`npm run dev`)
 
 ### Web Application Setup
 - Navigate to the Client web directory

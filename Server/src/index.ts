@@ -13,8 +13,7 @@ import simpleMessagesRoutes from "./routes/simpleMessages";
 // Import our Prisma database client
 import { prisma } from "./db";
 
-// Import mailer initialization
-import { mailerReady } from "./mailer";
+// No mailer in use since SendGrid was removed
 
 const app = express(); //Creates an Express "application" this is our server.
 
@@ -49,16 +48,7 @@ app.use("/api/simple-messages", simpleMessagesRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 
-// Wait for mailer to be ready before starting server
-mailerReady
-  .then(() => {
-    app.listen(PORT, () => { //start listening for requests on this port
-      console.log(`API running at http://localhost:${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error("Failed to initialize mailer, but starting server anyway:", err);
-    app.listen(PORT, () => {
-      console.log(`API running at http://localhost:${PORT} (email may not work)`);
-    });
-  });
+// Start server immediately (no email dependency)
+app.listen(PORT, () => {
+  console.log(`API running at http://localhost:${PORT}`);
+});
