@@ -6,5 +6,6 @@
     "outDir": "dist",            // where compiled .js files go
     "strict": true,              // enforce type-safety
     "esModuleInterop": true      // Allows clean imports from libraries like Express
-  }
+  },
+  "include": ["src/**/*"]
 }

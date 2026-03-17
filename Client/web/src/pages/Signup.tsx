@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { validatePassword, validateEmail, validateUsername } from "../utils/validation";
+import { sendOtp } from "../api/auth";
 import AddressAutocomplete from "../components/AddressAutocomplete";
 import FileUpload from "../components/FileUpload";
 import "./Signup.css";
@@ -200,13 +201,24 @@ export default function Signup() {
         uploadedFileUrl: null, // Will be implemented with file upload service
       };
 
-      // Register patient with AuthContext and profile data
-      await register(formData.email, formData.username, formData.password, "PATIENT", profileData);
-      
-      // After successful registration, navigate to patient dashboard
-      navigate("/patient/dashboard");
+      // Start OTP flow: send verification email and store pending signup
+      await sendOtp({
+        email: formData.email,
+        username: formData.username,
+        password: formData.password,
+        role: "PATIENT",
+        profileData,
+      });
+
+      // Navigate to OTP verification page
+      navigate("/verify-email", { state: { email: formData.email } });
     } catch (err: any) {
-      setErrors({ submit: err.message || "Registration failed. Please try again." });
+      // try to pull message from server response (axios error)
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Registration failed. Please try again.";
+      setErrors({ submit: msg });
       setLoading(false);
     }
   };

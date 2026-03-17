@@ -398,6 +398,40 @@
   box-shadow: 0 0 0 3px rgba(178, 156, 228, 0.2);
 }
 
+.otp-input-row {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.otp-box {
+  width: 3.25rem;
+  height: 3.25rem;
+  text-align: center;
+  font-size: 1.25rem;
+  border-radius: 8px;
+  border: 2px solid #e5e7eb;
+  background: white;
+}
+
+.otp-box:focus {
+  outline: none;
+  border-color: #B29CE4;
+  box-shadow: 0 0 0 3px rgba(178, 156, 228, 0.12);
+}
+
+.otp-box.error {
+  border-color: #ef4444;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #4f46e5;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .date-picker.error {
   border-color: #ef4444;
 }
