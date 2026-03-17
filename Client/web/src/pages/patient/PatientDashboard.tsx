@@ -251,6 +251,12 @@ function UpcomingVisits() {
     },
   ];
 
+const sortedVisits = [...visits].sort((a, b) => {
+  const dateA = new Date(`${a.date} ${a.time}`);
+  const dateB = new Date(`${b.date} ${b.time}`);
+  return dateA.getTime() - dateB.getTime();
+});
+
   return (
     <div className="patient-content">
       <div className="content-header">
@@ -258,7 +264,7 @@ function UpcomingVisits() {
       </div>
 
       <div className="visits-container">
-        {visits.map((visit) => (
+        {sortedVisits.map((visit) => (
           <div key={visit.id} className="visit-card-large">
             <div className="visit-card-header">
               <div className="visit-date-time">
@@ -713,7 +719,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
     try {
       const unreadMessageIds = selectedConversation.messages
-        ?.filter((msg: any) => !msg.isRead && msg.senderId !== user?.uid)
+        ?.filter((msg: any) => !msg.isRead && msg.senderId !== user?.id)
         .map((msg: any) => msg.id) || [];
 
       if (unreadMessageIds.length > 0) {
@@ -952,9 +958,9 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
                   .map((msg: any) => (
                     <div
                       key={msg.id}
-                      className={`message-bubble-patient ${!msg.isRead && msg.senderId !== user?.uid ? 'unread-message' : ''}`}
+                      className={`message-bubble-patient ${!msg.isRead && msg.senderId !== user?.id ? 'unread-message' : ''}`}
                       onClick={() => {
-                        if (!msg.isRead && msg.senderId !== user?.uid) {
+                        if (!msg.isRead && msg.senderId !== user?.id) {
                           markMessageAsRead(msg.id, selectedMessage!);
                           // Immediate notification refresh when clicking message bubble
                           setTimeout(() => {
@@ -964,7 +970,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
                           }, 100);
                         }
                       }}
-                      style={{ cursor: (!msg.isRead && msg.senderId !== user?.uid) ? 'pointer' : 'default' }}
+                      style={{ cursor: (!msg.isRead && msg.senderId !== user?.id) ? 'pointer' : 'default' }}
                     >
                       <div className="message-bubble-header-patient">
                         <div className="message-sender-patient">
@@ -976,7 +982,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
                         </div>
                         <div className="message-timestamp-patient">
                           {new Date(msg.createdAt).toLocaleString()}
-                          {!msg.isRead && msg.senderId !== user?.uid && (
+                          {!msg.isRead && msg.senderId !== user?.id && (
                             <span className="unread-indicator-patient">● NEW</span>
                           )}
                         </div>
