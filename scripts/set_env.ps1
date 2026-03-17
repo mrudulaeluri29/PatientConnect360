@@ -1,6 +1,6 @@
 # scripts/set_env.ps1
-# Securely create Server\.env for PatientConnect360 on Windows (PowerShell)
-# Usage: .\scripts\set_env.ps1
+# Create or overwrite Server/.env for PatientConnect360 (Windows PowerShell)
+# Usage from repo root: .\scripts\set_env.ps1
 
 [CmdletBinding()]
 param()
@@ -8,73 +8,88 @@ param()
 function Generate-JwtSecret {
     $bytes = New-Object byte[] 48
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    return ([System.BitConverter]::ToString($bytes) -replace '-','').ToLower()
+    return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLower()
 }
 
-Write-Host "This script will create or overwrite Server\.env with restricted ACLs."
+function Read-OrDefault {
+    param(
+        [Parameter(Mandatory = $true)][string]$Prompt,
+        [Parameter(Mandatory = $true)][string]$Default
+    )
+    $value = Read-Host "$Prompt [$Default]"
+    if ([string]::IsNullOrWhiteSpace($value)) { return $Default }
+    return $value
+}
 
-# Ensure Server folder exists
-$envDir = Join-Path -Path (Get-Location) -ChildPath 'Server'
+# Resolve repo root from script location so this works regardless of current shell path.
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$envDir = Join-Path -Path $repoRoot -ChildPath "Server"
+$envPath = Join-Path $envDir ".env"
+
 if (-not (Test-Path $envDir)) {
-    New-Item -ItemType Directory -Path $envDir | Out-Null
+    throw "Could not find Server directory at: $envDir"
 }
 
-# Default DB URL (edit if you want a different default)
-$defaultDb = ''
-$db = Read-Host "Database URL [$defaultDb] (press Enter to accept default)"
-if ([string]::IsNullOrWhiteSpace($db)) { $db = $defaultDb }
+Write-Host ""
+Write-Host "This will create or overwrite: $envPath"
+Write-Host "Core runtime needs: DATABASE_URL + JWT_SECRET (+ ADMIN_* for seeded admin flow)."
+Write-Host "Twilio/SendGrid/SMTP values are optional and can be left blank for local setup."
+Write-Host ""
+
+$defaultDb = "postgresql://<username>:<password>@pc360-db-2026.postgres.database.azure.com:5432/<database>?schema=public&sslmode=require"
+$db = Read-OrDefault -Prompt "DATABASE_URL" -Default $defaultDb
+$port = Read-OrDefault -Prompt "PORT" -Default "4000"
+$nodeEnv = Read-OrDefault -Prompt "NODE_ENV" -Default "development"
 
 $useGen = Read-Host "Generate a strong JWT_SECRET automatically? (Y/n)"
-if ([string]::IsNullOrWhiteSpace($useGen) -or $useGen -match '^[Yy]') {
+if ([string]::IsNullOrWhiteSpace($useGen) -or $useGen -match "^[Yy]") {
     $jwt = Generate-JwtSecret
     Write-Host "Generated JWT_SECRET (hex, 48 bytes)."
 } else {
-    $jwt = Read-Host "Enter JWT_SECRET"
+    $jwt = Read-Host "JWT_SECRET"
 }
 
-$sendgrid = Read-Host "SendGrid API Key (leave blank to skip)"
-$smtpFromEmail = Read-Host "SMTP_FROM_EMAIL (leave blank to skip)"
-$smtpFromName = Read-Host "SMTP_FROM_NAME (default: MediHealth)"
-if ([string]::IsNullOrWhiteSpace($smtpFromName)) { $smtpFromName = 'MediHealth' }
+$twilioAccountSid = Read-Host "TWILIO_ACCOUNT_SID (optional, must start with AC if provided)"
+$twilioAuthToken = Read-Host "TWILIO_AUTH_TOKEN (optional)"
+$twilioVerifyServiceSid = Read-Host "TWILIO_VERIFY_SERVICE_SID (optional, starts with VA)"
 
-$adminEmail = Read-Host "Admin email (default: admin@example.com)"
-if ([string]::IsNullOrWhiteSpace($adminEmail)) { $adminEmail = 'admin@example.com' }
+$sendgridApiKey = Read-Host "SENDGRID_API_KEY (optional, legacy)"
+$smtpFromEmail = Read-Host "SMTP_FROM_EMAIL (optional, legacy)"
+$smtpFromName = Read-OrDefault -Prompt "SMTP_FROM_NAME (legacy)" -Default "MediHealth"
+$cookieName = Read-OrDefault -Prompt "COOKIE_NAME (legacy)" -Default "auth"
 
-$adminUser = Read-Host "Admin username (default: admin)"
-if ([string]::IsNullOrWhiteSpace($adminUser)) { $adminUser = 'admin' }
+$adminEmail = Read-OrDefault -Prompt "ADMIN_EMAIL" -Default "admin@example.com"
+$adminUser = Read-OrDefault -Prompt "ADMIN_USERNAME" -Default "admin"
 
-Write-Host "Enter Admin password (input hidden):"
+Write-Host "ADMIN_PASSWORD (input hidden, press Enter to use default AdminPass!2026):"
 $securePwd = Read-Host -AsSecureString
 $adminPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
     [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePwd)
 )
 if ([string]::IsNullOrWhiteSpace($adminPassword)) {
-    $adminPassword = 'AdminPass!2026'
-    Write-Host "No password entered — using default. Change it after initial run."
+    $adminPassword = "AdminPass!2026"
+    Write-Host "No password entered - using default. Change this immediately in shared environments."
 }
 
-$adminOverwrite = Read-Host "ADMIN_OVERWRITE? (true/false) (default: false)"
-if ([string]::IsNullOrWhiteSpace($adminOverwrite)) { $adminOverwrite = 'false' }
-
-$adminDisplay = Read-Host "ADMIN_DISPLAY_NAME (default: Platform Admin)"
-if ([string]::IsNullOrWhiteSpace($adminDisplay)) { $adminDisplay = 'Platform Admin' }
-
+$adminOverwrite = Read-OrDefault -Prompt "ADMIN_OVERWRITE (true/false)" -Default "false"
+$adminDisplay = Read-OrDefault -Prompt "ADMIN_DISPLAY_NAME" -Default "Platform Admin"
 $adminPhone = Read-Host "ADMIN_PHONE (optional)"
-$adminSuper = Read-Host "ADMIN_SUPER (true/false) (default: true)"
-if ([string]::IsNullOrWhiteSpace($adminSuper)) { $adminSuper = 'true' }
-
-$envPath = Join-Path $envDir '.env'
+$adminSuper = Read-OrDefault -Prompt "ADMIN_SUPER (true/false)" -Default "true"
 
 $envContent = @"
 # Server environment configuration for PatientConnect360
+# Generated by scripts/set_env.ps1
 DATABASE_URL="$db"
-PORT=4000
-NODE_ENV=development
+PORT=$port
+NODE_ENV="$nodeEnv"
 JWT_SECRET="$jwt"
-SENDGRID_API_KEY="$sendgrid"
+TWILIO_ACCOUNT_SID="$twilioAccountSid"
+TWILIO_AUTH_TOKEN="$twilioAuthToken"
+TWILIO_VERIFY_SERVICE_SID="$twilioVerifyServiceSid"
+SENDGRID_API_KEY="$sendgridApiKey"
 SMTP_FROM_EMAIL="$smtpFromEmail"
 SMTP_FROM_NAME="$smtpFromName"
-COOKIE_NAME=auth
+COOKIE_NAME="$cookieName"
 ADMIN_EMAIL="$adminEmail"
 ADMIN_USERNAME="$adminUser"
 ADMIN_PASSWORD="$adminPassword"
@@ -84,19 +99,21 @@ ADMIN_PHONE="$adminPhone"
 ADMIN_SUPER="$adminSuper"
 "@
 
-# Write UTF-8 (no weird encoding surprises)
+# Write UTF-8 to avoid encoding issues.
 Set-Content -Path $envPath -Value $envContent -Encoding utf8 -Force
 
-# Restrict file permissions to current user
+# Restrict file permissions to current user.
 try {
-    $username = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name  # DOMAIN\User
+    $username = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     icacls $envPath /inheritance:r | Out-Null
-    icacls $envPath /grant:r "$username:(F)" | Out-Null
+    icacls $envPath /grant:r "${username}:(F)" | Out-Null
     icacls $envPath /remove:g "Everyone" | Out-Null
     icacls $envPath /remove:g "Users" | Out-Null
+    Write-Host ""
     Write-Host "Created $envPath and applied restrictive ACLs for user $username."
 } catch {
-    Write-Warning "Failed to fully set ACLs via icacls. Please restrict access to the file manually."
+    Write-Warning "Created .env but failed to fully set ACLs via icacls. Restrict file permissions manually."
 }
 
-Write-Host "Important: Do NOT commit Server/.env to version control. Add to .gitignore if needed."
+Write-Host "Done. App can run without Twilio/SendGrid/SMTP values, but OTP/email-related routes will be unavailable until configured."
+Write-Host "Do not commit Server/.env to source control."
