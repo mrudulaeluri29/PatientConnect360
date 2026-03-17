@@ -1,0 +1,180 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client { //this tells prisma that After reading this file, generate a JavaScript/TypeScript client so my code can talk to the database easily.
+  provider = "prisma-client-js"
+}
+
+datasource db { //defines what kind of database is using and where to find it
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+} 
+//So this connects Prisma to local PostgreSQL instance using the URL stored in .env
+
+enum Role {
+  ADMIN
+  PATIENT
+  CAREGIVER
+  CLINICIAN
+}
+
+//Each model in Prisma corresponds to a table in PostgreSQL.
+model User {
+  id           String   @id @default(cuid()) //Creates a column named id of type String. It's the primary key (@id). @default(cuid()) means Prisma will auto-generate a random unique ID like ckz7x0m8d0000vsf78xyz2h6f
+  email        String   @unique //A column called email of type String. It must be unique—no two users can share the same email.
+  username     String   @unique //Same rule as above for usernames.
+  passwordHash String //Stores the hashed password, never the plain password.
+  role         Role     @default(PATIENT)
+  createdAt    DateTime @default(now()) //Automatically stores the date/time when the user row is first created.
+  updatedAt    DateTime @updatedAt //Automatically updates to the current time whenever that row changes.
+
+  // Login tracking
+  lastLogin           DateTime? // timestamp of the last successful login
+  failedLoginAttempts Int      @default(0) // number of consecutive failed login attempts
+  lastFailedAt        DateTime? // timestamp of the last failed login attempt
+
+  // Password reset tracking
+  passwordResetToken  String?   // OTP token for password reset
+  passwordResetExpiry DateTime? // Expiry time for the OTP token (15 minutes)
+  passwordResetAttempts Int     @default(0) // Number of failed OTP attempts
+
+  // Relations to profile tables
+  patientProfile   PatientProfile?
+  clinicianProfile ClinicianProfile?
+  caregiverProfile CaregiverProfile?
+  
+  // Relations for messaging
+  sentMessages     Message[]        @relation("SentMessages")
+  conversations    ConversationParticipant[]
+  assignments      PatientAssignment[] @relation("AssignedPatients")
+  assignedTo       PatientAssignment[] @relation("AssignedClinician")
+}
+
+// Patient-specific profile information
+model PatientProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Personal Information
+  legalName             String
+  dateOfBirth           DateTime
+  phoneNumber           String
+  homeAddress           String
+  apartmentSuite        String?
+  
+  // Insurance Information
+  insuranceProvider     String
+  insurancePolicyNumber String
+  
+  // Pharmacy Information
+  preferredPharmacyName String
+  pharmacyAddress       String
+  pharmacyPhoneNumber   String
+  
+  // Optional file attachment (for insurance card, etc.)
+  uploadedFileName      String?
+  uploadedFileUrl       String?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Clinician-specific profile information
+model ClinicianProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Professional Information
+  specialization        String?
+  licenseNumber         String?
+  hospitalAffiliation   String?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Caregiver-specific profile information
+model CaregiverProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Professional Information (can be expanded later)
+  relationship          String?  // e.g., "family member", "professional caregiver"
+  certifications        String?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Patient-Clinician Assignment
+// Links patients to their assigned clinicians (many-to-many)
+model PatientAssignment {
+  id            String   @id @default(cuid())
+  patientId     String
+  clinicianId   String
+  assignedAt    DateTime @default(now())
+  assignedBy    String?  // Admin user ID who made the assignment
+  isActive      Boolean  @default(true)
+  
+  patient       User     @relation("AssignedPatients", fields: [patientId], references: [id], onDelete: Cascade)
+  clinician     User     @relation("AssignedClinician", fields: [clinicianId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@unique([patientId, clinicianId])
+  @@index([patientId])
+  @@index([clinicianId])
+}
+
+// Conversation (thread between users)
+model Conversation {
+  id           String                     @id @default(cuid())
+  subject      String?                    // Optional subject line
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+// Links users to conversations (many-to-many)
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  unreadCount    Int          @default(0)  // Track unread messages for this user
+  lastReadAt     DateTime?
+  joinedAt       DateTime     @default(now())
+  
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+// Individual message in a conversation
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String       @db.Text
+  attachmentUrl  String?      // Optional file attachment
+  attachmentName String?
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  
+  @@index([conversationId])
+  @@index([senderId])
+}
