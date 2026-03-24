@@ -3,6 +3,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
 import "./PatientDashboard.css";
+import type { Visit } from "../../types/visit";
+import { mockVisits } from "../../data/mockVisits";
 
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -209,53 +211,13 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
 
 // Upcoming Visits Component
 function UpcomingVisits() {
-  const visits = [
-    {
-      id: "1",
-      date: "Tomorrow",
-      time: "10:00 AM",
-      clinician: {
-        name: "Dr. Sarah Johnson",
-        discipline: "Wound Care Specialist",
-        avatar: "SJ",
-      },
-      purpose: "Wound Care Follow-Up",
-      status: "Scheduled",
-      address: "123 Main St, Phoenix, AZ 85001",
-    },
-    {
-      id: "2",
-      date: "Friday, Jan 26",
-      time: "2:00 PM",
-      clinician: {
-        name: "Nurse Mary Smith",
-        discipline: "Physical Therapy",
-        avatar: "MS",
-      },
-      purpose: "Physical Therapy Session",
-      status: "Scheduled",
-      address: "123 Main St, Phoenix, AZ 85001",
-    },
-    {
-      id: "3",
-      date: "Monday, Jan 29",
-      time: "11:00 AM",
-      clinician: {
-        name: "Dr. David Williams",
-        discipline: "Primary Care",
-        avatar: "DW",
-      },
-      purpose: "Routine Check-Up",
-      status: "Scheduled",
-      address: "123 Main St, Phoenix, AZ 85001",
-    },
-  ];
+  const [visits, setVisits] = useState<Visit[]>(mockVisits);
 
-const sortedVisits = [...visits].sort((a, b) => {
-  const dateA = new Date(`${a.date} ${a.time}`);
-  const dateB = new Date(`${b.date} ${b.time}`);
-  return dateA.getTime() - dateB.getTime();
-});
+  const sortedVisits = [...visits].sort((a, b) => {
+    const dateA = new Date(`${a.date} ${a.time}`);
+    const dateB = new Date(`${b.date} ${b.time}`);
+    return dateA.getTime() - dateB.getTime();
+  });
 
   return (
     <div className="patient-content">
@@ -264,48 +226,54 @@ const sortedVisits = [...visits].sort((a, b) => {
       </div>
 
       <div className="visits-container">
-        {sortedVisits.map((visit) => (
-          <div key={visit.id} className="visit-card-large">
-            <div className="visit-card-header">
-              <div className="visit-date-time">
-                <div className="visit-date-large">{visit.date}</div>
-                <div className="visit-time-large">{visit.time}</div>
-              </div>
-              <span className="visit-status-badge">{visit.status}</span>
-            </div>
-
-            <div className="visit-clinician-info">
-              <div className="clinician-avatar-large">{visit.clinician.avatar}</div>
-              <div className="clinician-details">
-                <div className="clinician-name-large">{visit.clinician.name}</div>
-                <div className="clinician-discipline-large">{visit.clinician.discipline}</div>
-              </div>
-            </div>
-
-            <div className="visit-purpose">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-              </svg>
-              <span>{visit.purpose}</span>
-            </div>
-
-            <div className="visit-address">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                <circle cx="12" cy="10" r="3"></circle>
-              </svg>
-              <span>{visit.address}</span>
-            </div>
-
-            <div className="visit-actions">
-              <button className="btn-confirm">Confirm Visit</button>
-              <button className="btn-reschedule-visit">Reschedule</button>
-            </div>
+        {sortedVisits.length === 0 ? (
+          <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280" }}>
+            <p>No upcoming visits scheduled.</p>
           </div>
-        ))}
+        ) : (
+          sortedVisits.map((visit) => (
+            <div key={visit.id} className="visit-card-large">
+              <div className="visit-card-header">
+                <div className="visit-date-time">
+                  <div className="visit-date-large">{visit.date}</div>
+                  <div className="visit-time-large">{visit.time}</div>
+                </div>
+                <span className="visit-status-badge">{visit.status}</span>
+              </div>
+
+              <div className="visit-clinician-info">
+                <div className="clinician-avatar-large">{visit.clinician.avatar}</div>
+                <div className="clinician-details">
+                  <div className="clinician-name-large">{visit.clinician.name}</div>
+                  <div className="clinician-discipline-large">{visit.clinician.discipline}</div>
+                </div>
+              </div>
+
+              <div className="visit-purpose">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+                <span>{visit.purpose}</span>
+              </div>
+
+              <div className="visit-address">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                  <circle cx="12" cy="10" r="3"></circle>
+                </svg>
+                <span>{visit.address}</span>
+              </div>
+
+              <div className="visit-actions">
+                <button className="btn-confirm">Confirm Visit</button>
+                <button className="btn-reschedule-visit">Reschedule</button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
