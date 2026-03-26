@@ -9,6 +9,10 @@ import passwordResetRoutes from "./passwordReset";
 import adminRoutes from "./routes/admin";
 import messagesRoutes from "./routes/messages_fixed";
 import simpleMessagesRoutes from "./routes/simpleMessages";
+import visitRoutes from "./routes/visits";
+import medicationRoutes from "./routes/medications";
+import vitalRoutes from "./routes/vitals";
+import availabilityRoutes from "./routes/availability";
 
 // Import our Prisma database client
 import { prisma } from "./db";
@@ -45,6 +49,10 @@ app.use("/api/password-reset", passwordResetRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/messages", messagesRoutes);
 app.use("/api/simple-messages", simpleMessagesRoutes);
+app.use("/api/visits", visitRoutes);
+app.use("/api/medications", medicationRoutes);
+app.use("/api/vitals", vitalRoutes);
+app.use("/api/availability", availabilityRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 

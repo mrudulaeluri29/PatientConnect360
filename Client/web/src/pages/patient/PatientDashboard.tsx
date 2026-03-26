@@ -5,6 +5,28 @@ import NotificationBell from "../../components/NotificationBell";
 import "./PatientDashboard.css";
 import type { Visit } from "../../types/visit";
 import { mockVisits } from "../../data/mockVisits";
+import {
+  getVisits,
+  updateVisitStatus,
+  formatVisitDateTime,
+  visitTypeLabel,
+  clinicianAvatar,
+  type ApiVisit,
+} from "../../api/visits";
+import {
+  getMedications,
+  medicationCardClass,
+  daysUntilRefill,
+  type ApiMedication,
+} from "../../api/medications";
+import {
+  getLatestVitals,
+  vitalTypeLabel,
+  vitalTrendClass,
+  formatVitalValue,
+  type ApiVital,
+  type VitalType,
+} from "../../api/vitals";
 
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -103,6 +125,47 @@ export default function PatientDashboard() {
 
 // overview Tab Component
 function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void }) {
+  const { user } = useAuth();
+  const [upcomingVisits, setUpcomingVisits] = useState<ApiVisit[]>([]);
+  const [careTeam, setCareTeam] = useState<{ id: string; username: string; specialization: string | null }[]>([]);
+  const [refillAlerts, setRefillAlerts] = useState<ApiMedication[]>([]);
+
+  useEffect(() => {
+    // Fetch next 2 upcoming visits for the summary card
+    getVisits()
+      .then((all) => {
+        const upcoming = all
+          .filter((v) => !["COMPLETED", "CANCELLED", "MISSED"].includes(v.status))
+          .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+          .slice(0, 2);
+        setUpcomingVisits(upcoming);
+
+        // Derive care team from unique clinicians in visits
+        const seen = new Set<string>();
+        const team: typeof careTeam = [];
+        for (const v of all) {
+          if (!seen.has(v.clinician.id)) {
+            seen.add(v.clinician.id);
+            team.push({
+              id: v.clinician.id,
+              username: v.clinician.username,
+              specialization: v.clinician.clinicianProfile?.specialization ?? null,
+            });
+          }
+        }
+        setCareTeam(team);
+      })
+      .catch(() => {});
+
+    // Fetch medications with refill due within 7 days
+    getMedications({ status: "ACTIVE" })
+      .then((meds) => setRefillAlerts(meds.filter((m) => {
+        const days = daysUntilRefill(m.refillDueDate);
+        return days !== null && days <= 7 && days >= 0;
+      })))
+      .catch(() => {});
+  }, [user?.id]);
+
   return (
     <div className="patient-content">
       <div className="overview-grid">
@@ -110,19 +173,29 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
         <div className="overview-card">
           <h3 className="card-title">Upcoming Visits</h3>
           <div className="visits-summary">
-            <div className="visit-summary-item">
-              <div className="visit-date">Tomorrow, 10:00 AM</div>
-              <div className="visit-clinician">Dr. Sarah Johnson - Wound Care</div>
-            </div>
-            <div className="visit-summary-item">
-              <div className="visit-date">Friday, 2:00 PM</div>
-              <div className="visit-clinician">Nurse Mary Smith - Physical Therapy</div>
-            </div>
+            {upcomingVisits.length === 0 ? (
+              <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>No upcoming visits scheduled.</div>
+            ) : (
+              upcomingVisits.map((v) => {
+                const { date, time } = formatVisitDateTime(v.scheduledAt);
+                return (
+                  <div key={v.id} className="visit-summary-item">
+                    <div className="visit-date">{date}, {time}</div>
+                    <div className="visit-clinician">
+                      {v.clinician.username}
+                      {v.clinician.clinicianProfile?.specialization
+                        ? ` — ${v.clinician.clinicianProfile.specialization}`
+                        : ` — ${visitTypeLabel(v.visitType)}`}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
           <button className="btn-view-all" onClick={onNavigateToVisits}>View All Visits</button>
         </div>
 
-        {/* Care Plan Progress */}
+        {/* Care Plan Progress — static until care plan model is built */}
         <div className="overview-card">
           <h3 className="card-title">Care Plan Progress</h3>
           <div className="goals-tracker">
@@ -131,77 +204,68 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
                 <span className="goal-name">Walk 50 ft independently</span>
                 <span className="goal-progress">75%</span>
               </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: "75%" }}></div>
-              </div>
+              <div className="progress-bar"><div className="progress-fill" style={{ width: "75%" }}></div></div>
             </div>
             <div className="goal-item">
               <div className="goal-header">
                 <span className="goal-name">Manage diabetes</span>
                 <span className="goal-progress">90%</span>
               </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: "90%" }}></div>
-              </div>
+              <div className="progress-bar"><div className="progress-fill" style={{ width: "90%" }}></div></div>
             </div>
             <div className="goal-item">
               <div className="goal-header">
                 <span className="goal-name">Wound healing</span>
                 <span className="goal-progress">60%</span>
               </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: "60%" }}></div>
-              </div>
+              <div className="progress-bar"><div className="progress-fill" style={{ width: "60%" }}></div></div>
             </div>
           </div>
         </div>
 
-        {/* Assigned Clinicians */}
+        {/* Assigned Clinicians — derived from visit history */}
         <div className="overview-card">
           <h3 className="card-title">Your Care Team</h3>
           <div className="clinicians-list">
-            <div className="clinician-item">
-              <div className="clinician-avatar">SJ</div>
-              <div className="clinician-info">
-                <div className="clinician-name">Dr. Sarah Johnson</div>
-                <div className="clinician-discipline">Wound Care Specialist</div>
-              </div>
-            </div>
-            <div className="clinician-item">
-              <div className="clinician-avatar">MS</div>
-              <div className="clinician-info">
-                <div className="clinician-name">Nurse Mary Smith</div>
-                <div className="clinician-discipline">Physical Therapy</div>
-              </div>
-            </div>
-            <div className="clinician-item">
-              <div className="clinician-avatar">DW</div>
-              <div className="clinician-info">
-                <div className="clinician-name">Dr. David Williams</div>
-                <div className="clinician-discipline">Primary Care</div>
-              </div>
-            </div>
+            {careTeam.length === 0 ? (
+              <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>No care team assigned yet.</div>
+            ) : (
+              careTeam.map((c) => (
+                <div key={c.id} className="clinician-item">
+                  <div className="clinician-avatar">{clinicianAvatar(c.username)}</div>
+                  <div className="clinician-info">
+                    <div className="clinician-name">{c.username}</div>
+                    <div className="clinician-discipline">{c.specialization ?? "Clinician"}</div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
-        {/* Health Alerts */}
+        {/* Health Alerts — driven by real refill data */}
         <div className="overview-card alert-card">
           <h3 className="card-title">Health Alerts</h3>
           <div className="alerts-list-overview">
-            <div className="alert-item-overview">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-              <span>Medication refill due in 3 days</span>
-            </div>
-            <div className="alert-item-overview">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-              </svg>
-              <span>New fall risk assessment recommended</span>
-            </div>
+            {refillAlerts.length === 0 ? (
+              <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>No active alerts.</div>
+            ) : (
+              refillAlerts.map((med) => {
+                const days = daysUntilRefill(med.refillDueDate)!;
+                return (
+                  <div key={med.id} className="alert-item-overview">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span>
+                      {med.name} refill due {days === 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>
@@ -209,15 +273,45 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
   );
 }
 
+
 // Upcoming Visits Component
 function UpcomingVisits() {
-  const [visits, setVisits] = useState<Visit[]>(mockVisits);
+  const { user } = useAuth();
+  const [visits, setVisits] = useState<ApiVisit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
-  const sortedVisits = [...visits].sort((a, b) => {
-    const dateA = new Date(`${a.date} ${a.time}`);
-    const dateB = new Date(`${b.date} ${b.time}`);
-    return dateA.getTime() - dateB.getTime();
-  });
+  useEffect(() => {
+    getVisits({ status: undefined })
+      .then(setVisits)
+      .catch(() => setVisits([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const upcomingVisits = visits
+    .filter((v) => !["COMPLETED", "CANCELLED", "MISSED"].includes(v.status))
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+
+  const handleConfirm = async (id: string) => {
+    setConfirming(id);
+    try {
+      const updated = await updateVisitStatus(id, "CONFIRMED");
+      setVisits((prev) => prev.map((v) => (v.id === id ? updated : v)));
+    } catch {
+      // silently ignore — user can retry
+    } finally {
+      setConfirming(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="patient-content">
+        <div className="content-header"><h2 className="section-title">Upcoming Visits</h2></div>
+        <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280" }}>Loading visits...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="patient-content">
@@ -226,53 +320,75 @@ function UpcomingVisits() {
       </div>
 
       <div className="visits-container">
-        {sortedVisits.length === 0 ? (
+        {upcomingVisits.length === 0 ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280" }}>
             <p>No upcoming visits scheduled.</p>
           </div>
         ) : (
-          sortedVisits.map((visit) => (
-            <div key={visit.id} className="visit-card-large">
-              <div className="visit-card-header">
-                <div className="visit-date-time">
-                  <div className="visit-date-large">{visit.date}</div>
-                  <div className="visit-time-large">{visit.time}</div>
+          upcomingVisits.map((visit) => {
+            const { date, time } = formatVisitDateTime(visit.scheduledAt);
+            const avatar = clinicianAvatar(visit.clinician.username);
+            const discipline = visit.clinician.clinicianProfile?.specialization ?? visitTypeLabel(visit.visitType);
+            const isConfirmed = visit.status === "CONFIRMED";
+
+            return (
+              <div key={visit.id} className="visit-card-large">
+                <div className="visit-card-header">
+                  <div className="visit-date-time">
+                    <div className="visit-date-large">{date}</div>
+                    <div className="visit-time-large">{time}</div>
+                  </div>
+                  <span className="visit-status-badge">{visit.status.replace("_", " ")}</span>
                 </div>
-                <span className="visit-status-badge">{visit.status}</span>
-              </div>
 
-              <div className="visit-clinician-info">
-                <div className="clinician-avatar-large">{visit.clinician.avatar}</div>
-                <div className="clinician-details">
-                  <div className="clinician-name-large">{visit.clinician.name}</div>
-                  <div className="clinician-discipline-large">{visit.clinician.discipline}</div>
+                <div className="visit-clinician-info">
+                  <div className="clinician-avatar-large">{avatar}</div>
+                  <div className="clinician-details">
+                    <div className="clinician-name-large">{visit.clinician.username}</div>
+                    <div className="clinician-discipline-large">{discipline}</div>
+                  </div>
+                </div>
+
+                <div className="visit-purpose">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                  </svg>
+                  <span>{visit.purpose ?? visitTypeLabel(visit.visitType)}</span>
+                </div>
+
+                {visit.address && (
+                  <div className="visit-address">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                      <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                    <span>{visit.address}</span>
+                  </div>
+                )}
+
+                <div className="visit-actions">
+                  {!isConfirmed && (
+                    <button
+                      className="btn-confirm"
+                      disabled={confirming === visit.id}
+                      onClick={() => handleConfirm(visit.id)}
+                    >
+                      {confirming === visit.id ? "Confirming..." : "Confirm Visit"}
+                    </button>
+                  )}
+                  {isConfirmed && (
+                    <button className="btn-confirm" disabled style={{ opacity: 0.6 }}>
+                      Confirmed ✓
+                    </button>
+                  )}
+                  <button className="btn-reschedule-visit">Reschedule</button>
                 </div>
               </div>
-
-              <div className="visit-purpose">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="16" y1="13" x2="8" y2="13"></line>
-                  <line x1="16" y1="17" x2="8" y2="17"></line>
-                </svg>
-                <span>{visit.purpose}</span>
-              </div>
-
-              <div className="visit-address">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                  <circle cx="12" cy="10" r="3"></circle>
-                </svg>
-                <span>{visit.address}</span>
-              </div>
-
-              <div className="visit-actions">
-                <button className="btn-confirm">Confirm Visit</button>
-                <button className="btn-reschedule-visit">Reschedule</button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
@@ -281,49 +397,21 @@ function UpcomingVisits() {
 
 // Medications & Supplies Component
 function MedicationsSupplies() {
-  const medications = [
-    {
-      id: "1",
-      name: "Metformin 500mg",
-      dosage: "Take 1 tablet twice daily with meals",
-      status: "Active",
-      riskLevel: "normal",
-      lastChanged: null,
-    },
-    {
-      id: "2",
-      name: "Lisinopril 10mg",
-      dosage: "Take 1 tablet once daily",
-      status: "Active",
-      riskLevel: "changed",
-      lastChanged: "2 days ago",
-    },
-    {
-      id: "3",
-      name: "Aspirin 81mg",
-      dosage: "Take 1 tablet once daily",
-      status: "Active",
-      riskLevel: "high-risk",
-      lastChanged: null,
-    },
-  ];
+  const [medications, setMedications] = useState<ApiMedication[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const supplies = [
-    {
-      id: "1",
-      name: "Wound Care Supplies",
-      orderNumber: "ORD-12345",
-      status: "Shipped",
-      eta: "Expected delivery: Tomorrow",
-    },
-    {
-      id: "2",
-      name: "Blood Pressure Monitor",
-      orderNumber: "ORD-12346",
-      status: "Processing",
-      eta: "Expected delivery: Jan 28",
-    },
-  ];
+  useEffect(() => {
+    getMedications({ status: "ACTIVE" })
+      .then(setMedications)
+      .catch(() => setMedications([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Medications with refill due within 7 days
+  const refillReminders = medications.filter((m) => {
+    const days = daysUntilRefill(m.refillDueDate);
+    return days !== null && days <= 7 && days >= 0;
+  });
 
   return (
     <div className="patient-content">
@@ -336,71 +424,70 @@ function MedicationsSupplies() {
         <div className="medications-section">
           <div className="section-header-inline">
             <h3 className="subsection-title">Active Medications</h3>
-            <button className="btn-text">View Full List</button>
           </div>
 
-          <div className="medications-list-full">
-            {medications.map((med) => (
-              <div key={med.id} className={`medication-card ${med.riskLevel}`}>
-                <div className="medication-header">
-                  <div className="medication-name">{med.name}</div>
-                  {med.riskLevel === "high-risk" && (
-                    <span className="risk-badge-med">High Risk</span>
+          {loading ? (
+            <div style={{ color: "#6b7280", padding: "1rem 0" }}>Loading medications...</div>
+          ) : medications.length === 0 ? (
+            <div style={{ color: "#6b7280", padding: "1rem 0" }}>No active medications on record.</div>
+          ) : (
+            <div className="medications-list-full">
+              {medications.map((med) => (
+                <div key={med.id} className={`medication-card ${medicationCardClass(med.riskLevel)}`}>
+                  <div className="medication-header">
+                    <div className="medication-name">{med.name}</div>
+                    {med.riskLevel === "HIGH_RISK" && (
+                      <span className="risk-badge-med">High Risk</span>
+                    )}
+                    {med.riskLevel === "CHANGED" && (
+                      <span className="changed-badge">Recently Changed</span>
+                    )}
+                  </div>
+                  <div className="medication-dosage">{med.dosage}</div>
+                  {med.frequency && (
+                    <div className="medication-dosage">{med.frequency}</div>
                   )}
-                  {med.riskLevel === "changed" && (
-                    <span className="changed-badge">Recently Changed</span>
+                  {med.lastChangedAt && (
+                    <div className="medication-changed">
+                      Changed: {new Date(med.lastChangedAt).toLocaleDateString()}
+                    </div>
                   )}
+                  <div className="medication-actions">
+                    <button className="btn-text-small">Set Reminder</button>
+                    <button className="btn-text-small">Request Refill</button>
+                  </div>
                 </div>
-                <div className="medication-dosage">{med.dosage}</div>
-                {med.lastChanged && (
-                  <div className="medication-changed">Changed: {med.lastChanged}</div>
-                )}
-                <div className="medication-actions">
-                  <button className="btn-text-small">Set Reminder</button>
-                  <button className="btn-text-small">Request Refill</button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
-          <div className="reminders-alerts">
-            <div className="reminder-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-              <span>Metformin refill due in 3 days</span>
+          {refillReminders.length > 0 && (
+            <div className="reminders-alerts">
+              {refillReminders.map((med) => {
+                const days = daysUntilRefill(med.refillDueDate)!;
+                return (
+                  <div key={med.id} className="reminder-item">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <span>
+                      {med.name} refill due {days === 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            <div className="reminder-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-              <span>Lisinopril refill due in 5 days</span>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Supplies Section */}
+        {/* Supplies Section — still placeholder until supply orders are in scope */}
         <div className="supplies-section">
           <div className="section-header-inline">
             <h3 className="subsection-title">DME Supplies</h3>
-            <button className="btn-text">Track All Orders</button>
           </div>
-
-          <div className="supplies-list">
-            {supplies.map((supply) => (
-              <div key={supply.id} className="supply-card">
-                <div className="supply-header">
-                  <div className="supply-name">{supply.name}</div>
-                  <span className={`supply-status ${supply.status.toLowerCase()}`}>
-                    {supply.status}
-                  </span>
-                </div>
-                <div className="supply-order">Order #: {supply.orderNumber}</div>
-                <div className="supply-eta">{supply.eta}</div>
-              </div>
-            ))}
+          <div style={{ color: "#6b7280", padding: "1rem 0", fontSize: "0.9rem" }}>
+            Supply order tracking coming soon.
           </div>
         </div>
       </div>
@@ -410,11 +497,24 @@ function MedicationsSupplies() {
 
 // Health Summary Component
 function HealthSummary() {
-  const vitals = [
-    { name: "Blood Pressure", value: "120/80", date: "Today", trend: "stable" },
-    { name: "Heart Rate", value: "72 bpm", date: "Today", trend: "stable" },
-    { name: "Pain Level", value: "3/10", date: "Today", trend: "improving" },
-    { name: "Weight", value: "165 lbs", date: "2 days ago", trend: "stable" },
+  const { user } = useAuth();
+  const [latest, setLatest] = useState<Partial<Record<VitalType, ApiVital>>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    getLatestVitals(user.id)
+      .then(setLatest)
+      .catch(() => setLatest({}))
+      .finally(() => setLoading(false));
+  }, [user?.id]);
+
+  // The vital types we want to display on the overview card
+  const displayTypes: VitalType[] = [
+    "BLOOD_PRESSURE",
+    "HEART_RATE",
+    "PAIN_LEVEL",
+    "WEIGHT",
   ];
 
   const insights = [
@@ -440,35 +540,57 @@ function HealthSummary() {
         {/* Recent Vitals */}
         <div className="vitals-section">
           <h3 className="subsection-title">Recent Vitals & Assessments</h3>
-          <div className="vitals-grid">
-            {vitals.map((vital, idx) => (
-              <div key={idx} className="vital-card">
-                <div className="vital-name">{vital.name}</div>
-                <div className="vital-value">{vital.value}</div>
-                <div className="vital-meta">
-                  <span className="vital-date">{vital.date}</span>
-                  <span className={`vital-trend trend-${vital.trend}`}>
-                    {vital.trend === "improving" && (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-                        <polyline points="17 6 23 6 23 12"></polyline>
-                      </svg>
-                    )}
-                    {vital.trend === "stable" && (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                    )}
-                    {vital.trend}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <div style={{ color: "#6b7280", padding: "1rem 0" }}>Loading vitals...</div>
+          ) : (
+            <div className="vitals-grid">
+              {displayTypes.map((type) => {
+                const vital = latest[type];
+                if (!vital) {
+                  return (
+                    <div key={type} className="vital-card">
+                      <div className="vital-name">{vitalTypeLabel(type)}</div>
+                      <div className="vital-value" style={{ color: "#9ca3af", fontSize: "1rem" }}>—</div>
+                      <div className="vital-meta"><span className="vital-date">No data</span></div>
+                    </div>
+                  );
+                }
+                const recordedDate = new Date(vital.recordedAt);
+                const isToday = recordedDate.toDateString() === new Date().toDateString();
+                const dateLabel = isToday
+                  ? "Today"
+                  : recordedDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+                return (
+                  <div key={type} className="vital-card">
+                    <div className="vital-name">{vitalTypeLabel(type)}</div>
+                    <div className="vital-value">{formatVitalValue(vital)}</div>
+                    <div className="vital-meta">
+                      <span className="vital-date">{dateLabel}</span>
+                      <span className={`vital-trend ${vitalTrendClass(vital.trend)}`}>
+                        {vital.trend === "IMPROVING" && (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                            <polyline points="17 6 23 6 23 12"></polyline>
+                          </svg>
+                        )}
+                        {vital.trend === "DECLINING" && (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
+                            <polyline points="17 18 23 18 23 12"></polyline>
+                          </svg>
+                        )}
+                        {vital.trend.charAt(0) + vital.trend.slice(1).toLowerCase()}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* AI Insights */}
+        {/* AI Insights — static until AI layer is built */}
         <div className="insights-section">
           <h3 className="subsection-title">AI-Powered Insights</h3>
           <div className="insights-list">
@@ -498,7 +620,7 @@ function HealthSummary() {
           </div>
         </div>
 
-        {/* Progress Visuals */}
+        {/* Progress Visuals — static until care plan tracking is built */}
         <div className="progress-section">
           <h3 className="subsection-title">Therapy Progress</h3>
           <div className="progress-visuals">
@@ -507,17 +629,10 @@ function HealthSummary() {
               <div className="progress-circle">
                 <svg width="120" height="120" viewBox="0 0 120 120">
                   <circle cx="60" cy="60" r="50" stroke="#e5e7eb" strokeWidth="10" fill="none"></circle>
-                  <circle
-                    cx="60"
-                    cy="60"
-                    r="50"
-                    stroke="#6E5B9A"
-                    strokeWidth="10"
-                    fill="none"
+                  <circle cx="60" cy="60" r="50" stroke="#6E5B9A" strokeWidth="10" fill="none"
                     strokeDasharray={`${2 * Math.PI * 50}`}
-                    strokeDashoffset={`${2 * Math.PI * 50 * (1 - 0.75)}`}
-                    transform="rotate(-90 60 60)"
-                  ></circle>
+                    strokeDashoffset={`${2 * Math.PI * 50 * 0.25}`}
+                    transform="rotate(-90 60 60)"></circle>
                 </svg>
                 <div className="progress-percentage">75%</div>
               </div>
@@ -527,17 +642,10 @@ function HealthSummary() {
               <div className="progress-circle">
                 <svg width="120" height="120" viewBox="0 0 120 120">
                   <circle cx="60" cy="60" r="50" stroke="#e5e7eb" strokeWidth="10" fill="none"></circle>
-                  <circle
-                    cx="60"
-                    cy="60"
-                    r="50"
-                    stroke="#6E5B9A"
-                    strokeWidth="10"
-                    fill="none"
+                  <circle cx="60" cy="60" r="50" stroke="#6E5B9A" strokeWidth="10" fill="none"
                     strokeDasharray={`${2 * Math.PI * 50}`}
-                    strokeDashoffset={`${2 * Math.PI * 50 * (1 - 0.60)}`}
-                    transform="rotate(-90 60 60)"
-                  ></circle>
+                    strokeDashoffset={`${2 * Math.PI * 50 * 0.40}`}
+                    transform="rotate(-90 60 60)"></circle>
                 </svg>
                 <div className="progress-percentage">60%</div>
               </div>
