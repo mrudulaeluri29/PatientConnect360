@@ -52,6 +52,21 @@ model User {
   conversations    ConversationParticipant[]
   assignments      PatientAssignment[] @relation("AssignedPatients")
   assignedTo       PatientAssignment[] @relation("AssignedClinician")
+
+  // Relations for visits
+  patientVisits    Visit[]          @relation("PatientVisits")
+  clinicianVisits  Visit[]          @relation("ClinicianVisits")
+
+  // Relations for medications
+  medications      Medication[]     @relation("PatientMedications")
+  prescribed       Medication[]     @relation("PrescribedMedications")
+
+  // Relations for vitals
+  vitals           VitalSign[]      @relation("PatientVitals")
+  recordedVitals   VitalSign[]      @relation("RecordedVitals")
+
+  // Relations for availability
+  availability     ClinicianAvailability[] @relation("ClinicianAvailability")
 }
 
 // Patient-specific profile information
@@ -214,4 +229,184 @@ model Message {
   
   @@index([conversationId])
   @@index([senderId])
+}
+
+// ─────────────────────────────────────────────
+// VISIT / APPOINTMENT
+// ─────────────────────────────────────────────
+
+enum VisitStatus {
+  SCHEDULED    // Created by admin/clinician, awaiting confirmation
+  CONFIRMED    // Patient confirmed
+  IN_PROGRESS  // Clinician checked in
+  COMPLETED    // Visit finished
+  CANCELLED    // Cancelled by any party
+  MISSED       // No-show
+  RESCHEDULED  // Replaced by another visit
+}
+
+enum VisitType {
+  HOME_HEALTH
+  WOUND_CARE
+  PHYSICAL_THERAPY
+  OCCUPATIONAL_THERAPY
+  SPEECH_THERAPY
+  MEDICATION_REVIEW
+  POST_DISCHARGE
+  ROUTINE_CHECKUP
+  OTHER
+}
+
+// A scheduled home health visit between a clinician and patient
+model Visit {
+  id              String      @id @default(cuid())
+  patientId       String
+  clinicianId     String
+  scheduledAt     DateTime                    // When the visit is scheduled
+  durationMinutes Int         @default(60)    // Expected duration
+  status          VisitStatus @default(SCHEDULED)
+  visitType       VisitType   @default(HOME_HEALTH)
+  purpose         String?                     // Free-text description of visit purpose
+  address         String?                     // Visit location (defaults to patient home address)
+  notes           String?     @db.Text        // Pre-visit notes from admin/clinician
+  clinicianNotes  String?     @db.Text        // Post-visit documentation by clinician
+  checkedInAt     DateTime?                   // When clinician confirmed arrival
+  completedAt     DateTime?                   // When visit was marked complete
+  cancelledAt     DateTime?
+  cancelReason    String?
+  createdBy       String?                     // Admin user ID who created the visit
+  
+  patient         User        @relation("PatientVisits",   fields: [patientId],   references: [id], onDelete: Cascade)
+  clinician       User        @relation("ClinicianVisits", fields: [clinicianId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([patientId])
+  @@index([clinicianId])
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────
+// MEDICATIONS
+// ─────────────────────────────────────────────
+
+enum MedicationStatus {
+  ACTIVE
+  DISCONTINUED
+  ON_HOLD
+  COMPLETED
+}
+
+enum MedicationRiskLevel {
+  NORMAL
+  CHANGED    // Recently changed — flag for review
+  HIGH_RISK  // High-alert medication (e.g. warfarin, insulin)
+}
+
+// A medication prescribed to a patient
+model Medication {
+  id            String              @id @default(cuid())
+  patientId     String
+  prescribedBy  String?             // Clinician user ID (optional — may be external physician)
+  name          String              // Drug name e.g. "Metformin 500mg"
+  rxcui         String?             // RxNorm Concept Unique Identifier — for FHIR interoperability
+  dosage        String              // e.g. "Take 1 tablet twice daily with meals"
+  frequency     String?             // e.g. "Twice daily", "As needed"
+  startDate     DateTime?
+  endDate       DateTime?           // Null = ongoing
+  status        MedicationStatus    @default(ACTIVE)
+  riskLevel     MedicationRiskLevel @default(NORMAL)
+  notes         String?             @db.Text
+  refillDueDate DateTime?           // When refill is needed
+  lastChangedAt DateTime?           // When dosage/instructions last changed
+
+  patient       User                @relation("PatientMedications",  fields: [patientId],    references: [id], onDelete: Cascade)
+  prescriber    User?               @relation("PrescribedMedications", fields: [prescribedBy], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([patientId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────
+// VITAL SIGNS
+// ─────────────────────────────────────────────
+
+enum VitalType {
+  BLOOD_PRESSURE
+  HEART_RATE
+  TEMPERATURE
+  OXYGEN_SATURATION
+  WEIGHT
+  BLOOD_GLUCOSE
+  PAIN_LEVEL
+  RESPIRATORY_RATE
+}
+
+enum VitalTrend {
+  IMPROVING
+  STABLE
+  DECLINING
+  CRITICAL
+}
+
+// A single vital sign reading recorded for a patient
+model VitalSign {
+  id          String      @id @default(cuid())
+  patientId   String
+  recordedBy  String?     // Clinician user ID who recorded it (null = patient self-reported)
+  visitId     String?     // Optional link to the visit during which it was recorded
+  type        VitalType
+  value       String      // Stored as string to handle varied formats: "120/80", "72", "98.6"
+  unit        String?     // e.g. "mmHg", "bpm", "°F", "%", "lbs", "mg/dL"
+  trend       VitalTrend  @default(STABLE)
+  notes       String?
+  recordedAt  DateTime    @default(now())
+
+  patient     User        @relation("PatientVitals",    fields: [patientId],  references: [id], onDelete: Cascade)
+  recorder    User?       @relation("RecordedVitals",   fields: [recordedBy], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([patientId])
+  @@index([type])
+  @@index([recordedAt])
+}
+
+// ─────────────────────────────────────────────
+// CLINICIAN AVAILABILITY
+// ─────────────────────────────────────────────
+
+enum AvailabilityStatus {
+  PENDING    // Submitted by clinician, awaiting admin review
+  APPROVED   // Admin approved — slots can be used for scheduling
+  REJECTED   // Admin rejected
+}
+
+// A block of time a clinician is available for visits
+model ClinicianAvailability {
+  id           String             @id @default(cuid())
+  clinicianId  String
+  date         DateTime           // The calendar date (time portion ignored — use startTime/endTime)
+  startTime    String             // "09:00" — 24h format
+  endTime      String             // "17:00" — 24h format
+  status       AvailabilityStatus @default(PENDING)
+  reviewedBy   String?            // Admin user ID who approved/rejected
+  reviewNote   String?            // Optional admin note on rejection
+  reviewedAt   DateTime?
+
+  clinician    User               @relation("ClinicianAvailability", fields: [clinicianId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([clinicianId, date])   // One availability block per clinician per day
+  @@index([clinicianId])
+  @@index([date])
+  @@index([status])
 }

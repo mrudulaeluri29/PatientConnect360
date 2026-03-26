@@ -3,6 +3,14 @@ import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
 import "./ClinicianDashboard.css";
+import {
+  getVisits,
+  updateVisitStatus,
+  formatVisitDateTime,
+  visitTypeLabel,
+  type ApiVisit,
+} from "../../api/visits";
+import { submitAvailabilityBatch, getMyAvailability, type ApiAvailability } from "../../api/availability";
 
 export default function ClinicianDashboard() {
   const [activeTab, setActiveTab] = useState("schedule");
@@ -692,51 +700,39 @@ function ContactStaffHub() {
 
 // Today's Schedule Component
 function TodaySchedule() {
+  const { user } = useAuth();
   const [selectedVisit, setSelectedVisit] = useState<string | null>(null);
+  const [visits, setVisits] = useState<ApiVisit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [checkingIn, setCheckingIn] = useState<string | null>(null);
 
-  const visits = [
-    {
-      id: "1",
-      time: "9:00 AM",
-      patient: "John Doe",
-      address: "123 Main St, Phoenix, AZ 85001",
-      travelTime: "15 min",
-      status: "Scheduled",
-      alerts: ["Needs wound care", "Med reconciliation"],
-      estimatedArrival: "9:15 AM",
-    },
-    {
-      id: "2",
-      time: "11:30 AM",
-      patient: "Jane Smith",
-      address: "456 Oak Ave, Phoenix, AZ 85002",
-      travelTime: "25 min",
-      status: "Scheduled",
-      alerts: ["New fall risk"],
-      estimatedArrival: "11:55 AM",
-    },
-    {
-      id: "3",
-      time: "2:00 PM",
-      patient: "Robert Johnson",
-      address: "789 Pine Rd, Phoenix, AZ 85003",
-      travelTime: "20 min",
-      status: "Scheduled",
-      alerts: ["Order pending from MD"],
-      estimatedArrival: "2:20 PM",
-    },
-    {
-      id: "4",
-      time: "4:00 PM",
-      patient: "Mary Williams",
-      address: "321 Elm St, Phoenix, AZ 85004",
-      travelTime: "30 min",
-      status: "Scheduled",
-      alerts: [],
-      estimatedArrival: "4:30 PM",
-    },
-  ];
-  const totalScheduleAlerts = visits.reduce((sum, visit) => sum + visit.alerts.length, 0);
+  const fetchToday = () => {
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+    setLoading(true);
+    getVisits({ from: todayStart.toISOString(), to: todayEnd.toISOString() })
+      .then(setVisits)
+      .catch(() => setVisits([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchToday(); }, []);
+
+  const handleCheckIn = async (id: string) => {
+    setCheckingIn(id);
+    try {
+      const updated = await updateVisitStatus(id, "IN_PROGRESS");
+      setVisits((prev) => prev.map((v) => (v.id === id ? updated : v)));
+    } catch {
+      // silently ignore
+    } finally {
+      setCheckingIn(null);
+    }
+  };
+
+  const sorted = [...visits].sort(
+    (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+  );
 
   return (
     <div className="clinician-content">
@@ -746,13 +742,13 @@ function TodaySchedule() {
           <SectionKpiChips
             chips={[
               { label: "Visits", value: visits.length },
-              { label: "Active Alerts", value: totalScheduleAlerts },
-              { label: "Selected", value: selectedVisit ? 1 : 0 },
+              { label: "Completed", value: visits.filter((v) => v.status === "COMPLETED").length },
+              { label: "Remaining", value: visits.filter((v) => !["COMPLETED","CANCELLED","MISSED"].includes(v.status)).length },
             ]}
           />
         </div>
         <div className="header-actions">
-          <button className="btn-secondary">
+          <button className="btn-secondary" onClick={fetchToday}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="23 4 23 10 17 10"></polyline>
               <polyline points="1 20 1 14 7 14"></polyline>
@@ -763,97 +759,124 @@ function TodaySchedule() {
         </div>
       </div>
 
-      <div className="schedule-container">
-        <div className="schedule-list">
-          {visits.map((visit) => (
-            <div
-              key={visit.id}
-              className={`visit-card ${selectedVisit === visit.id ? "selected" : ""}`}
-              onClick={() => setSelectedVisit(visit.id)}
-            >
-              <div className="visit-time">
-                <div className="time-primary">{visit.time}</div>
-                <div className="time-secondary">ETA: {visit.estimatedArrival}</div>
+      {loading ? (
+        <div style={{ padding: "2rem", color: "#6b7280" }}>Loading today's schedule...</div>
+      ) : (
+        <div className="schedule-container">
+          <div className="schedule-list">
+            {sorted.length === 0 ? (
+              <div style={{ padding: "2rem", color: "#6b7280", textAlign: "center" }}>
+                No visits scheduled for today.
               </div>
-              <div className="visit-details">
-                <div className="visit-patient card-title-row">
-                  <span className="card-icon-badge">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="8" r="4"></circle>
-                      <path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path>
-                    </svg>
-                  </span>
-                  {visit.patient}
-                </div>
-                <div className="visit-address">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                    <circle cx="12" cy="10" r="3"></circle>
-                  </svg>
-                  {visit.address}
-                </div>
-                <div className="visit-travel">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                  </svg>
-                  Travel: {visit.travelTime}
-                </div>
-                {visit.alerts.length > 0 && (
-                  <div className="visit-alerts">
-                    {visit.alerts.map((alert, idx) => (
-                      <span key={idx} className="alert-badge">{alert}</span>
-                    ))}
+            ) : (
+              sorted.map((visit) => {
+                const { time } = formatVisitDateTime(visit.scheduledAt);
+                const patientName = visit.patient.patientProfile?.legalName ?? visit.patient.username;
+                const isInProgress = visit.status === "IN_PROGRESS";
+                const isDone = visit.status === "COMPLETED" || visit.status === "CANCELLED" || visit.status === "MISSED";
+
+                return (
+                  <div
+                    key={visit.id}
+                    className={`visit-card ${selectedVisit === visit.id ? "selected" : ""}`}
+                    onClick={() => setSelectedVisit(visit.id)}
+                  >
+                    <div className="visit-time">
+                      <div className="time-primary">{time}</div>
+                      <div className="time-secondary">{visit.status.replace("_", " ")}</div>
+                    </div>
+                    <div className="visit-details">
+                      <div className="visit-patient card-title-row">
+                        <span className="card-icon-badge">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="8" r="4"></circle>
+                            <path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path>
+                          </svg>
+                        </span>
+                        {patientName}
+                      </div>
+                      {visit.address && (
+                        <div className="visit-address">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                          </svg>
+                          {visit.address}
+                        </div>
+                      )}
+                      {visit.purpose && (
+                        <div className="visit-travel">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                          </svg>
+                          {visit.purpose}
+                        </div>
+                      )}
+                    </div>
+                    <div className="visit-actions">
+                      {!isInProgress && !isDone && (
+                        <button
+                          className="btn-arrival"
+                          disabled={checkingIn === visit.id}
+                          onClick={(e) => { e.stopPropagation(); handleCheckIn(visit.id); }}
+                        >
+                          {checkingIn === visit.id ? "Checking in..." : "Confirm Arrival"}
+                        </button>
+                      )}
+                      {isInProgress && (
+                        <button className="btn-arrival" disabled style={{ opacity: 0.6 }}>In Progress</button>
+                      )}
+                      {isDone && (
+                        <button className="btn-arrival" disabled style={{ opacity: 0.6 }}>{visit.status}</button>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-              <div className="visit-actions">
-                <button className="btn-arrival">Confirm Arrival</button>
-              </div>
-            </div>
-          ))}
-        </div>
+                );
+              })
+            )}
+          </div>
 
-        <div className="route-panel">
-          <div className="route-header">
-            <h3>Route & Navigation</h3>
-          </div>
-          <div className="route-map">
-            <div className="map-placeholder-route">
-              <div className="route-content">
-                <div className="route-marker start">Start</div>
-                <div className="route-line"></div>
-                <div className="route-marker waypoint">Stop 1</div>
-                <div className="route-line"></div>
-                <div className="route-marker waypoint">Stop 2</div>
-                <div className="route-line"></div>
-                <div className="route-marker waypoint">Stop 3</div>
-                <div className="route-line"></div>
-                <div className="route-marker end">End</div>
+          <div className="route-panel">
+            <div className="route-header"><h3>Route & Navigation</h3></div>
+            <div className="route-map">
+              <div className="map-placeholder-route">
+                <div className="route-content">
+                  <div className="route-marker start">Start</div>
+                  {sorted.slice(0, 3).map((_, i) => (
+                    <div key={i}>
+                      <div className="route-line"></div>
+                      <div className="route-marker waypoint">Stop {i + 1}</div>
+                    </div>
+                  ))}
+                  <div className="route-line"></div>
+                  <div className="route-marker end">End</div>
+                </div>
+              </div>
+            </div>
+            <div className="route-summary">
+              <div className="route-stat">
+                <span className="stat-label">Visits Today</span>
+                <span className="stat-value">{visits.length}</span>
+              </div>
+              <div className="route-stat">
+                <span className="stat-label">Completed</span>
+                <span className="stat-value">{visits.filter((v) => v.status === "COMPLETED").length}</span>
+              </div>
+              <div className="route-stat">
+                <span className="stat-label">Remaining</span>
+                <span className="stat-value">
+                  {visits.filter((v) => !["COMPLETED","CANCELLED","MISSED"].includes(v.status)).length}
+                </span>
               </div>
             </div>
           </div>
-          <div className="route-summary">
-            <div className="route-stat">
-              <span className="stat-label">Total Distance</span>
-              <span className="stat-value">45 miles</span>
-            </div>
-            <div className="route-stat">
-              <span className="stat-label">Total Time</span>
-              <span className="stat-value">1h 30m</span>
-            </div>
-            <div className="route-stat">
-              <span className="stat-label">Visits</span>
-              <span className="stat-value">4</span>
-            </div>
-          </div>
         </div>
-      </div>
+      )}
     </div>
-    
-
-  
   );
-} 
+}
+ 
 
 // Patient Snapshot Panel Component
 function PatientSnapshot() {
