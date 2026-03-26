@@ -153,14 +153,23 @@ router.get("/:id", async (req: Request, res: Response) => {
 });
 
 // POST /api/visits
-// Admin only — create a new visit.
-// Body: { patientId, clinicianId, scheduledAt, visitType?, purpose?,
+// Admin or Patient — create a new visit.
+//   ADMIN:   supplies patientId, clinicianId, scheduledAt, etc.
+//   PATIENT: patientId is auto-set to the caller; must provide clinicianId
+//            (must be an assigned clinician). Visit starts as SCHEDULED for
+//            admin to review and confirm.
+// Body: { patientId? (admin), clinicianId, scheduledAt, visitType?, purpose?,
 //         address?, notes?, durationMinutes? }
-router.post("/", requireAdmin, async (req: Request, res: Response) => {
+router.post("/", async (req: Request, res: Response) => {
   try {
-    const admin = getUser(req);
+    const user = getUser(req);
+
+    if (user.role !== "ADMIN" && user.role !== "PATIENT") {
+      return res.status(403).json({ error: "Only admins and patients can create visits" });
+    }
+
     const {
-      patientId,
+      patientId: bodyPatientId,
       clinicianId,
       scheduledAt,
       visitType,
@@ -170,10 +179,13 @@ router.post("/", requireAdmin, async (req: Request, res: Response) => {
       durationMinutes,
     } = req.body || {};
 
+    // Determine the patient
+    const patientId = user.role === "PATIENT" ? user.id : bodyPatientId;
+
     // Required fields
     if (!patientId || !clinicianId || !scheduledAt) {
       return res.status(400).json({
-        error: "patientId, clinicianId, and scheduledAt are required",
+        error: "clinicianId and scheduledAt are required",
       });
     }
 
@@ -233,7 +245,7 @@ router.post("/", requireAdmin, async (req: Request, res: Response) => {
         purpose:   purpose   ?? null,
         address:   visitAddress ?? null,
         notes:     notes     ?? null,
-        createdBy: admin.id,
+        createdBy: user.id,
       },
       select: visitSelect,
     });

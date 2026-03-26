@@ -567,6 +567,33 @@
   color: #6b7280;
 }
 
+/* Assignment Form */
+.assign-form {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.assign-form-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.assign-form-row .form-group {
+  flex: 1;
+}
+
+.assign-form-row .form-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.35rem;
+}
+
 /* User Management */
 .user-management {
   background: white;
@@ -2145,6 +2172,274 @@
   
   .action-buttons {
     flex-wrap: wrap;
+  }
+}
+
+/* ─── Availability Review ─────────────────────────────────────────────────── */
+
+.avail-kpi-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.avail-kpi-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 90px;
+}
+
+.avail-kpi-chip:hover {
+  border-color: #6E5B9A;
+  box-shadow: 0 2px 8px rgba(110, 91, 154, 0.15);
+}
+
+.avail-kpi-chip.active,
+.avail-kpi-chip.pending:hover {
+  border-color: #f59e0b;
+}
+
+.avail-kpi-chip.approved:hover {
+  border-color: #22c55e;
+}
+
+.avail-kpi-chip.rejected:hover {
+  border-color: #ef4444;
+}
+
+.avail-kpi-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.avail-kpi-label {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-top: 0.15rem;
+}
+
+.avail-empty {
+  background: #f9fafb;
+  border: 1px dashed #d1d5db;
+  border-radius: 10px;
+  padding: 2rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.avail-table-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+}
+
+.avail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.avail-table thead {
+  background: #f9fafb;
+}
+
+.avail-table th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  color: #374151;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.avail-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #4b5563;
+  vertical-align: middle;
+}
+
+.avail-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.avail-cell-clinician {
+  min-width: 160px;
+}
+
+.avail-clinician-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.avail-clinician-email {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.avail-cell-note {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.avail-cell-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.btn-approve {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-approve:hover {
+  background: #bbf7d0;
+  border-color: #86efac;
+}
+
+.btn-approve:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-reject {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-reject:hover {
+  background: #fecaca;
+  border-color: #fca5a5;
+}
+
+.btn-reject:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-delete-avail {
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  color: #9ca3af;
+  border-radius: 6px;
+  padding: 0.35rem 0.45rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.btn-delete-avail:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.btn-delete-avail:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.avail-review-modal {
+  max-width: 480px;
+}
+
+.avail-review-modal .form-textarea {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.avail-review-modal .form-textarea:focus {
+  outline: none;
+  border-color: #6E5B9A;
+  box-shadow: 0 0 0 2px rgba(110, 91, 154, 0.15);
+}
+
+/* Shared availability status badges (reused from clinician) */
+.avail-status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.avail-status-approved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.avail-status-rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.submission-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  padding: 0.3rem 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 1024px) {
+  .avail-table {
+    font-size: 0.82rem;
+  }
+
+  .avail-table th,
+  .avail-table td {
+    padding: 0.6rem 0.75rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .avail-kpi-row {
+    gap: 0.5rem;
+  }
+
+  .avail-kpi-chip {
+    padding: 0.5rem 0.75rem;
+    min-width: 70px;
+  }
+
+  .avail-cell-actions {
+    flex-direction: column;
+    gap: 0.3rem;
   }
 }
 
