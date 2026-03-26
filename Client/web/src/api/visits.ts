@@ -137,3 +137,17 @@ export async function updateVisitStatus(
   const res = await api.patch(`/api/visits/${id}`, { status, cancelReason });
   return res.data.visit;
 }
+
+/** Patient (or admin) creates a new visit request. Starts as SCHEDULED for admin review. */
+export async function createVisitRequest(data: {
+  clinicianId: string;
+  scheduledAt: string;
+  visitType?: VisitType;
+  purpose?: string;
+  address?: string;
+  notes?: string;
+  durationMinutes?: number;
+}): Promise<ApiVisit> {
+  const res = await api.post("/api/visits", data);
+  return res.data.visit;
+}

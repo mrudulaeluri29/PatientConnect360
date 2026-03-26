@@ -8,10 +8,12 @@ import { mockVisits } from "../../data/mockVisits";
 import {
   getVisits,
   updateVisitStatus,
+  createVisitRequest,
   formatVisitDateTime,
   visitTypeLabel,
   clinicianAvatar,
   type ApiVisit,
+  type VisitType,
 } from "../../api/visits";
 import {
   getMedications,
@@ -27,6 +29,11 @@ import {
   type ApiVital,
   type VitalType,
 } from "../../api/vitals";
+import {
+  getMyAvailability,
+  formatAvailabilityDate,
+  type ApiAvailability,
+} from "../../api/availability";
 
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -126,36 +133,53 @@ export default function PatientDashboard() {
 // overview Tab Component
 function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void }) {
   const { user } = useAuth();
+  const [allVisits, setAllVisits] = useState<ApiVisit[]>([]);
   const [upcomingVisits, setUpcomingVisits] = useState<ApiVisit[]>([]);
   const [careTeam, setCareTeam] = useState<{ id: string; username: string; specialization: string | null }[]>([]);
   const [refillAlerts, setRefillAlerts] = useState<ApiMedication[]>([]);
+  const [teamAvailability, setTeamAvailability] = useState<ApiAvailability[]>([]);
+  const [selectedClinician, setSelectedClinician] = useState<{ id: string; username: string; specialization: string | null } | null>(null);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestClinician, setRequestClinician] = useState<{ id: string; username: string } | null>(null);
 
-  useEffect(() => {
-    // Fetch next 2 upcoming visits for the summary card
+  const refreshVisits = () => {
     getVisits()
       .then((all) => {
+        setAllVisits(all);
         const upcoming = all
           .filter((v) => !["COMPLETED", "CANCELLED", "MISSED"].includes(v.status))
           .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
           .slice(0, 2);
         setUpcomingVisits(upcoming);
-
-        // Derive care team from unique clinicians in visits
-        const seen = new Set<string>();
-        const team: typeof careTeam = [];
-        for (const v of all) {
-          if (!seen.has(v.clinician.id)) {
-            seen.add(v.clinician.id);
-            team.push({
-              id: v.clinician.id,
-              username: v.clinician.username,
-              specialization: v.clinician.clinicianProfile?.specialization ?? null,
-            });
-          }
-        }
-        setCareTeam(team);
       })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    refreshVisits();
+
+    // Fetch assigned clinicians from actual PatientAssignment records
+    api.get("/api/simple-messages/assigned-clinicians")
+      .then((res) => {
+        const clinicians = (res.data.clinicians || []).map((c: any) => ({
+          id: c.id,
+          username: c.username,
+          specialization: (c.specialization as string) ?? null,
+        }));
+        setCareTeam(clinicians);
+      })
+      .catch(() => {});
+
+    // Fetch approved availability for assigned clinicians (backend handles scoping)
+    getMyAvailability()
+      .then((slots) => {
+        const upcoming = slots
+          .filter((s) => new Date(s.date) >= new Date(new Date().toDateString()))
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .slice(0, 6);
+        setTeamAvailability(upcoming);
+      })
+      .catch(() => setTeamAvailability([]));
 
     // Fetch medications with refill due within 7 days
     getMedications({ status: "ACTIVE" })
@@ -223,7 +247,7 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
           </div>
         </div>
 
-        {/* Assigned Clinicians — derived from visit history */}
+        {/* Assigned Clinicians — clickable to see history + schedule */}
         <div className="overview-card">
           <h3 className="card-title">Your Care Team</h3>
           <div className="clinicians-list">
@@ -231,16 +255,76 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
               <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>No care team assigned yet.</div>
             ) : (
               careTeam.map((c) => (
-                <div key={c.id} className="clinician-item">
+                <div
+                  key={c.id}
+                  className={`clinician-item clinician-item-clickable ${selectedClinician?.id === c.id ? "clinician-item-active" : ""}`}
+                  onClick={() => setSelectedClinician(selectedClinician?.id === c.id ? null : c)}
+                >
                   <div className="clinician-avatar">{clinicianAvatar(c.username)}</div>
                   <div className="clinician-info">
                     <div className="clinician-name">{c.username}</div>
                     <div className="clinician-discipline">{c.specialization ?? "Clinician"}</div>
                   </div>
+                  <svg className="clinician-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points={selectedClinician?.id === c.id ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+                  </svg>
                 </div>
               ))
             )}
           </div>
+
+          {/* Expanded clinician detail panel */}
+          {selectedClinician && (() => {
+            const clinicianVisits = allVisits
+              .filter((v) => v.clinician.id === selectedClinician.id)
+              .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
+
+            return (
+              <div className="clinician-detail-panel">
+                <div className="clinician-detail-header">
+                  <div className="clinician-avatar">{clinicianAvatar(selectedClinician.username)}</div>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{selectedClinician.username}</div>
+                    <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>{selectedClinician.specialization ?? "Clinician"}</div>
+                  </div>
+                  <button
+                    className="btn-primary"
+                    style={{ marginLeft: "auto", fontSize: "0.85rem", padding: "0.4rem 0.9rem" }}
+                    onClick={() => {
+                      setRequestClinician({ id: selectedClinician.id, username: selectedClinician.username });
+                      setShowRequestModal(true);
+                    }}
+                  >
+                    Schedule Visit
+                  </button>
+                </div>
+                <h4 style={{ fontSize: "0.9rem", color: "#374151", margin: "0.75rem 0 0.4rem" }}>Visit History</h4>
+                {clinicianVisits.length === 0 ? (
+                  <div style={{ color: "#6b7280", fontSize: "0.85rem" }}>No visit history with this clinician.</div>
+                ) : (
+                  <div className="clinician-visit-history">
+                    {clinicianVisits.slice(0, 5).map((v) => {
+                      const { date, time } = formatVisitDateTime(v.scheduledAt);
+                      return (
+                        <div key={v.id} className="history-visit-row">
+                          <div className="history-visit-date">{date}, {time}</div>
+                          <div className="history-visit-type">{visitTypeLabel(v.visitType)}</div>
+                          <span className={`history-visit-status status-${v.status.toLowerCase()}`}>
+                            {v.status.replace("_", " ")}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {clinicianVisits.length > 5 && (
+                      <button className="btn-view-all" onClick={onNavigateToVisits}>
+                        View all {clinicianVisits.length} visits
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Health Alerts — driven by real refill data */}
@@ -268,7 +352,47 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
             )}
           </div>
         </div>
+
+        {/* Care Team Availability — shows approved slots for assigned clinicians */}
+        <div className="overview-card">
+          <h3 className="card-title">Care Team Availability</h3>
+          <div className="team-availability-list">
+            {teamAvailability.length === 0 ? (
+              <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>No upcoming availability from your care team.</div>
+            ) : (
+              teamAvailability.map((slot) => (
+                <div key={slot.id} className="team-avail-item">
+                  <div className="team-avail-clinician">
+                    <div className="clinician-avatar">
+                      {clinicianAvatar(slot.clinician.username)}
+                    </div>
+                    <div className="team-avail-info">
+                      <div className="team-avail-name">{slot.clinician.username}</div>
+                      <div className="team-avail-spec">
+                        {slot.clinician.clinicianProfile?.specialization ?? "Clinician"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="team-avail-schedule">
+                    <div className="team-avail-date">{formatAvailabilityDate(slot.date)}</div>
+                    <div className="team-avail-time">{slot.startTime} – {slot.endTime}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Visit Request Modal */}
+      {showRequestModal && requestClinician && (
+        <VisitRequestModal
+          clinician={requestClinician}
+          careTeam={careTeam}
+          onClose={() => { setShowRequestModal(false); setRequestClinician(null); }}
+          onCreated={() => { refreshVisits(); setShowRequestModal(false); setRequestClinician(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -280,17 +404,40 @@ function UpcomingVisits() {
   const [visits, setVisits] = useState<ApiVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [careTeam, setCareTeam] = useState<{ id: string; username: string; specialization: string | null }[]>([]);
 
-  useEffect(() => {
+  const fetchVisits = () => {
     getVisits({ status: undefined })
       .then(setVisits)
       .catch(() => setVisits([]))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchVisits();
+
+    // Fetch assigned clinicians from actual PatientAssignment records
+    api.get("/api/simple-messages/assigned-clinicians")
+      .then((res) => {
+        const clinicians = (res.data.clinicians || []).map((c: any) => ({
+          id: c.id,
+          username: c.username,
+          specialization: (c.specialization as string) ?? null,
+        }));
+        setCareTeam(clinicians);
+      })
+      .catch(() => {});
   }, []);
 
   const upcomingVisits = visits
     .filter((v) => !["COMPLETED", "CANCELLED", "MISSED"].includes(v.status))
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+
+  const pastVisits = visits
+    .filter((v) => ["COMPLETED", "CANCELLED", "MISSED"].includes(v.status))
+    .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
 
   const handleConfirm = async (id: string) => {
     setConfirming(id);
@@ -301,6 +448,19 @@ function UpcomingVisits() {
       // silently ignore — user can retry
     } finally {
       setConfirming(null);
+    }
+  };
+
+  const handleCancel = async (id: string) => {
+    if (!confirm("Are you sure you want to cancel this visit?")) return;
+    setCancelling(id);
+    try {
+      const updated = await updateVisitStatus(id, "CANCELLED");
+      setVisits((prev) => prev.map((v) => (v.id === id ? updated : v)));
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to cancel visit");
+    } finally {
+      setCancelling(null);
     }
   };
 
@@ -316,13 +476,23 @@ function UpcomingVisits() {
   return (
     <div className="patient-content">
       <div className="content-header">
-        <h2 className="section-title">Upcoming Visits</h2>
+        <h2 className="section-title">Visits</h2>
+        <button className="btn-primary" onClick={() => setShowRequestModal(true)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Request a Visit
+        </button>
       </div>
 
+      {/* Upcoming */}
+      <h3 style={{ fontSize: "1rem", color: "#374151", margin: "1rem 0 0.5rem" }}>Upcoming</h3>
       <div className="visits-container">
         {upcomingVisits.length === 0 ? (
-          <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280" }}>
+          <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>
             <p>No upcoming visits scheduled.</p>
+            <p style={{ fontSize: "0.9rem", marginTop: "0.5rem" }}>Request a new visit using the button above.</p>
           </div>
         ) : (
           upcomingVisits.map((visit) => {
@@ -330,6 +500,7 @@ function UpcomingVisits() {
             const avatar = clinicianAvatar(visit.clinician.username);
             const discipline = visit.clinician.clinicianProfile?.specialization ?? visitTypeLabel(visit.visitType);
             const isConfirmed = visit.status === "CONFIRMED";
+            const canCancel = !["COMPLETED", "CANCELLED", "MISSED"].includes(visit.status);
 
             return (
               <div key={visit.id} className="visit-card-large">
@@ -370,7 +541,7 @@ function UpcomingVisits() {
                 )}
 
                 <div className="visit-actions">
-                  {!isConfirmed && (
+                  {visit.status === "SCHEDULED" && (
                     <button
                       className="btn-confirm"
                       disabled={confirming === visit.id}
@@ -384,13 +555,65 @@ function UpcomingVisits() {
                       Confirmed ✓
                     </button>
                   )}
-                  <button className="btn-reschedule-visit">Reschedule</button>
+                  {canCancel && (
+                    <button
+                      className="btn-cancel-visit"
+                      disabled={cancelling === visit.id}
+                      onClick={() => handleCancel(visit.id)}
+                    >
+                      {cancelling === visit.id ? "Cancelling..." : "Cancel"}
+                    </button>
+                  )}
                 </div>
               </div>
             );
           })
         )}
       </div>
+
+      {/* Past Visits */}
+      {pastVisits.length > 0 && (
+        <>
+          <h3 style={{ fontSize: "1rem", color: "#374151", margin: "1.5rem 0 0.5rem" }}>Past Visits</h3>
+          <div className="visits-container">
+            {pastVisits.slice(0, 5).map((visit) => {
+              const { date, time } = formatVisitDateTime(visit.scheduledAt);
+              return (
+                <div key={visit.id} className="visit-card-large" style={{ opacity: 0.75 }}>
+                  <div className="visit-card-header">
+                    <div className="visit-date-time">
+                      <div className="visit-date-large">{date}</div>
+                      <div className="visit-time-large">{time}</div>
+                    </div>
+                    <span className={`visit-status-badge status-${visit.status.toLowerCase()}`}>
+                      {visit.status.replace("_", " ")}
+                    </span>
+                  </div>
+                  <div className="visit-clinician-info">
+                    <div className="clinician-avatar-large">{clinicianAvatar(visit.clinician.username)}</div>
+                    <div className="clinician-details">
+                      <div className="clinician-name-large">{visit.clinician.username}</div>
+                      <div className="clinician-discipline-large">
+                        {visit.clinician.clinicianProfile?.specialization ?? visitTypeLabel(visit.visitType)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Visit Request Modal */}
+      {showRequestModal && (
+        <VisitRequestModal
+          clinician={null}
+          careTeam={careTeam}
+          onClose={() => setShowRequestModal(false)}
+          onCreated={() => { fetchVisits(); setShowRequestModal(false); }}
+        />
+      )}
     </div>
   );
 }
@@ -1312,6 +1535,177 @@ function FamilyAccessPanel() {
               <button className="btn-text">Manage Consents</button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Shared Visit Request Modal ──────────────────────────────────────────────
+const VISIT_TYPES: { value: VisitType; label: string }[] = [
+  { value: "HOME_HEALTH",          label: "Home Health" },
+  { value: "WOUND_CARE",           label: "Wound Care" },
+  { value: "PHYSICAL_THERAPY",     label: "Physical Therapy" },
+  { value: "OCCUPATIONAL_THERAPY", label: "Occupational Therapy" },
+  { value: "SPEECH_THERAPY",       label: "Speech Therapy" },
+  { value: "MEDICATION_REVIEW",    label: "Medication Review" },
+  { value: "POST_DISCHARGE",       label: "Post-Discharge" },
+  { value: "ROUTINE_CHECKUP",      label: "Routine Check-Up" },
+  { value: "OTHER",                label: "Other" },
+];
+
+interface VisitRequestModalProps {
+  clinician: { id: string; username: string } | null;
+  careTeam: { id: string; username: string; specialization: string | null }[];
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+function VisitRequestModal({ clinician, careTeam, onClose, onCreated }: VisitRequestModalProps) {
+  const [selectedClinicianId, setSelectedClinicianId] = useState(clinician?.id || "");
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("09:00");
+  const [visitType, setVisitType] = useState<VisitType>("ROUTINE_CHECKUP");
+  const [purpose, setPurpose] = useState("");
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async () => {
+    if (!selectedClinicianId || !scheduledDate || !scheduledTime) {
+      setError("Please select a clinician, date, and time.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+
+    try {
+      const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
+      await createVisitRequest({
+        clinicianId: selectedClinicianId,
+        scheduledAt,
+        visitType,
+        purpose: purpose || undefined,
+        notes: notes || undefined,
+      });
+      onCreated();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to submit visit request.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content visit-request-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Request a Visit</h3>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div className="modal-body">
+          <p className="visit-request-note">
+            Your visit request will be submitted for admin approval. You'll see it in your Visits tab once confirmed.
+          </p>
+
+          {error && (
+            <div className="visit-request-error">{error}</div>
+          )}
+
+          <div className="form-group">
+            <label>Clinician</label>
+            {clinician ? (
+              <div className="visit-request-clinician-badge">
+                {clinician.username}
+              </div>
+            ) : (
+              <select
+                value={selectedClinicianId}
+                onChange={(e) => setSelectedClinicianId(e.target.value)}
+                className="form-select"
+              >
+                <option value="">-- Select a clinician --</option>
+                {careTeam.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.username} {c.specialization ? `(${c.specialization})` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="form-row-inline">
+            <div className="form-group">
+              <label>Preferred Date</label>
+              <input
+                type="date"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
+                className="form-input"
+              />
+            </div>
+            <div className="form-group">
+              <label>Preferred Time</label>
+              <input
+                type="time"
+                value={scheduledTime}
+                onChange={(e) => setScheduledTime(e.target.value)}
+                className="form-input"
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Visit Type</label>
+            <select
+              value={visitType}
+              onChange={(e) => setVisitType(e.target.value as VisitType)}
+              className="form-select"
+            >
+              {VISIT_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Purpose / Reason</label>
+            <input
+              type="text"
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder="e.g. Follow-up on knee rehab"
+              className="form-input"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Additional Notes (optional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Any additional details for the care team..."
+              rows={3}
+              className="form-textarea"
+            />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button
+            className="btn-primary"
+            onClick={handleSubmit}
+            disabled={submitting || !selectedClinicianId || !scheduledDate}
+          >
+            {submitting ? "Submitting..." : "Submit Request"}
+          </button>
         </div>
       </div>
     </div>

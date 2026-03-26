@@ -10,7 +10,15 @@ import {
   visitTypeLabel,
   type ApiVisit,
 } from "../../api/visits";
-import { submitAvailabilityBatch, getMyAvailability, type ApiAvailability } from "../../api/availability";
+import {
+  submitAvailabilityBatch,
+  getMyAvailability,
+  deleteAvailability,
+  availabilityStatusClass,
+  formatAvailabilityDate,
+  type ApiAvailability,
+  type AvailabilityStatus,
+} from "../../api/availability";
 
 export default function ClinicianDashboard() {
   const [activeTab, setActiveTab] = useState("schedule");
@@ -369,6 +377,12 @@ function AppointmentsHub() {
   const [rangeEnd, setRangeEnd] = useState("");
   const [availabilityByDate, setAvailabilityByDate] = useState<Record<string, { start: string; end: string }>>({});
   const [submitMessage, setSubmitMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Submitted availability history
+  const [submissions, setSubmissions] = useState<ApiAvailability[]>([]);
+  const [subsLoading, setSubsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const upcomingAppointments = [
     { id: "a1", patient: "John Doe", type: "Home Health Follow-up", date: "2026-03-05", time: "09:00 AM", location: "Phoenix, AZ", status: "Confirmed" },
@@ -378,11 +392,21 @@ function AppointmentsHub() {
     { id: "a5", patient: "Carlos Martinez", type: "Wound Care", date: "2026-03-08", time: "01:00 PM", location: "Tempe, AZ", status: "Confirmed" },
   ];
 
+  useEffect(() => {
+    getMyAvailability()
+      .then(setSubmissions)
+      .catch(() => setSubmissions([]))
+      .finally(() => setSubsLoading(false));
+  }, []);
+
   const filteredAppointments = upcomingAppointments.filter((appt) =>
     appt.patient.toLowerCase().includes(searchTerm.toLowerCase())
   );
   const confirmedAppointments = upcomingAppointments.filter((appt) => appt.status === "Confirmed").length;
   const pendingAppointments = upcomingAppointments.filter((appt) => appt.status === "Pending").length;
+
+  const pendingSubmissions = submissions.filter((s) => s.status === "PENDING").length;
+  const approvedSubmissions = submissions.filter((s) => s.status === "APPROVED").length;
 
   const buildDateRange = (start: string, end: string) => {
     const dates: string[] = [];
@@ -426,12 +450,55 @@ function AppointmentsHub() {
     }));
   };
 
-  const handleSubmitAvailability = () => {
-    if (Object.keys(availabilityByDate).length === 0) {
+  const handleRemoveDay = (date: string) => {
+    setAvailabilityByDate((prev) => {
+      const next = { ...prev };
+      delete next[date];
+      return next;
+    });
+  };
+
+  const handleSubmitAvailability = async () => {
+    const entries = Object.entries(availabilityByDate);
+    if (entries.length === 0) {
       setSubmitMessage("Add an availability date range before submitting.");
       return;
     }
-    setSubmitMessage("Sent to admin.");
+
+    setSubmitting(true);
+    setSubmitMessage("");
+
+    try {
+      const days = entries.map(([date, times]) => ({
+        date,
+        startTime: times.start,
+        endTime: times.end,
+      }));
+      const result = await submitAvailabilityBatch(days);
+      setSubmitMessage(`Submitted ${result.count} day${result.count === 1 ? "" : "s"} — pending admin review.`);
+      setAvailabilityByDate({});
+      setRangeStart("");
+      setRangeEnd("");
+      // Refresh the submissions list
+      const refreshed = await getMyAvailability();
+      setSubmissions(refreshed);
+    } catch (err: any) {
+      setSubmitMessage(err.response?.data?.error || "Failed to submit availability.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteSubmission = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteAvailability(id);
+      setSubmissions((prev) => prev.filter((s) => s.id !== id));
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to delete submission.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -443,7 +510,8 @@ function AppointmentsHub() {
             chips={[
               { label: "Upcoming", value: upcomingAppointments.length },
               { label: "Confirmed", value: confirmedAppointments },
-              { label: "Pending", value: pendingAppointments },
+              { label: "Pending Review", value: pendingSubmissions },
+              { label: "Approved", value: approvedSubmissions },
             ]}
           />
         </div>
@@ -490,7 +558,7 @@ function AppointmentsHub() {
 
         <section className="availability-panel">
           <h3>Submit Availability to Admin</h3>
-          <p className="availability-subtitle">Select a date range, adjust daily hours, then submit.</p>
+          <p className="availability-subtitle">Select a date range, adjust daily hours, then submit. Resubmitting a date resets it to pending for re-approval.</p>
           <div className="availability-range">
             <div className="availability-field">
               <label>Start Date</label>
@@ -530,17 +598,71 @@ function AppointmentsHub() {
                         />
                       </label>
                     </div>
+                    <button
+                      className="btn-remove-day"
+                      onClick={() => handleRemoveDay(date)}
+                      title="Remove this day"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
                   </div>
                 ))
             )}
           </div>
 
           <div className="availability-actions">
-            <button className="btn-primary" onClick={handleSubmitAvailability}>Submit Availability</button>
+            <button className="btn-primary" onClick={handleSubmitAvailability} disabled={submitting}>
+              {submitting ? "Submitting..." : "Submit Availability"}
+            </button>
             {submitMessage && <span className="availability-message">{submitMessage}</span>}
           </div>
         </section>
       </div>
+
+      {/* My Submissions History */}
+      <section className="submissions-history-panel">
+        <h3>My Submissions</h3>
+        {subsLoading ? (
+          <div style={{ color: "#6b7280", padding: "1rem 0" }}>Loading submissions...</div>
+        ) : submissions.length === 0 ? (
+          <div className="availability-empty">No availability submissions yet.</div>
+        ) : (
+          <div className="submissions-list">
+            {submissions.map((sub) => (
+              <div key={sub.id} className="submission-row">
+                <div className="submission-date">{formatAvailabilityDate(sub.date)}</div>
+                <div className="submission-time">{sub.startTime} – {sub.endTime}</div>
+                <span className={`submission-status ${availabilityStatusClass(sub.status)}`}>
+                  {sub.status}
+                </span>
+                {sub.reviewNote && (
+                  <div className="submission-note" title={sub.reviewNote}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="16" x2="12" y2="12"></line>
+                      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                    </svg>
+                    {sub.reviewNote}
+                  </div>
+                )}
+                {sub.status === "PENDING" && (
+                  <button
+                    className="btn-delete-submission"
+                    onClick={() => handleDeleteSubmission(sub.id)}
+                    disabled={deletingId === sub.id}
+                    title="Withdraw this submission"
+                  >
+                    {deletingId === sub.id ? "..." : "Withdraw"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

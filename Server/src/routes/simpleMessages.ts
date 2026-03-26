@@ -41,6 +41,7 @@ router.get("/assigned-clinicians", async (req: Request, res: Response) => {
             id: true,
             username: true,
             email: true,
+            clinicianProfile: { select: { specialization: true } },
           },
         },
       },
@@ -50,6 +51,7 @@ router.get("/assigned-clinicians", async (req: Request, res: Response) => {
       id: a.clinician.id,
       username: a.clinician.username,
       email: a.clinician.email,
+      specialization: a.clinician.clinicianProfile?.specialization ?? null,
     }));
 
     res.json({ clinicians });
