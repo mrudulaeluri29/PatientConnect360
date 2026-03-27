@@ -71,6 +71,23 @@ interface OverviewData {
   alerts: OverviewAlert[];
 }
 
+type AccessPayload = {
+  role: "CAREGIVER" | "PRIMARY_MPOA";
+  linkedPatients: Array<{
+    linkId: string;
+    patientId: string;
+    patientName: string;
+    relationship: string;
+    isPrimary: boolean;
+  }>;
+  permissions: {
+    readAccess: Record<string, boolean>;
+    communication: Record<string, boolean>;
+    management: Record<string, boolean>;
+    restrictions: Record<string, boolean>;
+  };
+};
+
 const VISIT_TYPE_LABELS: Record<string, string> = {
   HOME_HEALTH: "Home Health",
   WOUND_CARE: "Wound Care",
@@ -151,6 +168,9 @@ export default function CaregiverDashboard() {
             <button className={`nav-item ${activeTab === "alerts" ? "active" : ""}`} onClick={() => setActiveTab("alerts")}>
               Alerts
             </button>
+            <button className={`nav-item ${activeTab === "access" ? "active" : ""}`} onClick={() => setActiveTab("access")}>
+              Access
+            </button>
             <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
               Messages
             </button>
@@ -173,6 +193,7 @@ export default function CaregiverDashboard() {
         {activeTab === "medications" && <CaregiverMedications />}
         {activeTab === "progress" && <CaregiverProgress />}
         {activeTab === "alerts" && <CaregiverAlerts onNavigate={setActiveTab} />}
+        {activeTab === "access" && <CaregiverAccess />}
         {activeTab === "messages" && <CaregiverMessages />}
       </main>
     </div>
@@ -573,6 +594,119 @@ function CaregiverAlerts({ onNavigate }: { onNavigate: (tab: string) => void }) 
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function CaregiverAccess() {
+  const [data, setData] = useState<AccessPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get("/api/caregiver/access")
+      .then((res) => setData(res.data))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="cg-loading">Loading access settings...</div>;
+
+  if (!data) {
+    return (
+      <div className="cg-content">
+        <div className="cg-empty">Unable to load access settings.</div>
+      </div>
+    );
+  }
+
+  const yesNo = (v: boolean) => (v ? "Yes" : "No");
+  const toLabel = (key: string) =>
+    key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (c) => c.toUpperCase())
+      .trim();
+
+  return (
+    <div className="cg-content">
+      <div className="cg-section-header">
+        <h2 className="cg-section-title">Access &amp; Permissions</h2>
+      </div>
+
+      <div className="cg-access-head">
+        <span className={`cg-order-status ${data.role === "PRIMARY_MPOA" ? "ok" : "warning"}`}>
+          {data.role === "PRIMARY_MPOA" ? "Primary MPOA" : "Caregiver"}
+        </span>
+        <span className="cg-access-note">
+          Access level is role-based and audited for compliance.
+        </span>
+      </div>
+
+      <div className="cg-access-grid">
+        <div className="cg-card info">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Linked Patients</h3>
+            <span className="cg-card-count">{data.linkedPatients.length}</span>
+          </div>
+          {data.linkedPatients.length === 0 ? (
+            <div className="cg-empty">No linked patients.</div>
+          ) : (
+            <div className="cg-order-list">
+              {data.linkedPatients.map((p) => (
+                <div key={p.linkId} className="cg-order-item">
+                  <div className="cg-order-name">{p.patientName}</div>
+                  <div className="cg-order-sub">
+                    {p.relationship} {p.isPrimary ? "· Primary MPOA" : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <PermissionCard title="Read Access" flags={data.permissions.readAccess} />
+        <PermissionCard title="Communication Rights" flags={data.permissions.communication} />
+        <PermissionCard title="Management Rights" flags={data.permissions.management} />
+
+        <div className="cg-card alerts">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Restricted Actions</h3>
+          </div>
+          <div className="cg-access-list">
+            {Object.entries(data.permissions.restrictions).map(([k, v]) => (
+              <div key={k} className="cg-access-row restricted">
+                <span>{toLabel(k)}</span>
+                <strong>{yesNo(v)}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PermissionCard({ title, flags }: { title: string; flags: Record<string, boolean> }) {
+  const toLabel = (key: string) =>
+    key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (c) => c.toUpperCase())
+      .trim();
+  const yesNo = (v: boolean) => (v ? "Yes" : "No");
+
+  return (
+    <div className="cg-card info">
+      <div className="cg-card-header">
+        <h3 className="cg-card-title">{title}</h3>
+      </div>
+      <div className="cg-access-list">
+        {Object.entries(flags).map(([k, v]) => (
+          <div key={k} className={`cg-access-row ${v ? "allowed" : "blocked"}`}>
+            <span>{toLabel(k)}</span>
+            <strong>{yesNo(v)}</strong>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

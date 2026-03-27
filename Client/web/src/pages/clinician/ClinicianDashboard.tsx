@@ -828,11 +828,27 @@ function TodaySchedule() {
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
 
+  const toOffsetIsoString = (d: Date) => {
+    const pad = (n: number) => String(Math.trunc(Math.abs(n))).padStart(2, "0");
+    const tzMinutes = -d.getTimezoneOffset(); // local offset from UTC in minutes
+    const sign = tzMinutes >= 0 ? "+" : "-";
+    const hh = pad(tzMinutes / 60);
+    const mm = pad(tzMinutes % 60);
+
+    return (
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+      `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, "0")}` +
+      `${sign}${hh}:${mm}`
+    );
+  };
+
   const fetchToday = () => {
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
     setLoading(true);
-    getVisits({ from: todayStart.toISOString(), to: todayEnd.toISOString() })
+    getVisits({ from: toOffsetIsoString(todayStart), to: toOffsetIsoString(todayEnd) })
       .then(setVisits)
       .catch(() => setVisits([]))
       .finally(() => setLoading(false));

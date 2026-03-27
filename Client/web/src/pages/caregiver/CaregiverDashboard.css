@@ -1228,6 +1228,53 @@
   flex-shrink: 0;
 }
 
+/* ─── Access Tab ───────────────────────────────────────────────────────────── */
+
+.cg-access-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.cg-access-note {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.cg-access-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.cg-access-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cg-access-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.83rem;
+}
+
+.cg-access-row.allowed {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.cg-access-row.blocked,
+.cg-access-row.restricted {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
 /* ─── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 1024px) {
