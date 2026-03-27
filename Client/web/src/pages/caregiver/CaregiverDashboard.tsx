@@ -4,7 +4,7 @@ import { api } from "../../lib/axios";
 import {
   getVisits,
   updateVisitStatus,
-  submitRescheduleRequest,
+  submitRescheduleRequest as submitVisitRescheduleRequest,
   formatVisitDateTime,
   visitTypeLabel,
   type ApiVisit,
@@ -1185,7 +1185,7 @@ function CaregiverSchedule() {
     setReschedDateTime("");
   };
 
-  const submitRescheduleRequest = async () => {
+  const handleSubmitRescheduleRequest = async () => {
     if (!showReschedule) return;
     if (!selectedPatient) return;
 
@@ -1202,7 +1202,7 @@ function CaregiverSchedule() {
     setReschedSubmitting(true);
     setReschedError("");
     try {
-      await submitRescheduleRequest(showReschedule.id, {
+      await submitVisitRescheduleRequest(showReschedule.id, {
         scheduledAt: iso,
         reason: reschedReason.trim(),
       });
@@ -1390,7 +1390,7 @@ function CaregiverSchedule() {
               <button className="btn-secondary" onClick={() => setShowReschedule(null)} disabled={reschedSubmitting}>
                 Close
               </button>
-              <button className="btn-primary" onClick={submitRescheduleRequest} disabled={reschedSubmitting}>
+              <button className="btn-primary" onClick={handleSubmitRescheduleRequest} disabled={reschedSubmitting}>
                 {reschedSubmitting ? "Submitting..." : "Submit Request"}
               </button>
             </div>
