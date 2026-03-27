@@ -17,8 +17,11 @@ export default function RequirePatient({ children }: { children: React.ReactElem
     return <Navigate to="/login" replace />;
   }
 
-  // Allow PATIENT and CAREGIVER roles to access patient dashboard
-  if (user.role !== "PATIENT" && user.role !== "CAREGIVER") {
+  if (user.role === "CAREGIVER") {
+    return <Navigate to="/caregiver/dashboard" replace />;
+  }
+
+  if (user.role !== "PATIENT") {
     if (user.role === "ADMIN") {
       return <Navigate to="/admin/dashboard" replace />;
     }

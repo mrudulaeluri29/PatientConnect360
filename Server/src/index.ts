@@ -15,6 +15,7 @@ import vitalRoutes from "./routes/vitals";
 import availabilityRoutes from "./routes/availability";
 import caregiverInvitationRoutes from "./routes/caregiverInvitations";
 import caregiverLinkRoutes from "./routes/caregiverLinks";
+import caregiverOverviewRoutes from "./routes/caregiverOverview";
 
 // Import our Prisma database client
 import { prisma } from "./db";
@@ -57,6 +58,7 @@ app.use("/api/vitals", vitalRoutes);
 app.use("/api/availability", availabilityRoutes);
 app.use("/api/caregiver-invitations", caregiverInvitationRoutes);
 app.use("/api/caregiver-links", caregiverLinkRoutes);
+app.use("/api/caregiver/overview", caregiverOverviewRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 

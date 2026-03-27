@@ -92,8 +92,18 @@ router.get("/", async (req: Request, res: Response) => {
       // Admin can filter by any user
       if (patientId)   where.patientId   = patientId as string;
       if (clinicianId) where.clinicianId = clinicianId as string;
+    } else if (user.role === "CAREGIVER") {
+      const links = await prisma.caregiverPatientLink.findMany({
+        where: { caregiverId: user.id, isActive: true },
+        select: { patientId: true },
+      });
+      const patientIds = links.map((l) => l.patientId);
+      if (patientIds.length === 0) return res.json({ visits: [] });
+      where.patientId = { in: patientIds };
+      if (patientId && patientIds.includes(patientId as string)) {
+        where.patientId = patientId as string;
+      }
     } else {
-      // CAREGIVER — not yet implemented
       return res.json({ visits: [] });
     }
 
