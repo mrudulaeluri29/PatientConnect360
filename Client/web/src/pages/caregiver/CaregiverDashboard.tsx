@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../lib/axios";
+import {
+  getVisits,
+  updateVisitStatus,
+  createVisitRequest,
+  formatVisitDateTime,
+  visitTypeLabel,
+  type ApiVisit,
+  type VisitType,
+} from "../../api/visits";
 import "./CaregiverDashboard.css";
 
 // ─── Types for the overview payload ──────────────────────────────────────────
@@ -144,7 +153,7 @@ export default function CaregiverDashboard() {
 
       <main className="cg-main">
         {activeTab === "home" && <HomeOverview />}
-        {activeTab === "schedule" && <PlaceholderTab label="Visit Schedule & Care Timeline" />}
+        {activeTab === "schedule" && <CaregiverSchedule />}
         {activeTab === "medications" && <PlaceholderTab label="Medications & Orders" />}
         {activeTab === "messages" && <PlaceholderTab label="Secure Messaging" />}
       </main>
@@ -409,6 +418,312 @@ function HomeOverview() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Schedule Tab ────────────────────────────────────────────────────────────
+
+function CaregiverSchedule() {
+  const [overview, setOverview] = useState<OverviewData | null>(null);
+  const [loadingOverview, setLoadingOverview] = useState(true);
+  const [visits, setVisits] = useState<ApiVisit[]>([]);
+  const [loadingVisits, setLoadingVisits] = useState(true);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [actionId, setActionId] = useState<string | null>(null);
+
+  const [showReschedule, setShowReschedule] = useState<null | ApiVisit>(null);
+  const [reschedDateTime, setReschedDateTime] = useState("");
+  const [reschedReason, setReschedReason] = useState("");
+  const [reschedSubmitting, setReschedSubmitting] = useState(false);
+  const [reschedError, setReschedError] = useState("");
+
+  const refreshVisits = async () => {
+    setLoadingVisits(true);
+    try {
+      const data = await getVisits();
+      setVisits(data);
+    } catch {
+      setVisits([]);
+    } finally {
+      setLoadingVisits(false);
+    }
+  };
+
+  useEffect(() => {
+    api
+      .get("/api/caregiver/overview")
+      .then((res) => {
+        setOverview(res.data);
+        if (res.data.patients.length > 0) setSelectedPatientId(res.data.patients[0].id);
+      })
+      .catch(() => setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] }))
+      .finally(() => setLoadingOverview(false));
+    refreshVisits();
+  }, []);
+
+  const selectedPatient =
+    overview?.patients.find((p) => p.id === selectedPatientId) || overview?.patients[0] || null;
+
+  const filteredVisits = selectedPatient
+    ? visits.filter((v) => v.patient.id === selectedPatient.id)
+    : visits;
+
+  const now = Date.now();
+  const upcoming = filteredVisits
+    .filter((v) => new Date(v.scheduledAt).getTime() >= now && v.status !== "CANCELLED")
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+  const history = filteredVisits
+    .filter((v) => new Date(v.scheduledAt).getTime() < now || ["COMPLETED", "MISSED", "CANCELLED"].includes(v.status))
+    .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
+
+  const handleConfirm = async (v: ApiVisit) => {
+    setActionId(v.id);
+    try {
+      const updated = await updateVisitStatus(v.id, "CONFIRMED");
+      setVisits((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    } catch (e: any) {
+      alert(e?.response?.data?.error || "Failed to confirm visit");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleCancel = async (v: ApiVisit) => {
+    if (!confirm("Cancel this visit?")) return;
+    setActionId(v.id);
+    try {
+      const updated = await updateVisitStatus(v.id, "CANCELLED", "Cancelled by caregiver");
+      setVisits((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    } catch (e: any) {
+      alert(e?.response?.data?.error || "Failed to cancel visit");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const openReschedule = (v: ApiVisit) => {
+    setShowReschedule(v);
+    setReschedError("");
+    setReschedReason("");
+    setReschedDateTime("");
+  };
+
+  const submitRescheduleRequest = async () => {
+    if (!showReschedule) return;
+    if (!selectedPatient) return;
+
+    if (!reschedDateTime) {
+      setReschedError("Please select a new date and time.");
+      return;
+    }
+
+    const iso = new Date(reschedDateTime).toISOString();
+    setReschedSubmitting(true);
+    setReschedError("");
+    try {
+      const notes = `Reschedule request for visit ${showReschedule.id} (original: ${showReschedule.scheduledAt}). Reason: ${reschedReason || "—"}`;
+      await createVisitRequest({
+        patientId: selectedPatient.id,
+        clinicianId: showReschedule.clinician.id,
+        scheduledAt: iso,
+        visitType: showReschedule.visitType as VisitType,
+        purpose: showReschedule.purpose || undefined,
+        address: showReschedule.address || undefined,
+        notes,
+        durationMinutes: showReschedule.durationMinutes,
+      });
+      await refreshVisits();
+      setShowReschedule(null);
+      alert("Reschedule request submitted for admin review.");
+    } catch (e: any) {
+      setReschedError(e?.response?.data?.error || "Failed to submit reschedule request.");
+    } finally {
+      setReschedSubmitting(false);
+    }
+  };
+
+  if (loadingOverview || loadingVisits) {
+    return <div className="cg-loading">Loading schedule...</div>;
+  }
+
+  if (!overview || overview.patients.length === 0) {
+    return (
+      <div className="cg-content">
+        <div className="cg-no-patients">
+          <h2>No Linked Patients</h2>
+          <p>Once you’re linked to a patient, their upcoming visits and visit history will appear here.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cg-content">
+      <div className="cg-section-header">
+        <h2 className="cg-section-title">Visit Schedule &amp; Care Timeline</h2>
+      </div>
+
+      {overview.patients.length > 1 && selectedPatient && (
+        <div className="cg-patient-selector">
+          {overview.patients.map((p) => (
+            <div
+              key={p.id}
+              className={`cg-patient-chip ${p.id === selectedPatient.id ? "active" : ""}`}
+              onClick={() => setSelectedPatientId(p.id)}
+            >
+              <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
+              <div className="cg-patient-chip-info">
+                <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
+                <span className="cg-patient-chip-rel">{p.relationship || "Caregiver"}</span>
+              </div>
+              {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="cg-schedule-grid">
+        <div className="cg-card visits">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Upcoming</h3>
+            <span className="cg-card-count">{upcoming.length}</span>
+          </div>
+
+          {upcoming.length === 0 ? (
+            <div className="cg-empty">No upcoming visits.</div>
+          ) : (
+            <div className="cg-visit-list">
+              {upcoming.slice(0, 10).map((v) => {
+                const { date, time } = formatVisitDateTime(v.scheduledAt);
+                return (
+                  <div key={v.id} className="cg-visit-row">
+                    <span className={`cg-pill ${v.status.toLowerCase()}`}>{v.status}</span>
+                    <div className="cg-visit-row-main">
+                      <div className="cg-visit-row-title">{visitTypeLabel(v.visitType)}</div>
+                      <div className="cg-visit-row-sub">
+                        {date} · {time} · {v.clinician.username}
+                        {v.clinician.clinicianProfile?.specialization ? ` · ${v.clinician.clinicianProfile.specialization}` : ""}
+                      </div>
+                    </div>
+                    <div className="cg-visit-actions">
+                      {v.status === "SCHEDULED" && (
+                        <button
+                          className="cg-btn cg-btn-confirm"
+                          onClick={() => handleConfirm(v)}
+                          disabled={actionId === v.id}
+                        >
+                          {actionId === v.id ? "..." : "Confirm"}
+                        </button>
+                      )}
+                      {(v.status === "SCHEDULED" || v.status === "CONFIRMED") && (
+                        <>
+                          <button
+                            className="cg-btn cg-btn-resched"
+                            onClick={() => openReschedule(v)}
+                            disabled={actionId === v.id}
+                          >
+                            Request Reschedule
+                          </button>
+                          <button
+                            className="cg-btn cg-btn-cancel"
+                            onClick={() => handleCancel(v)}
+                            disabled={actionId === v.id}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="cg-card info">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">History</h3>
+            <span className="cg-card-count">{history.length}</span>
+          </div>
+
+          {history.length === 0 ? (
+            <div className="cg-empty">No past visits yet.</div>
+          ) : (
+            <div className="cg-visit-list">
+              {history.slice(0, 10).map((v) => {
+                const { date, time } = formatVisitDateTime(v.scheduledAt);
+                return (
+                  <div key={v.id} className="cg-visit-row">
+                    <span className={`cg-pill ${v.status.toLowerCase()}`}>{v.status}</span>
+                    <div className="cg-visit-row-main">
+                      <div className="cg-visit-row-title">{visitTypeLabel(v.visitType)}</div>
+                      <div className="cg-visit-row-sub">
+                        {date} · {time} · {v.clinician.username}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showReschedule && selectedPatient && (
+        <div className="modal-overlay" onClick={() => setShowReschedule(null)}>
+          <div className="modal-content cg-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Request Reschedule</h3>
+              <button className="modal-close" onClick={() => setShowReschedule(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: "0.75rem", color: "#4b5563" }}>
+                Patient: <strong>{selectedPatient.patientProfile?.legalName || selectedPatient.username}</strong>
+              </p>
+              <div className="form-group">
+                <label>New date &amp; time</label>
+                <input
+                  type="datetime-local"
+                  value={reschedDateTime}
+                  onChange={(e) => setReschedDateTime(e.target.value)}
+                  className="form-input"
+                  disabled={reschedSubmitting}
+                />
+              </div>
+              <div className="form-group">
+                <label>Reason (optional)</label>
+                <textarea
+                  value={reschedReason}
+                  onChange={(e) => setReschedReason(e.target.value)}
+                  rows={3}
+                  className="form-textarea"
+                  placeholder="e.g. Patient unavailable, transportation conflict..."
+                  disabled={reschedSubmitting}
+                />
+              </div>
+              {reschedError && <div className="visit-request-error">{reschedError}</div>}
+              <p style={{ marginTop: "0.5rem", color: "#6b7280", fontSize: "0.85rem" }}>
+                This creates a new visit request for admin review (the original visit remains until you cancel it).
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowReschedule(null)} disabled={reschedSubmitting}>
+                Close
+              </button>
+              <button className="btn-primary" onClick={submitRescheduleRequest} disabled={reschedSubmitting}>
+                {reschedSubmitting ? "Submitting..." : "Submit Request"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

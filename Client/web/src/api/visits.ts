@@ -140,6 +140,7 @@ export async function updateVisitStatus(
 
 /** Patient (or admin) creates a new visit request. Starts as SCHEDULED for admin review. */
 export async function createVisitRequest(data: {
+  patientId?: string;
   clinicianId: string;
   scheduledAt: string;
   visitType?: VisitType;
