@@ -1275,6 +1275,14 @@
   background: #fef2f2;
 }
 
+/* ─── Safety Tab ───────────────────────────────────────────────────────────── */
+
+.cg-safety-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 1rem;
+}
+
 /* ─── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 1024px) {
