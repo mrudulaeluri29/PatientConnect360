@@ -11,6 +11,11 @@ import {
   type ApiAvailability,
   type AvailabilityStatus,
 } from "../../api/availability";
+import {
+  getAdminVisitRequests,
+  reviewVisitRequest,
+  type ApiVisit,
+} from "../../api/visits";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -39,6 +44,9 @@ export default function AdminDashboard() {
             </button>
             <button className={`nav-item ${activeTab === "availability" ? "active" : ""}`} onClick={() => setActiveTab("availability")}>
               Availability
+            </button>
+            <button className={`nav-item ${activeTab === "appointments" ? "active" : ""}`} onClick={() => setActiveTab("appointments")}>
+              Appointments
             </button>
             <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
               Messages
@@ -408,6 +416,11 @@ export default function AdminDashboard() {
         {activeTab === "availability" && (
           <div className="admin-content">
             <AvailabilityReview />
+          </div>
+        )}
+        {activeTab === "appointments" && (
+          <div className="admin-content">
+            <AppointmentsReview />
           </div>
         )}
         {activeTab === "messages" && (
@@ -1523,12 +1536,190 @@ function SystemSettings() {
   );
 }
 
+// ─── Appointments Review (Admin) ─────────────────────────────────────────────
+function AppointmentsReview() {
+  const [loading, setLoading] = useState(true);
+  const [newRequests, setNewRequests] = useState<ApiVisit[]>([]);
+  const [rescheduleRequests, setRescheduleRequests] = useState<ApiVisit[]>([]);
+  const [cancellationUpdates, setCancellationUpdates] = useState<ApiVisit[]>([]);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, string>>({});
+
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const data = await getAdminVisitRequests();
+      setNewRequests(data.newRequests || []);
+      setRescheduleRequests(data.rescheduleRequests || []);
+      setCancellationUpdates(data.cancellationUpdates || []);
+    } catch {
+      setNewRequests([]);
+      setRescheduleRequests([]);
+      setCancellationUpdates([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const runReview = async (visitId: string, action: "APPROVE" | "REJECT") => {
+    setReviewingId(visitId);
+    try {
+      const overrideIso = scheduleOverrides[visitId] ? new Date(scheduleOverrides[visitId]).toISOString() : undefined;
+      await reviewVisitRequest(visitId, {
+        action,
+        reviewNote: reviewNotes[visitId] || undefined,
+        scheduledAt: overrideIso,
+      });
+      await refresh();
+    } catch (e: any) {
+      alert(e?.response?.data?.error || "Review action failed");
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const renderQueue = (title: string, rows: ApiVisit[]) => (
+    <div className="avail-table-wrap" style={{ marginBottom: "1rem" }}>
+      <h3 style={{ margin: "0 0 0.75rem 0" }}>{title}</h3>
+      {rows.length === 0 ? (
+        <div className="avail-empty">No records.</div>
+      ) : (
+        <table className="avail-table">
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>Clinician</th>
+              <th>Requested Date/Time</th>
+              <th>Type</th>
+              <th>Reason/Notes</th>
+              <th>Admin Review</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((v) => (
+              <tr key={v.id}>
+                <td>{v.patient.patientProfile?.legalName || v.patient.username}</td>
+                <td>{v.clinician.username}</td>
+                <td>{new Date(v.scheduledAt).toLocaleString()}</td>
+                <td>{v.status.replaceAll("_", " ")}</td>
+                <td>{v.rescheduleReason || v.purpose || v.notes || "—"}</td>
+                <td>
+                  <div style={{ display: "grid", gap: "0.35rem" }}>
+                    <input
+                      type="datetime-local"
+                      value={scheduleOverrides[v.id] || ""}
+                      onChange={(e) =>
+                        setScheduleOverrides((prev) => ({ ...prev, [v.id]: e.target.value }))
+                      }
+                    />
+                    <textarea
+                      rows={2}
+                      placeholder="Review note (optional)"
+                      value={reviewNotes[v.id] || ""}
+                      onChange={(e) =>
+                        setReviewNotes((prev) => ({ ...prev, [v.id]: e.target.value }))
+                      }
+                    />
+                    <div style={{ display: "flex", gap: "0.35rem" }}>
+                      <button
+                        className="btn-approve"
+                        disabled={reviewingId === v.id}
+                        onClick={() => runReview(v.id, "APPROVE")}
+                      >
+                        Approve/Schedule
+                      </button>
+                      <button
+                        className="btn-reject"
+                        disabled={reviewingId === v.id}
+                        onClick={() => runReview(v.id, "REJECT")}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="content-header" style={{ marginBottom: "1.5rem" }}>
+        <h2 className="section-title">Appointment Requests</h2>
+      </div>
+
+      <div className="avail-kpi-row" style={{ marginBottom: "1rem" }}>
+        <div className="avail-kpi-chip pending">
+          <span className="avail-kpi-value">{newRequests.length}</span>
+          <span className="avail-kpi-label">New Requests</span>
+        </div>
+        <div className="avail-kpi-chip approved">
+          <span className="avail-kpi-value">{rescheduleRequests.length}</span>
+          <span className="avail-kpi-label">Reschedule Requests</span>
+        </div>
+        <div className="avail-kpi-chip rejected">
+          <span className="avail-kpi-value">{cancellationUpdates.length}</span>
+          <span className="avail-kpi-label">Cancellation Updates</span>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading appointment queue...</div>
+      ) : (
+        <>
+          {renderQueue("New Appointment Requests", newRequests)}
+          {renderQueue("Reschedule Requests", rescheduleRequests)}
+          <div className="avail-table-wrap">
+            <h3 style={{ margin: "0 0 0.75rem 0" }}>Cancellation Updates</h3>
+            {cancellationUpdates.length === 0 ? (
+              <div className="avail-empty">No cancellation updates.</div>
+            ) : (
+              <table className="avail-table">
+                <thead>
+                  <tr>
+                    <th>Patient</th>
+                    <th>Clinician</th>
+                    <th>Cancelled Date/Time</th>
+                    <th>Reason</th>
+                    <th>Requested By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cancellationUpdates.map((v) => (
+                    <tr key={v.id}>
+                      <td>{v.patient.patientProfile?.legalName || v.patient.username}</td>
+                      <td>{v.clinician.username}</td>
+                      <td>{new Date(v.scheduledAt).toLocaleString()}</td>
+                      <td>{v.cancelReason || "—"}</td>
+                      <td>{v.cancellationRequestedById || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Availability Review (Admin) ─────────────────────────────────────────────
 function AvailabilityReview() {
   const [records, setRecords] = useState<ApiAvailability[]>([]);
   const [allRecords, setAllRecords] = useState<ApiAvailability[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<AvailabilityStatus | "">("");
+  const [updateNotice, setUpdateNotice] = useState<string>("");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewModalRecord, setReviewModalRecord] = useState<ApiAvailability | null>(null);
@@ -1567,6 +1758,11 @@ function AvailabilityReview() {
           .filter((r) => statusFilter === "" || r.status === statusFilter)
       );
       setAllRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      if (statusFilter && statusFilter !== status) {
+        setUpdateNotice(`Record marked ${status} and removed from the "${statusFilter}" view.`);
+      } else {
+        setUpdateNotice(`Record marked ${status}.`);
+      }
       setReviewModalRecord(null);
       setReviewNote("");
     } catch (err: any) {
@@ -1611,10 +1807,31 @@ function AvailabilityReview() {
           <span className="avail-kpi-label">Rejected</span>
         </div>
         <div className={`avail-kpi-chip all ${statusFilter === "" ? "active" : ""}`} onClick={() => setStatusFilter("")}>
-          <span className="avail-kpi-value">{records.length}</span>
+          <span className="avail-kpi-value">{allRecords.length}</span>
           <span className="avail-kpi-label">All</span>
         </div>
       </div>
+      {statusFilter && (
+        <div style={{ marginTop: "0.75rem", color: "#6b7280", fontSize: "0.9rem" }}>
+          Showing {records.length} of {allRecords.length} total records.
+        </div>
+      )}
+      {updateNotice && (
+        <div
+          style={{
+            marginTop: "0.75rem",
+            marginBottom: "0.5rem",
+            padding: "0.65rem 0.85rem",
+            borderRadius: "8px",
+            border: "1px solid #bfdbfe",
+            background: "#eff6ff",
+            color: "#1e3a8a",
+            fontSize: "0.9rem",
+          }}
+        >
+          {updateNotice}
+        </div>
+      )}
 
       {/* Records Table */}
       {loading ? (

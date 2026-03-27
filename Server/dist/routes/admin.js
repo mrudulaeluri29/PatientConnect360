@@ -277,8 +277,7 @@ router.get("/messages", requireRole_1.requireAdmin, async (req, res) => {
                     }
                 }
             },
-            orderBy: { createdAt: 'desc' },
-            take: 100 // Limit to 100 most recent messages
+            orderBy: { createdAt: 'desc' }
         });
         // Transform data to match frontend expectations
         const transformedMessages = messages.map(message => {

@@ -15,6 +15,15 @@ const visitSelect = {
     scheduledAt: true,
     durationMinutes: true,
     status: true,
+    requestType: true,
+    requestedById: true,
+    originalVisitId: true,
+    rescheduleReason: true,
+    reviewNote: true,
+    reviewedByAdminId: true,
+    reviewedAt: true,
+    cancellationRequestedById: true,
+    cancellationRequestedAt: true,
     visitType: true,
     purpose: true,
     address: true,
@@ -59,6 +68,48 @@ function getUser(req) {
 }
 const VALID_STATUSES = Object.values(client_1.VisitStatus);
 const VALID_TYPES = Object.values(client_1.VisitType);
+function minutesFromTimeString(value) {
+    const [hh, mm] = String(value || "").split(":").map((n) => Number(n));
+    if (!Number.isFinite(hh) || !Number.isFinite(mm))
+        return null;
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59)
+        return null;
+    return hh * 60 + mm;
+}
+function toDayKey(date) {
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(date.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+}
+async function assertWithinApprovedAvailability(clinicianId, scheduledAt, durationMinutes) {
+    const dayKey = toDayKey(scheduledAt);
+    const slot = await db_1.prisma.clinicianAvailability.findFirst({
+        where: {
+            clinicianId,
+            status: "APPROVED",
+            date: {
+                gte: new Date(`${dayKey}T00:00:00.000Z`),
+                lt: new Date(`${dayKey}T23:59:59.999Z`),
+            },
+        },
+        select: { startTime: true, endTime: true },
+    });
+    if (!slot) {
+        return "Clinician does not have an approved availability slot on that date.";
+    }
+    const start = minutesFromTimeString(slot.startTime);
+    const end = minutesFromTimeString(slot.endTime);
+    if (start === null || end === null || end <= start) {
+        return "Clinician availability slot is invalid.";
+    }
+    const visitStart = scheduledAt.getUTCHours() * 60 + scheduledAt.getUTCMinutes();
+    const visitEnd = visitStart + durationMinutes;
+    if (visitStart < start || visitEnd > end) {
+        return `Visit must be fully within approved availability (${slot.startTime}-${slot.endTime}).`;
+    }
+    return null;
+}
 // ─── Routes ─────────────────────────────────────────────────────────────────
 // GET /api/visits
 // Returns visits scoped to the caller's role:
@@ -129,6 +180,37 @@ router.get("/", async (req, res) => {
     }
     catch (e) {
         console.error("GET /api/visits failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// GET /api/visits/admin/requests
+// Admin queue for appointment workflow: new requests, reschedule requests, cancellation updates.
+router.get("/admin/requests", requireRole_1.requireAdmin, async (_req, res) => {
+    try {
+        const [newRequests, rescheduleRequests, cancellationUpdates] = await Promise.all([
+            db_1.prisma.visit.findMany({
+                where: { status: client_1.VisitStatus.REQUESTED },
+                select: visitSelect,
+                orderBy: { createdAt: "desc" },
+            }),
+            db_1.prisma.visit.findMany({
+                where: { status: client_1.VisitStatus.RESCHEDULE_REQUESTED },
+                select: visitSelect,
+                orderBy: { createdAt: "desc" },
+            }),
+            db_1.prisma.visit.findMany({
+                where: {
+                    status: client_1.VisitStatus.CANCELLED,
+                    cancellationRequestedAt: { not: null },
+                },
+                select: visitSelect,
+                orderBy: { cancellationRequestedAt: "desc" },
+            }),
+        ]);
+        res.json({ newRequests, rescheduleRequests, cancellationUpdates });
+    }
+    catch (e) {
+        console.error("GET /api/visits/admin/requests failed:", e);
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -241,17 +323,29 @@ router.post("/", async (req, res) => {
             });
             visitAddress = profile?.homeAddress ?? null;
         }
+        const requestedDuration = durationMinutes ? Number(durationMinutes) : 60;
+        const createStatus = user.role === "ADMIN" ? client_1.VisitStatus.CONFIRMED : client_1.VisitStatus.REQUESTED;
+        const createRequestType = client_1.VisitRequestType.INITIAL;
+        if (user.role === "ADMIN") {
+            const availabilityError = await assertWithinApprovedAvailability(clinicianId, scheduledDate, requestedDuration);
+            if (availabilityError) {
+                return res.status(400).json({ error: availabilityError });
+            }
+        }
         const visit = await db_1.prisma.visit.create({
             data: {
                 patientId,
                 clinicianId,
                 scheduledAt: scheduledDate,
-                durationMinutes: durationMinutes ? Number(durationMinutes) : 60,
+                durationMinutes: requestedDuration,
+                status: createStatus,
+                requestType: createRequestType,
                 visitType: visitType ?? client_1.VisitType.HOME_HEALTH,
                 purpose: purpose ?? null,
                 address: visitAddress ?? null,
                 notes: notes ?? null,
                 createdBy: user.id,
+                requestedById: user.id,
             },
             select: visitSelect,
         });
@@ -259,6 +353,168 @@ router.post("/", async (req, res) => {
     }
     catch (e) {
         console.error("POST /api/visits failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// POST /api/visits/:id/reschedule-request
+// Patient/Caregiver submits a reschedule request with mandatory reason.
+router.post("/:id/reschedule-request", async (req, res) => {
+    try {
+        const user = getUser(req);
+        if (user.role !== "PATIENT" && user.role !== "CAREGIVER") {
+            return res.status(403).json({ error: "Only patients and caregivers can request reschedules" });
+        }
+        const original = await db_1.prisma.visit.findUnique({
+            where: { id: req.params.id },
+            select: visitSelect,
+        });
+        if (!original)
+            return res.status(404).json({ error: "Visit not found" });
+        const isOwner = original.patient.id === user.id;
+        if (!isOwner && user.role === "CAREGIVER") {
+            const link = await db_1.prisma.caregiverPatientLink.findFirst({
+                where: { caregiverId: user.id, patientId: original.patient.id, isActive: true },
+                select: { id: true },
+            });
+            if (!link)
+                return res.status(403).json({ error: "Not linked to this patient" });
+        }
+        else if (!isOwner) {
+            return res.status(403).json({ error: "Forbidden" });
+        }
+        const { scheduledAt, reason } = req.body || {};
+        if (!scheduledAt)
+            return res.status(400).json({ error: "scheduledAt is required" });
+        if (!reason || String(reason).trim().length < 3) {
+            return res.status(400).json({ error: "Reason for reschedule is required" });
+        }
+        const nextDate = new Date(scheduledAt);
+        if (isNaN(nextDate.getTime()))
+            return res.status(400).json({ error: "scheduledAt must be a valid ISO date string" });
+        if (original.status === client_1.VisitStatus.COMPLETED || original.status === client_1.VisitStatus.MISSED || original.status === client_1.VisitStatus.CANCELLED) {
+            return res.status(400).json({ error: "This visit can no longer be rescheduled" });
+        }
+        const existingPending = await db_1.prisma.visit.findFirst({
+            where: {
+                originalVisitId: original.id,
+                status: client_1.VisitStatus.RESCHEDULE_REQUESTED,
+            },
+            select: { id: true },
+        });
+        if (existingPending) {
+            return res.status(400).json({ error: "A reschedule request is already pending for this visit" });
+        }
+        const requestVisit = await db_1.prisma.visit.create({
+            data: {
+                patientId: original.patient.id,
+                clinicianId: original.clinician.id,
+                scheduledAt: nextDate,
+                durationMinutes: original.durationMinutes,
+                status: client_1.VisitStatus.RESCHEDULE_REQUESTED,
+                requestType: client_1.VisitRequestType.RESCHEDULE,
+                visitType: original.visitType,
+                purpose: original.purpose,
+                address: original.address,
+                notes: original.notes,
+                createdBy: user.id,
+                requestedById: user.id,
+                originalVisitId: original.id,
+                rescheduleReason: String(reason).trim(),
+            },
+            select: visitSelect,
+        });
+        res.status(201).json({ visit: requestVisit });
+    }
+    catch (e) {
+        console.error("POST /api/visits/:id/reschedule-request failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// POST /api/visits/:id/review
+// Admin approves/rejects REQUESTED and RESCHEDULE_REQUESTED visits.
+router.post("/:id/review", requireRole_1.requireAdmin, async (req, res) => {
+    try {
+        const user = getUser(req);
+        const { action, reviewNote, scheduledAt, durationMinutes } = req.body || {};
+        const normalizedAction = String(action || "").toUpperCase();
+        if (!["APPROVE", "REJECT"].includes(normalizedAction)) {
+            return res.status(400).json({ error: "action must be APPROVE or REJECT" });
+        }
+        const existing = await db_1.prisma.visit.findUnique({
+            where: { id: req.params.id },
+            select: visitSelect,
+        });
+        if (!existing)
+            return res.status(404).json({ error: "Visit not found" });
+        if (existing.status !== client_1.VisitStatus.REQUESTED && existing.status !== client_1.VisitStatus.RESCHEDULE_REQUESTED) {
+            return res.status(400).json({ error: "Only REQUESTED or RESCHEDULE_REQUESTED visits can be reviewed" });
+        }
+        if (normalizedAction === "REJECT") {
+            const rejected = await db_1.prisma.visit.update({
+                where: { id: existing.id },
+                data: {
+                    status: client_1.VisitStatus.REJECTED,
+                    reviewNote: reviewNote ?? null,
+                    reviewedByAdminId: user.id,
+                    reviewedAt: new Date(),
+                },
+                select: visitSelect,
+            });
+            return res.json({ visit: rejected });
+        }
+        const nextScheduledAt = scheduledAt ? new Date(scheduledAt) : new Date(existing.scheduledAt);
+        if (isNaN(nextScheduledAt.getTime()))
+            return res.status(400).json({ error: "Invalid scheduledAt" });
+        const nextDuration = durationMinutes !== undefined ? Number(durationMinutes) : existing.durationMinutes;
+        const availabilityError = await assertWithinApprovedAvailability(existing.clinician.id, nextScheduledAt, nextDuration);
+        if (availabilityError)
+            return res.status(400).json({ error: availabilityError });
+        if (existing.status === client_1.VisitStatus.RESCHEDULE_REQUESTED && existing.originalVisitId) {
+            const original = await db_1.prisma.visit.findUnique({
+                where: { id: existing.originalVisitId },
+                select: { id: true, status: true },
+            });
+            if (!original)
+                return res.status(400).json({ error: "Original visit not found for this reschedule request" });
+            if (original.status === client_1.VisitStatus.COMPLETED || original.status === client_1.VisitStatus.MISSED) {
+                return res.status(400).json({ error: "Original visit can no longer be rescheduled" });
+            }
+            const updated = await db_1.prisma.$transaction(async (tx) => {
+                await tx.visit.update({
+                    where: { id: original.id },
+                    data: { status: client_1.VisitStatus.RESCHEDULED },
+                });
+                return tx.visit.update({
+                    where: { id: existing.id },
+                    data: {
+                        status: client_1.VisitStatus.CONFIRMED,
+                        scheduledAt: nextScheduledAt,
+                        durationMinutes: nextDuration,
+                        reviewNote: reviewNote ?? null,
+                        reviewedByAdminId: user.id,
+                        reviewedAt: new Date(),
+                    },
+                    select: visitSelect,
+                });
+            });
+            return res.json({ visit: updated });
+        }
+        const approved = await db_1.prisma.visit.update({
+            where: { id: existing.id },
+            data: {
+                status: client_1.VisitStatus.CONFIRMED,
+                scheduledAt: nextScheduledAt,
+                durationMinutes: nextDuration,
+                reviewNote: reviewNote ?? null,
+                reviewedByAdminId: user.id,
+                reviewedAt: new Date(),
+            },
+            select: visitSelect,
+        });
+        return res.json({ visit: approved });
+    }
+    catch (e) {
+        console.error("POST /api/visits/:id/review failed:", e);
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -363,7 +619,7 @@ router.patch("/:id", async (req, res) => {
             }
         }
         else if (user.role === "PATIENT") {
-            const { status } = req.body || {};
+            const { status, cancelReason } = req.body || {};
             if (status) {
                 const allowed = [client_1.VisitStatus.CONFIRMED, client_1.VisitStatus.CANCELLED];
                 if (!allowed.includes(status)) {
@@ -376,12 +632,19 @@ router.patch("/:id", async (req, res) => {
                     return res.status(400).json({ error: "Cannot modify a completed or missed visit" });
                 }
                 data.status = status;
-                if (status === client_1.VisitStatus.CANCELLED)
+                if (status === client_1.VisitStatus.CANCELLED) {
+                    if (!cancelReason || String(cancelReason).trim().length < 3) {
+                        return res.status(400).json({ error: "Reason for cancellation is required" });
+                    }
                     data.cancelledAt = new Date();
+                    data.cancelReason = String(cancelReason).trim();
+                    data.cancellationRequestedById = user.id;
+                    data.cancellationRequestedAt = new Date();
+                }
             }
         }
         else if (user.role === "CAREGIVER") {
-            const { status } = req.body || {};
+            const { status, cancelReason } = req.body || {};
             if (status) {
                 const allowed = [client_1.VisitStatus.CONFIRMED, client_1.VisitStatus.CANCELLED];
                 if (!allowed.includes(status)) {
@@ -393,8 +656,15 @@ router.patch("/:id", async (req, res) => {
                     return res.status(400).json({ error: "Cannot modify a completed or missed visit" });
                 }
                 data.status = status;
-                if (status === client_1.VisitStatus.CANCELLED)
+                if (status === client_1.VisitStatus.CANCELLED) {
+                    if (!cancelReason || String(cancelReason).trim().length < 3) {
+                        return res.status(400).json({ error: "Reason for cancellation is required" });
+                    }
                     data.cancelledAt = new Date();
+                    data.cancelReason = String(cancelReason).trim();
+                    data.cancellationRequestedById = user.id;
+                    data.cancellationRequestedAt = new Date();
+                }
             }
         }
         if (Object.keys(data).length === 0) {
@@ -422,7 +692,7 @@ router.delete("/:id", requireRole_1.requireAdmin, async (req, res) => {
         });
         if (!visit)
             return res.status(404).json({ error: "Visit not found" });
-        const deletable = [client_1.VisitStatus.SCHEDULED, client_1.VisitStatus.CANCELLED];
+        const deletable = [client_1.VisitStatus.SCHEDULED, client_1.VisitStatus.CANCELLED, client_1.VisitStatus.REJECTED];
         if (!deletable.includes(visit.status)) {
             return res.status(400).json({
                 error: "Only SCHEDULED or CANCELLED visits can be deleted. Cancel it first.",

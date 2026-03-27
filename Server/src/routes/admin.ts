@@ -300,8 +300,7 @@ router.get("/messages", requireAdmin, async (req: Request, res: Response) => {
           }
         }
       },
-      orderBy: { createdAt: 'desc' },
-      take: 100 // Limit to 100 most recent messages
+      orderBy: { createdAt: 'desc' }
     });
 
     // Transform data to match frontend expectations

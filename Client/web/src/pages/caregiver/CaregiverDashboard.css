@@ -561,6 +561,84 @@
   line-height: 1.45;
 }
 
+.cg-progress-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1.25rem;
+}
+
+.cg-progress-summary {
+  margin: 0.25rem 0 0.9rem;
+  font-size: 0.9rem;
+  color: #374151;
+  line-height: 1.55;
+}
+
+.cg-progress-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.cg-progress-kpi {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  padding: 0.65rem 0.75rem;
+}
+
+.cg-goal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.cg-goal-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.75rem 0.8rem;
+}
+
+.cg-goal-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.cg-goal-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.cg-goal-target {
+  font-size: 0.76rem;
+  color: #6b7280;
+  margin-top: 0.1rem;
+}
+
+.cg-goal-progress {
+  margin-top: 0.6rem;
+  width: 100%;
+  height: 8px;
+  background: #f3f4f6;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.cg-goal-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #2d6a4f 0%, #74c69d 100%);
+}
+
+.cg-goal-progress-label {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 600;
+}
+
 /* ─── Patient Info Card ───────────────────────────────────────────────────── */
 
 .cg-patient-info-grid {
@@ -913,6 +991,298 @@
   gap: 0.6rem;
 }
 
+/* ─── Messaging ───────────────────────────────────────────────────────────── */
+
+.cg-msg-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.cg-msg-tab {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.cg-msg-tab.active {
+  background: #2d6a4f;
+  border-color: #2d6a4f;
+  color: #fff;
+}
+
+.cg-msg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.cg-msg-row {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.7rem 0.8rem;
+  cursor: pointer;
+}
+
+.cg-msg-row.unread {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.cg-msg-row-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.82rem;
+  color: #374151;
+}
+
+.cg-msg-row-subject {
+  margin-top: 0.25rem;
+  font-weight: 700;
+  color: #111827;
+  font-size: 0.88rem;
+}
+
+.cg-msg-row-preview {
+  margin-top: 0.2rem;
+  color: #6b7280;
+  font-size: 0.82rem;
+}
+
+.cg-msg-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.cg-msg-thread-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  background: #fff;
+}
+
+.cg-msg-thread-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  color: #4b5563;
+  margin-bottom: 0.35rem;
+}
+
+.cg-msg-thread-body {
+  color: #111827;
+  white-space: pre-wrap;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+/* ─── Alerts Tab ──────────────────────────────────────────────────────────── */
+
+.cg-alert-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 0.85rem;
+}
+
+.cg-alert-kpi {
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  padding: 0.75rem 0.85rem;
+}
+
+.cg-alert-kpi.critical {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.cg-alert-kpi.warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.cg-alert-kpi.neutral {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+
+.cg-alert-kpi-value {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.cg-alert-kpi-label {
+  margin-top: 0.1rem;
+  font-size: 0.78rem;
+  color: #4b5563;
+}
+
+.cg-alert-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.8rem;
+}
+
+.cg-alert-filters {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.cg-filter-btn {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+}
+
+.cg-filter-btn.active {
+  border-color: #2d6a4f;
+  color: #2d6a4f;
+  background: #ecfdf5;
+}
+
+.cg-alert-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.cg-alert-feed-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.75rem 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.9rem;
+  align-items: flex-start;
+  background: #fff;
+}
+
+.cg-alert-feed-item.warning {
+  border-color: #fde68a;
+}
+
+.cg-alert-feed-item.danger {
+  border-color: #fecaca;
+}
+
+.cg-alert-feed-item.ack {
+  opacity: 0.7;
+}
+
+.cg-alert-feed-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.cg-alert-feed-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.cg-alert-feed-title {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #111827;
+}
+
+.cg-alert-feed-message {
+  margin: 0.25rem 0 0.4rem;
+  color: #374151;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.cg-alert-feed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.cg-alert-feed-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+/* ─── Access Tab ───────────────────────────────────────────────────────────── */
+
+.cg-access-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.cg-access-note {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.cg-access-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.cg-access-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cg-access-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.83rem;
+}
+
+.cg-access-row.allowed {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.cg-access-row.blocked,
+.cg-access-row.restricted {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+/* ─── Safety Tab ───────────────────────────────────────────────────────────── */
+
+.cg-safety-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 1rem;
+}
+
 /* ─── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 1024px) {
@@ -920,6 +1290,9 @@
     grid-template-columns: 1fr;
   }
   .cg-med-grid {
+    grid-template-columns: 1fr;
+  }
+  .cg-progress-grid {
     grid-template-columns: 1fr;
   }
   .cg-kpi-row {

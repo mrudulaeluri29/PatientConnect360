@@ -16,6 +16,10 @@ import availabilityRoutes from "./routes/availability";
 import caregiverInvitationRoutes from "./routes/caregiverInvitations";
 import caregiverLinkRoutes from "./routes/caregiverLinks";
 import caregiverOverviewRoutes from "./routes/caregiverOverview";
+import caregiverProgressRoutes from "./routes/caregiverProgress";
+import caregiverAlertsRoutes from "./routes/caregiverAlerts";
+import caregiverAccessRoutes from "./routes/caregiverAccess";
+import caregiverSafetyRoutes from "./routes/caregiverSafety";
 
 // Import our Prisma database client
 import { prisma } from "./db";
@@ -59,6 +63,10 @@ app.use("/api/availability", availabilityRoutes);
 app.use("/api/caregiver-invitations", caregiverInvitationRoutes);
 app.use("/api/caregiver-links", caregiverLinkRoutes);
 app.use("/api/caregiver/overview", caregiverOverviewRoutes);
+app.use("/api/caregiver/progress", caregiverProgressRoutes);
+app.use("/api/caregiver/alerts", caregiverAlertsRoutes);
+app.use("/api/caregiver/access", caregiverAccessRoutes);
+app.use("/api/caregiver/safety", caregiverSafetyRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 

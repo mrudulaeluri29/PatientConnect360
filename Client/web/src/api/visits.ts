@@ -3,6 +3,9 @@ import { api } from "../lib/axios";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type VisitStatus =
+  | "REQUESTED"
+  | "RESCHEDULE_REQUESTED"
+  | "REJECTED"
   | "SCHEDULED"
   | "CONFIRMED"
   | "IN_PROGRESS"
@@ -27,6 +30,15 @@ export interface ApiVisit {
   scheduledAt: string;
   durationMinutes: number;
   status: VisitStatus;
+  requestType?: "INITIAL" | "RESCHEDULE";
+  requestedById?: string | null;
+  originalVisitId?: string | null;
+  rescheduleReason?: string | null;
+  reviewNote?: string | null;
+  reviewedByAdminId?: string | null;
+  reviewedAt?: string | null;
+  cancellationRequestedById?: string | null;
+  cancellationRequestedAt?: string | null;
   visitType: VisitType;
   purpose: string | null;
   address: string | null;
@@ -60,6 +72,9 @@ export interface ApiVisit {
 /** Maps API VisitStatus to the badge colour class used in the existing CSS */
 export function visitStatusClass(status: VisitStatus): string {
   const map: Record<VisitStatus, string> = {
+    REQUESTED: "status-scheduled",
+    RESCHEDULE_REQUESTED: "status-rescheduled",
+    REJECTED: "status-cancelled",
     SCHEDULED:   "status-scheduled",
     CONFIRMED:   "status-confirmed",
     IN_PROGRESS: "status-in-progress",
@@ -151,4 +166,34 @@ export async function createVisitRequest(data: {
 }): Promise<ApiVisit> {
   const res = await api.post("/api/visits", data);
   return res.data.visit;
+}
+
+export async function submitRescheduleRequest(
+  visitId: string,
+  data: { scheduledAt: string; reason: string }
+): Promise<ApiVisit> {
+  const res = await api.post(`/api/visits/${visitId}/reschedule-request`, data);
+  return res.data.visit;
+}
+
+export async function reviewVisitRequest(
+  visitId: string,
+  data: {
+    action: "APPROVE" | "REJECT";
+    reviewNote?: string;
+    scheduledAt?: string;
+    durationMinutes?: number;
+  }
+): Promise<ApiVisit> {
+  const res = await api.post(`/api/visits/${visitId}/review`, data);
+  return res.data.visit;
+}
+
+export async function getAdminVisitRequests(): Promise<{
+  newRequests: ApiVisit[];
+  rescheduleRequests: ApiVisit[];
+  cancellationUpdates: ApiVisit[];
+}> {
+  const res = await api.get("/api/visits/admin/requests");
+  return res.data;
 }

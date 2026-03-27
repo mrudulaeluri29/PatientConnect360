@@ -155,6 +155,7 @@ export default function SignupCaregiver() {
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || "Registration failed. Please try again.";
       setErrors({ submit: msg });
+    } finally {
       setLoading(false);
     }
   };

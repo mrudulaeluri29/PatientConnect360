@@ -4,11 +4,10 @@ import { api } from "../../lib/axios";
 import {
   getVisits,
   updateVisitStatus,
-  createVisitRequest,
+  submitRescheduleRequest as submitVisitRescheduleRequest,
   formatVisitDateTime,
   visitTypeLabel,
   type ApiVisit,
-  type VisitType,
 } from "../../api/visits";
 import {
   getMedications,
@@ -70,6 +69,43 @@ interface OverviewData {
   medications: OverviewMed[];
   alerts: OverviewAlert[];
 }
+
+type AccessPayload = {
+  role: "CAREGIVER" | "PRIMARY_MPOA";
+  linkedPatients: Array<{
+    linkId: string;
+    patientId: string;
+    patientName: string;
+    relationship: string;
+    isPrimary: boolean;
+  }>;
+  permissions: {
+    readAccess: Record<string, boolean>;
+    communication: Record<string, boolean>;
+    management: Record<string, boolean>;
+    restrictions: Record<string, boolean>;
+  };
+};
+
+type SafetyPayload = {
+  agencyEmergency: { phone: string | null; email: string | null };
+  patients: Array<{
+    patientId: string;
+    patientName: string;
+    patientPhone: string | null;
+    patientAddress: string | null;
+    isPrimary: boolean;
+  }>;
+  alerts: Array<{
+    id: string;
+    severity: "red" | "yellow";
+    title: string;
+    message: string;
+    patientId: string;
+    patientName: string;
+    action: "call_patient" | "call_agency" | "open_schedule" | "open_medications";
+  }>;
+};
 
 const VISIT_TYPE_LABELS: Record<string, string> = {
   HOME_HEALTH: "Home Health",
@@ -145,6 +181,18 @@ export default function CaregiverDashboard() {
             <button className={`nav-item ${activeTab === "medications" ? "active" : ""}`} onClick={() => setActiveTab("medications")}>
               Medications
             </button>
+            <button className={`nav-item ${activeTab === "progress" ? "active" : ""}`} onClick={() => setActiveTab("progress")}>
+              Progress
+            </button>
+            <button className={`nav-item ${activeTab === "alerts" ? "active" : ""}`} onClick={() => setActiveTab("alerts")}>
+              Alerts
+            </button>
+            <button className={`nav-item ${activeTab === "access" ? "active" : ""}`} onClick={() => setActiveTab("access")}>
+              Access
+            </button>
+            <button className={`nav-item ${activeTab === "safety" ? "active" : ""}`} onClick={() => setActiveTab("safety")}>
+              Safety
+            </button>
             <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
               Messages
             </button>
@@ -165,7 +213,11 @@ export default function CaregiverDashboard() {
         {activeTab === "home" && <HomeOverview />}
         {activeTab === "schedule" && <CaregiverSchedule />}
         {activeTab === "medications" && <CaregiverMedications />}
-        {activeTab === "messages" && <PlaceholderTab label="Secure Messaging" />}
+        {activeTab === "progress" && <CaregiverProgress />}
+        {activeTab === "alerts" && <CaregiverAlerts onNavigate={setActiveTab} />}
+        {activeTab === "access" && <CaregiverAccess />}
+        {activeTab === "safety" && <CaregiverSafety onNavigate={setActiveTab} />}
+        {activeTab === "messages" && <CaregiverMessages />}
       </main>
     </div>
   );
@@ -184,6 +236,615 @@ function PlaceholderTab({ label }: { label: string }) {
         </svg>
         <h2>{label}</h2>
         <p>This section will be available in an upcoming release.</p>
+      </div>
+    </div>
+  );
+}
+
+type AssignedClinician = {
+  id: string;
+  username: string;
+  email: string;
+  specialization?: string | null;
+};
+
+type SimpleMessageListItem = {
+  id: string;
+  conversationId: string;
+  subject: string;
+  from?: string;
+  fromEmail?: string;
+  to?: string;
+  toEmail?: string;
+  preview: string;
+  time: string;
+  unread?: boolean;
+};
+
+type SimpleConversation = {
+  id: string;
+  subject: string | null;
+  participants: Array<{ userId: string; user: { id: string; username: string; email: string; role: string } }>;
+  messages: Array<{
+    id: string;
+    senderId: string;
+    content: string;
+    isRead: boolean;
+    createdAt: string;
+    sender: { id: string; username: string; email: string };
+  }>;
+};
+
+type AlertSeverity = "red" | "yellow" | "green";
+type AlertAction = "messages" | "schedule" | "medications";
+type CaregiverAlertItem = {
+  id: string;
+  type: string;
+  severity: AlertSeverity;
+  title: string;
+  message: string;
+  patientId?: string;
+  patientName?: string;
+  relatedId?: string;
+  action: AlertAction;
+  createdAt: string;
+};
+
+function CaregiverMessages() {
+  const { user } = useAuth();
+  const [activeFolder, setActiveFolder] = useState<"inbox" | "sent">("inbox");
+  const [inbox, setInbox] = useState<SimpleMessageListItem[]>([]);
+  const [sent, setSent] = useState<SimpleMessageListItem[]>([]);
+  const [loadingList, setLoadingList] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState<SimpleConversation | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const [showNewMessage, setShowNewMessage] = useState(false);
+  const [clinicians, setClinicians] = useState<AssignedClinician[]>([]);
+  const [recipientId, setRecipientId] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const refreshInbox = async () => {
+    const res = await api.get("/api/simple-messages/inbox");
+    setInbox(res.data?.conversations || []);
+  };
+
+  const refreshSent = async () => {
+    const res = await api.get("/api/simple-messages/sent");
+    setSent(res.data?.conversations || []);
+  };
+
+  const loadFolder = async (folder: "inbox" | "sent") => {
+    setLoadingList(true);
+    try {
+      if (folder === "inbox") await refreshInbox();
+      else await refreshSent();
+    } finally {
+      setLoadingList(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFolder("inbox");
+    api
+      .get("/api/simple-messages/assigned-clinicians")
+      .then((res) => setClinicians(res.data?.clinicians || []))
+      .catch(() => setClinicians([]));
+  }, []);
+
+  useEffect(() => {
+    loadFolder(activeFolder);
+  }, [activeFolder]);
+
+  const openConversation = async (conversationId: string) => {
+    setSelectedId(conversationId);
+    const res = await api.get(`/api/simple-messages/conversation/${conversationId}`);
+    const conv = res.data?.conversation as SimpleConversation;
+    setSelectedConversation(conv);
+
+    const unreadIds = (conv.messages || [])
+      .filter((m) => !m.isRead && m.senderId !== user?.id)
+      .map((m) => m.id);
+
+    if (unreadIds.length) {
+      await api.post("/api/simple-messages/mark-read", { messageIds: unreadIds, conversationId });
+      await refreshInbox();
+    }
+  };
+
+  const sendNewMessage = async () => {
+    if (!recipientId || !subject.trim() || !body.trim()) return;
+    setSending(true);
+    try {
+      await api.post("/api/simple-messages/send", {
+        recipientId,
+        subject: subject.trim(),
+        body: body.trim(),
+      });
+      setShowNewMessage(false);
+      setRecipientId("");
+      setSubject("");
+      setBody("");
+      await refreshInbox();
+      await refreshSent();
+      setActiveFolder("sent");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const visibleRows = activeFolder === "inbox" ? inbox : sent;
+
+  return (
+    <div className="cg-content">
+      <div className="cg-section-header">
+        <h2 className="cg-section-title">Secure Messaging</h2>
+        <button className="btn-primary" onClick={() => setShowNewMessage(true)}>
+          New Message
+        </button>
+      </div>
+
+      {!selectedId && (
+        <div className="cg-msg-tabs">
+          <button className={`cg-msg-tab ${activeFolder === "inbox" ? "active" : ""}`} onClick={() => setActiveFolder("inbox")}>
+            Inbox
+          </button>
+          <button className={`cg-msg-tab ${activeFolder === "sent" ? "active" : ""}`} onClick={() => setActiveFolder("sent")}>
+            Sent
+          </button>
+        </div>
+      )}
+
+      {selectedId ? (
+        <div className="cg-card info">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">{selectedConversation?.subject || "Conversation"}</h3>
+            <button className="cg-btn cg-btn-resched" onClick={() => setSelectedId(null)}>
+              Back
+            </button>
+          </div>
+          <div className="cg-msg-thread">
+            {(selectedConversation?.messages || []).map((m) => (
+              <div key={m.id} className="cg-msg-thread-item">
+                <div className="cg-msg-thread-head">
+                  <strong>{m.sender.username}</strong>
+                  <span>{new Date(m.createdAt).toLocaleString()}</span>
+                </div>
+                <div className="cg-msg-thread-body">{m.content}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : loadingList ? (
+        <div className="cg-loading">Loading messages...</div>
+      ) : (
+        <div className="cg-card info">
+          {visibleRows.length === 0 ? (
+            <div className="cg-empty">No messages in this folder.</div>
+          ) : (
+            <div className="cg-msg-list">
+              {visibleRows.map((row) => (
+                <button key={row.id} className={`cg-msg-row ${row.unread ? "unread" : ""}`} onClick={() => openConversation(row.conversationId)}>
+                  <div className="cg-msg-row-top">
+                    <strong>{activeFolder === "inbox" ? row.from || "Unknown" : row.to || "Unknown"}</strong>
+                    <span>{new Date(row.time).toLocaleString()}</span>
+                  </div>
+                  <div className="cg-msg-row-subject">{row.subject}</div>
+                  <div className="cg-msg-row-preview">{row.preview}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showNewMessage && (
+        <div className="modal-overlay" onClick={() => setShowNewMessage(false)}>
+          <div className="modal-content cg-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>New Message</h3>
+              <button className="modal-close" onClick={() => setShowNewMessage(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>To (Assigned Clinician)</label>
+                <select className="form-select" value={recipientId} onChange={(e) => setRecipientId(e.target.value)}>
+                  <option value="">Select clinician...</option>
+                  {clinicians.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.username} ({c.specialization || "Clinician"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Subject</label>
+                <input className="form-input" value={subject} onChange={(e) => setSubject(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Message</label>
+                <textarea className="form-textarea" rows={6} value={body} onChange={(e) => setBody(e.target.value)} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowNewMessage(false)} disabled={sending}>
+                Cancel
+              </button>
+              <button className="btn-primary" onClick={sendNewMessage} disabled={sending || !recipientId || !subject.trim() || !body.trim()}>
+                {sending ? "Sending..." : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CaregiverAlerts({ onNavigate }: { onNavigate: (tab: string) => void }) {
+  const [alerts, setAlerts] = useState<CaregiverAlertItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [severityFilter, setSeverityFilter] = useState<"all" | AlertSeverity>("all");
+  const [showAcknowledged, setShowAcknowledged] = useState(false);
+  const [ackIds, setAckIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cg_alert_acknowledged");
+      if (raw) setAckIds(JSON.parse(raw));
+    } catch {
+      setAckIds([]);
+    }
+
+    api
+      .get("/api/caregiver/alerts")
+      .then((res) => setAlerts(res.data?.alerts || []))
+      .catch(() => setAlerts([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const persistAck = (next: string[]) => {
+    setAckIds(next);
+    localStorage.setItem("cg_alert_acknowledged", JSON.stringify(next));
+  };
+
+  const acknowledgeAlert = (id: string) => {
+    if (ackIds.includes(id)) return;
+    persistAck([...ackIds, id]);
+  };
+
+  const clearAcknowledged = () => {
+    persistAck([]);
+  };
+
+  const visible = alerts.filter((a) => {
+    if (severityFilter !== "all" && a.severity !== severityFilter) return false;
+    if (!showAcknowledged && ackIds.includes(a.id)) return false;
+    return true;
+  });
+
+  const redCount = alerts.filter((a) => a.severity === "red" && !ackIds.includes(a.id)).length;
+  const yellowCount = alerts.filter((a) => a.severity === "yellow" && !ackIds.includes(a.id)).length;
+  const ackCount = ackIds.length;
+
+  return (
+    <div className="cg-content">
+      <div className="cg-section-header">
+        <h2 className="cg-section-title">Alerts &amp; Notifications</h2>
+      </div>
+
+      {loading ? (
+        <div className="cg-loading">Loading alerts...</div>
+      ) : (
+        <>
+          <div className="cg-alert-kpis">
+            <div className="cg-alert-kpi critical">
+              <div className="cg-alert-kpi-value">{redCount}</div>
+              <div className="cg-alert-kpi-label">Critical</div>
+            </div>
+            <div className="cg-alert-kpi warning">
+              <div className="cg-alert-kpi-value">{yellowCount}</div>
+              <div className="cg-alert-kpi-label">Needs Attention</div>
+            </div>
+            <div className="cg-alert-kpi neutral">
+              <div className="cg-alert-kpi-value">{ackCount}</div>
+              <div className="cg-alert-kpi-label">Acknowledged</div>
+            </div>
+          </div>
+
+          <div className="cg-alert-toolbar">
+            <div className="cg-alert-filters">
+              <button className={`cg-filter-btn ${severityFilter === "all" ? "active" : ""}`} onClick={() => setSeverityFilter("all")}>
+                All
+              </button>
+              <button className={`cg-filter-btn ${severityFilter === "red" ? "active" : ""}`} onClick={() => setSeverityFilter("red")}>
+                Critical
+              </button>
+              <button className={`cg-filter-btn ${severityFilter === "yellow" ? "active" : ""}`} onClick={() => setSeverityFilter("yellow")}>
+                Attention
+              </button>
+            </div>
+            <label className="cg-checkline">
+              <input type="checkbox" checked={showAcknowledged} onChange={(e) => setShowAcknowledged(e.target.checked)} />
+              Show acknowledged
+            </label>
+            <button className="cg-btn cg-btn-resched" onClick={clearAcknowledged} disabled={ackCount === 0}>
+              Reset Acknowledged
+            </button>
+          </div>
+
+          <div className="cg-card alerts">
+            {visible.length === 0 ? (
+              <div className="cg-empty">No alerts matching current filters.</div>
+            ) : (
+              <div className="cg-alert-feed">
+                {visible.map((a) => {
+                  const isAck = ackIds.includes(a.id);
+                  const severityClass = a.severity === "red" ? "danger" : a.severity === "yellow" ? "warning" : "ok";
+                  return (
+                    <div key={a.id} className={`cg-alert-feed-item ${severityClass} ${isAck ? "ack" : ""}`}>
+                      <div className="cg-alert-feed-main">
+                        <div className="cg-alert-feed-title-row">
+                          <h4 className="cg-alert-feed-title">{a.title}</h4>
+                          <span className={`cg-order-status ${severityClass}`}>{a.severity.toUpperCase()}</span>
+                        </div>
+                        <p className="cg-alert-feed-message">{a.message}</p>
+                        <div className="cg-alert-feed-meta">
+                          {a.patientName ? <span>Patient: {a.patientName}</span> : <span>General notification</span>}
+                          <span>{new Date(a.createdAt).toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="cg-alert-feed-actions">
+                        <button className="cg-btn cg-btn-confirm" onClick={() => onNavigate(a.action)}>
+                          {a.action === "messages" ? "Open Messages" : a.action === "schedule" ? "Open Schedule" : "Open Medications"}
+                        </button>
+                        <button className="cg-btn cg-btn-resched" onClick={() => acknowledgeAlert(a.id)} disabled={isAck}>
+                          {isAck ? "Acknowledged" : "Acknowledge"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CaregiverAccess() {
+  const [data, setData] = useState<AccessPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get("/api/caregiver/access")
+      .then((res) => setData(res.data))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="cg-loading">Loading access settings...</div>;
+
+  if (!data) {
+    return (
+      <div className="cg-content">
+        <div className="cg-empty">Unable to load access settings.</div>
+      </div>
+    );
+  }
+
+  const yesNo = (v: boolean) => (v ? "Yes" : "No");
+  const toLabel = (key: string) =>
+    key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (c) => c.toUpperCase())
+      .trim();
+
+  return (
+    <div className="cg-content">
+      <div className="cg-section-header">
+        <h2 className="cg-section-title">Access &amp; Permissions</h2>
+      </div>
+
+      <div className="cg-access-head">
+        <span className={`cg-order-status ${data.role === "PRIMARY_MPOA" ? "ok" : "warning"}`}>
+          {data.role === "PRIMARY_MPOA" ? "Primary MPOA" : "Caregiver"}
+        </span>
+        <span className="cg-access-note">
+          Access level is role-based and audited for compliance.
+        </span>
+      </div>
+
+      <div className="cg-access-grid">
+        <div className="cg-card info">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Linked Patients</h3>
+            <span className="cg-card-count">{data.linkedPatients.length}</span>
+          </div>
+          {data.linkedPatients.length === 0 ? (
+            <div className="cg-empty">No linked patients.</div>
+          ) : (
+            <div className="cg-order-list">
+              {data.linkedPatients.map((p) => (
+                <div key={p.linkId} className="cg-order-item">
+                  <div className="cg-order-name">{p.patientName}</div>
+                  <div className="cg-order-sub">
+                    {p.relationship} {p.isPrimary ? "· Primary MPOA" : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <PermissionCard title="Read Access" flags={data.permissions.readAccess} />
+        <PermissionCard title="Communication Rights" flags={data.permissions.communication} />
+        <PermissionCard title="Management Rights" flags={data.permissions.management} />
+
+        <div className="cg-card alerts">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Restricted Actions</h3>
+          </div>
+          <div className="cg-access-list">
+            {Object.entries(data.permissions.restrictions).map(([k, v]) => (
+              <div key={k} className="cg-access-row restricted">
+                <span>{toLabel(k)}</span>
+                <strong>{yesNo(v)}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PermissionCard({ title, flags }: { title: string; flags: Record<string, boolean> }) {
+  const toLabel = (key: string) =>
+    key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (c) => c.toUpperCase())
+      .trim();
+  const yesNo = (v: boolean) => (v ? "Yes" : "No");
+
+  return (
+    <div className="cg-card info">
+      <div className="cg-card-header">
+        <h3 className="cg-card-title">{title}</h3>
+      </div>
+      <div className="cg-access-list">
+        {Object.entries(flags).map(([k, v]) => (
+          <div key={k} className={`cg-access-row ${v ? "allowed" : "blocked"}`}>
+            <span>{toLabel(k)}</span>
+            <strong>{yesNo(v)}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CaregiverSafety({ onNavigate }: { onNavigate: (tab: string) => void }) {
+  const [data, setData] = useState<SafetyPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .get("/api/caregiver/safety")
+      .then((res) => setData(res.data))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="cg-loading">Loading safety panel...</div>;
+  if (!data) return <div className="cg-content"><div className="cg-empty">Unable to load safety data.</div></div>;
+
+  const redCount = data.alerts.filter((a) => a.severity === "red").length;
+  const yellowCount = data.alerts.filter((a) => a.severity === "yellow").length;
+
+  const actionButton = (a: SafetyPayload["alerts"][number]) => {
+    if (a.action === "open_schedule") {
+      return <button className="cg-btn cg-btn-confirm" onClick={() => onNavigate("schedule")}>Open Schedule</button>;
+    }
+    if (a.action === "open_medications") {
+      return <button className="cg-btn cg-btn-confirm" onClick={() => onNavigate("medications")}>Open Medications</button>;
+    }
+    if (a.action === "call_patient") {
+      const patient = data.patients.find((p) => p.patientId === a.patientId);
+      return (
+        <a className="cg-btn cg-btn-cancel" href={patient?.patientPhone ? `tel:${patient.patientPhone}` : undefined} onClick={(e) => { if (!patient?.patientPhone) e.preventDefault(); }}>
+          Call Patient
+        </a>
+      );
+    }
+    return (
+      <a className="cg-btn cg-btn-cancel" href={data.agencyEmergency.phone ? `tel:${data.agencyEmergency.phone}` : undefined} onClick={(e) => { if (!data.agencyEmergency.phone) e.preventDefault(); }}>
+        Call Agency
+      </a>
+    );
+  };
+
+  return (
+    <div className="cg-content">
+      <div className="cg-section-header">
+        <h2 className="cg-section-title">Safety &amp; Emergency</h2>
+      </div>
+
+      <div className="cg-alert-kpis">
+        <div className="cg-alert-kpi critical">
+          <div className="cg-alert-kpi-value">{redCount}</div>
+          <div className="cg-alert-kpi-label">Urgent Alerts</div>
+        </div>
+        <div className="cg-alert-kpi warning">
+          <div className="cg-alert-kpi-value">{yellowCount}</div>
+          <div className="cg-alert-kpi-label">Follow-up Alerts</div>
+        </div>
+        <div className="cg-alert-kpi neutral">
+          <div className="cg-alert-kpi-value">{data.patients.length}</div>
+          <div className="cg-alert-kpi-label">Linked Patients</div>
+        </div>
+      </div>
+
+      <div className="cg-safety-grid">
+        <div className="cg-card info">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Emergency Contacts</h3>
+          </div>
+          <div className="cg-order-list">
+            {data.patients.map((p) => (
+              <div className="cg-order-item" key={p.patientId}>
+                <div className="cg-order-name">{p.patientName}</div>
+                <div className="cg-order-sub">Phone: {p.patientPhone || "Not on file"}</div>
+                <div className="cg-order-sub">Address: {p.patientAddress || "Not on file"}</div>
+              </div>
+            ))}
+            <div className="cg-order-item">
+              <div className="cg-order-name">Agency Emergency Line</div>
+              <div className="cg-order-sub">Phone: {data.agencyEmergency.phone || "Not configured"}</div>
+              <div className="cg-order-sub">Email: {data.agencyEmergency.email || "Not configured"}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="cg-card alerts">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Escalation Alerts</h3>
+            <span className="cg-card-count">{data.alerts.length}</span>
+          </div>
+          {data.alerts.length === 0 ? (
+            <div className="cg-empty">No active safety alerts.</div>
+          ) : (
+            <div className="cg-alert-feed">
+              {data.alerts.map((a) => (
+                <div key={a.id} className={`cg-alert-feed-item ${a.severity === "red" ? "danger" : "warning"}`}>
+                  <div className="cg-alert-feed-main">
+                    <div className="cg-alert-feed-title-row">
+                      <h4 className="cg-alert-feed-title">{a.title}</h4>
+                      <span className={`cg-order-status ${a.severity === "red" ? "danger" : "warning"}`}>
+                        {a.severity === "red" ? "URGENT" : "FOLLOW-UP"}
+                      </span>
+                    </div>
+                    <p className="cg-alert-feed-message">{a.message}</p>
+                    <div className="cg-alert-feed-meta">
+                      <span>Patient: {a.patientName}</span>
+                    </div>
+                  </div>
+                  <div className="cg-alert-feed-actions">{actionButton(a)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -481,7 +1142,7 @@ function CaregiverSchedule() {
 
   const now = Date.now();
   const upcoming = filteredVisits
-    .filter((v) => new Date(v.scheduledAt).getTime() >= now && v.status !== "CANCELLED")
+    .filter((v) => new Date(v.scheduledAt).getTime() >= now && !["CANCELLED", "REJECTED", "RESCHEDULED"].includes(v.status))
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   const history = filteredVisits
     .filter((v) => new Date(v.scheduledAt).getTime() < now || ["COMPLETED", "MISSED", "CANCELLED"].includes(v.status))
@@ -500,10 +1161,15 @@ function CaregiverSchedule() {
   };
 
   const handleCancel = async (v: ApiVisit) => {
-    if (!confirm("Cancel this visit?")) return;
+    const reason = prompt("Please enter a reason for cancellation:");
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("Cancellation reason is required.");
+      return;
+    }
     setActionId(v.id);
     try {
-      const updated = await updateVisitStatus(v.id, "CANCELLED", "Cancelled by caregiver");
+      const updated = await updateVisitStatus(v.id, "CANCELLED", reason.trim());
       setVisits((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
     } catch (e: any) {
       alert(e?.response?.data?.error || "Failed to cancel visit");
@@ -519,7 +1185,7 @@ function CaregiverSchedule() {
     setReschedDateTime("");
   };
 
-  const submitRescheduleRequest = async () => {
+  const handleSubmitRescheduleRequest = async () => {
     if (!showReschedule) return;
     if (!selectedPatient) return;
 
@@ -528,20 +1194,17 @@ function CaregiverSchedule() {
       return;
     }
 
+    if (!reschedReason.trim()) {
+      setReschedError("Reason for reschedule is required.");
+      return;
+    }
     const iso = new Date(reschedDateTime).toISOString();
     setReschedSubmitting(true);
     setReschedError("");
     try {
-      const notes = `Reschedule request for visit ${showReschedule.id} (original: ${showReschedule.scheduledAt}). Reason: ${reschedReason || "—"}`;
-      await createVisitRequest({
-        patientId: selectedPatient.id,
-        clinicianId: showReschedule.clinician.id,
+      await submitVisitRescheduleRequest(showReschedule.id, {
         scheduledAt: iso,
-        visitType: showReschedule.visitType as VisitType,
-        purpose: showReschedule.purpose || undefined,
-        address: showReschedule.address || undefined,
-        notes,
-        durationMinutes: showReschedule.durationMinutes,
+        reason: reschedReason.trim(),
       });
       await refreshVisits();
       setShowReschedule(null);
@@ -708,7 +1371,7 @@ function CaregiverSchedule() {
                 />
               </div>
               <div className="form-group">
-                <label>Reason (optional)</label>
+                <label>Reason *</label>
                 <textarea
                   value={reschedReason}
                   onChange={(e) => setReschedReason(e.target.value)}
@@ -727,7 +1390,7 @@ function CaregiverSchedule() {
               <button className="btn-secondary" onClick={() => setShowReschedule(null)} disabled={reschedSubmitting}>
                 Close
               </button>
-              <button className="btn-primary" onClick={submitRescheduleRequest} disabled={reschedSubmitting}>
+              <button className="btn-primary" onClick={handleSubmitRescheduleRequest} disabled={reschedSubmitting}>
                 {reschedSubmitting ? "Submitting..." : "Submit Request"}
               </button>
             </div>
@@ -940,6 +1603,165 @@ function CaregiverMedications() {
           <p className="cg-order-note">
             Caregivers can track and acknowledge order updates here. Clinical order edits remain clinician/physician controlled.
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Care Plan & Progress Tab ────────────────────────────────────────────────
+
+type ProgressGoal = {
+  id: string;
+  title: string;
+  target: string;
+  progress: number;
+  status: "on_track" | "attention" | "risk";
+};
+
+type ProgressPatientBundle = {
+  patient: OverviewPatient;
+  goals: ProgressGoal[];
+  weeklyUpdate: {
+    summary: string;
+    completedVisitsLast30d: number;
+    missedVisitsLast30d: number;
+    upcomingVisits: number;
+    vitalTrend: "IMPROVING" | "STABLE" | "DECLINING" | "CRITICAL";
+  };
+  education: { id: string; title: string; type: string }[];
+};
+
+function CaregiverProgress() {
+  const [bundles, setBundles] = useState<ProgressPatientBundle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get("/api/caregiver/progress")
+      .then((res) => {
+        const items: ProgressPatientBundle[] = res.data?.patients || [];
+        setBundles(items);
+        if (items.length > 0) setSelectedPatientId(items[0].patient.id);
+      })
+      .catch(() => setBundles([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="cg-loading">Loading progress updates...</div>;
+  if (bundles.length === 0) {
+    return (
+      <div className="cg-content">
+        <div className="cg-no-patients">
+          <h2>No Linked Patients</h2>
+          <p>Care plan and progress updates will appear once you are linked to a patient.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const selected =
+    bundles.find((b) => b.patient.id === selectedPatientId) || bundles[0];
+
+  const trendClass =
+    selected.weeklyUpdate.vitalTrend === "IMPROVING"
+      ? "ok"
+      : selected.weeklyUpdate.vitalTrend === "STABLE"
+      ? "warning"
+      : "danger";
+
+  return (
+    <div className="cg-content">
+      <div className="cg-section-header">
+        <h2 className="cg-section-title">Care Plan &amp; Progress</h2>
+      </div>
+
+      {bundles.length > 1 && (
+        <div className="cg-patient-selector">
+          {bundles.map((b) => (
+            <div
+              key={b.patient.id}
+              className={`cg-patient-chip ${b.patient.id === selected.patient.id ? "active" : ""}`}
+              onClick={() => setSelectedPatientId(b.patient.id)}
+            >
+              <div className="cg-patient-chip-avatar">{patientInitials(b.patient)}</div>
+              <div className="cg-patient-chip-info">
+                <span className="cg-patient-chip-name">{patientDisplayName(b.patient)}</span>
+                <span className="cg-patient-chip-rel">{b.patient.relationship || "Caregiver"}</span>
+              </div>
+              {b.patient.isPrimary && <span className="cg-primary-tag">MPOA</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="cg-progress-grid">
+        <div className="cg-card info">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Weekly Update</h3>
+          </div>
+          <p className="cg-progress-summary">{selected.weeklyUpdate.summary}</p>
+          <div className="cg-progress-kpis">
+            <div className="cg-progress-kpi">
+              <span className="cg-info-label">Completed Visits (30d)</span>
+              <span className="cg-info-value">{selected.weeklyUpdate.completedVisitsLast30d}</span>
+            </div>
+            <div className="cg-progress-kpi">
+              <span className="cg-info-label">Missed Visits (30d)</span>
+              <span className="cg-info-value">{selected.weeklyUpdate.missedVisitsLast30d}</span>
+            </div>
+            <div className="cg-progress-kpi">
+              <span className="cg-info-label">Upcoming Visits</span>
+              <span className="cg-info-value">{selected.weeklyUpdate.upcomingVisits}</span>
+            </div>
+            <div className="cg-progress-kpi">
+              <span className="cg-info-label">Vital Trend</span>
+              <span className={`cg-order-status ${trendClass}`}>
+                {selected.weeklyUpdate.vitalTrend}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="cg-card meds">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Patient Goals</h3>
+            <span className="cg-card-count">{selected.goals.length}</span>
+          </div>
+          <div className="cg-goal-list">
+            {selected.goals.map((g) => (
+              <div key={g.id} className="cg-goal-item">
+                <div className="cg-goal-top">
+                  <div>
+                    <div className="cg-goal-title">{g.title}</div>
+                    <div className="cg-goal-target">{g.target}</div>
+                  </div>
+                  <span className={`cg-order-status ${g.status === "on_track" ? "ok" : g.status === "attention" ? "warning" : "danger"}`}>
+                    {g.status === "on_track" ? "On Track" : g.status === "attention" ? "Attention" : "Risk"}
+                  </span>
+                </div>
+                <div className="cg-goal-progress">
+                  <div className="cg-goal-progress-bar" style={{ width: `${Math.max(0, Math.min(100, g.progress))}%` }} />
+                </div>
+                <div className="cg-goal-progress-label">{g.progress}%</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="cg-card visits">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Education & Tips</h3>
+          </div>
+          <div className="cg-order-list">
+            {selected.education.map((item) => (
+              <div key={item.id} className="cg-order-item">
+                <div className="cg-order-name">{item.title}</div>
+                <div className="cg-order-sub">Type: {item.type}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
