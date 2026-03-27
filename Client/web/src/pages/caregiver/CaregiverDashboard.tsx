@@ -145,6 +145,9 @@ export default function CaregiverDashboard() {
             <button className={`nav-item ${activeTab === "medications" ? "active" : ""}`} onClick={() => setActiveTab("medications")}>
               Medications
             </button>
+            <button className={`nav-item ${activeTab === "progress" ? "active" : ""}`} onClick={() => setActiveTab("progress")}>
+              Progress
+            </button>
             <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
               Messages
             </button>
@@ -165,6 +168,7 @@ export default function CaregiverDashboard() {
         {activeTab === "home" && <HomeOverview />}
         {activeTab === "schedule" && <CaregiverSchedule />}
         {activeTab === "medications" && <CaregiverMedications />}
+        {activeTab === "progress" && <CaregiverProgress />}
         {activeTab === "messages" && <PlaceholderTab label="Secure Messaging" />}
       </main>
     </div>
@@ -940,6 +944,165 @@ function CaregiverMedications() {
           <p className="cg-order-note">
             Caregivers can track and acknowledge order updates here. Clinical order edits remain clinician/physician controlled.
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Care Plan & Progress Tab ────────────────────────────────────────────────
+
+type ProgressGoal = {
+  id: string;
+  title: string;
+  target: string;
+  progress: number;
+  status: "on_track" | "attention" | "risk";
+};
+
+type ProgressPatientBundle = {
+  patient: OverviewPatient;
+  goals: ProgressGoal[];
+  weeklyUpdate: {
+    summary: string;
+    completedVisitsLast30d: number;
+    missedVisitsLast30d: number;
+    upcomingVisits: number;
+    vitalTrend: "IMPROVING" | "STABLE" | "DECLINING" | "CRITICAL";
+  };
+  education: { id: string; title: string; type: string }[];
+};
+
+function CaregiverProgress() {
+  const [bundles, setBundles] = useState<ProgressPatientBundle[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get("/api/caregiver/progress")
+      .then((res) => {
+        const items: ProgressPatientBundle[] = res.data?.patients || [];
+        setBundles(items);
+        if (items.length > 0) setSelectedPatientId(items[0].patient.id);
+      })
+      .catch(() => setBundles([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="cg-loading">Loading progress updates...</div>;
+  if (bundles.length === 0) {
+    return (
+      <div className="cg-content">
+        <div className="cg-no-patients">
+          <h2>No Linked Patients</h2>
+          <p>Care plan and progress updates will appear once you are linked to a patient.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const selected =
+    bundles.find((b) => b.patient.id === selectedPatientId) || bundles[0];
+
+  const trendClass =
+    selected.weeklyUpdate.vitalTrend === "IMPROVING"
+      ? "ok"
+      : selected.weeklyUpdate.vitalTrend === "STABLE"
+      ? "warning"
+      : "danger";
+
+  return (
+    <div className="cg-content">
+      <div className="cg-section-header">
+        <h2 className="cg-section-title">Care Plan &amp; Progress</h2>
+      </div>
+
+      {bundles.length > 1 && (
+        <div className="cg-patient-selector">
+          {bundles.map((b) => (
+            <div
+              key={b.patient.id}
+              className={`cg-patient-chip ${b.patient.id === selected.patient.id ? "active" : ""}`}
+              onClick={() => setSelectedPatientId(b.patient.id)}
+            >
+              <div className="cg-patient-chip-avatar">{patientInitials(b.patient)}</div>
+              <div className="cg-patient-chip-info">
+                <span className="cg-patient-chip-name">{patientDisplayName(b.patient)}</span>
+                <span className="cg-patient-chip-rel">{b.patient.relationship || "Caregiver"}</span>
+              </div>
+              {b.patient.isPrimary && <span className="cg-primary-tag">MPOA</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="cg-progress-grid">
+        <div className="cg-card info">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Weekly Update</h3>
+          </div>
+          <p className="cg-progress-summary">{selected.weeklyUpdate.summary}</p>
+          <div className="cg-progress-kpis">
+            <div className="cg-progress-kpi">
+              <span className="cg-info-label">Completed Visits (30d)</span>
+              <span className="cg-info-value">{selected.weeklyUpdate.completedVisitsLast30d}</span>
+            </div>
+            <div className="cg-progress-kpi">
+              <span className="cg-info-label">Missed Visits (30d)</span>
+              <span className="cg-info-value">{selected.weeklyUpdate.missedVisitsLast30d}</span>
+            </div>
+            <div className="cg-progress-kpi">
+              <span className="cg-info-label">Upcoming Visits</span>
+              <span className="cg-info-value">{selected.weeklyUpdate.upcomingVisits}</span>
+            </div>
+            <div className="cg-progress-kpi">
+              <span className="cg-info-label">Vital Trend</span>
+              <span className={`cg-order-status ${trendClass}`}>
+                {selected.weeklyUpdate.vitalTrend}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="cg-card meds">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Patient Goals</h3>
+            <span className="cg-card-count">{selected.goals.length}</span>
+          </div>
+          <div className="cg-goal-list">
+            {selected.goals.map((g) => (
+              <div key={g.id} className="cg-goal-item">
+                <div className="cg-goal-top">
+                  <div>
+                    <div className="cg-goal-title">{g.title}</div>
+                    <div className="cg-goal-target">{g.target}</div>
+                  </div>
+                  <span className={`cg-order-status ${g.status === "on_track" ? "ok" : g.status === "attention" ? "warning" : "danger"}`}>
+                    {g.status === "on_track" ? "On Track" : g.status === "attention" ? "Attention" : "Risk"}
+                  </span>
+                </div>
+                <div className="cg-goal-progress">
+                  <div className="cg-goal-progress-bar" style={{ width: `${Math.max(0, Math.min(100, g.progress))}%` }} />
+                </div>
+                <div className="cg-goal-progress-label">{g.progress}%</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="cg-card visits">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">Education & Tips</h3>
+          </div>
+          <div className="cg-order-list">
+            {selected.education.map((item) => (
+              <div key={item.id} className="cg-order-item">
+                <div className="cg-order-name">{item.title}</div>
+                <div className="cg-order-sub">Type: {item.type}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
