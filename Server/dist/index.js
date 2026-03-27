@@ -28,7 +28,32 @@ const caregiverSafety_1 = __importDefault(require("./routes/caregiverSafety"));
 const db_1 = require("./db");
 // No mailer in use since SendGrid was removed
 const app = (0, express_1.default)(); //Creates an Express "application" this is our server.
-app.use((0, cors_1.default)({ origin: ["http://localhost:5173", "http://localhost:5174"], credentials: true })); //allows requests from our React app.
+// Behind managed proxies (Render/Railway/etc.) so secure cookies can work correctly.
+app.set("trust proxy", 1);
+function parseAllowedOrigins(raw) {
+    if (!raw)
+        return [];
+    return raw
+        .split(",")
+        .map((o) => o.trim())
+        .filter(Boolean);
+}
+const localDevOrigins = ["http://localhost:5173", "http://localhost:5174"];
+const allowedOrigins = [
+    ...localDevOrigins,
+    ...parseAllowedOrigins(process.env.CORS_ORIGINS),
+];
+app.use((0, cors_1.default)({
+    origin: (origin, callback) => {
+        // allow non-browser requests (curl/postman) with no origin
+        if (!origin)
+            return callback(null, true);
+        if (allowedOrigins.includes(origin))
+            return callback(null, true);
+        return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+})); // allows requests from the web app and sends cookies
 app.use(express_1.default.json()); //tells Express to read JSON bodies
 app.use((0, cookie_parser_1.default)()); //to access cookies later
 //lets us know that the server is live

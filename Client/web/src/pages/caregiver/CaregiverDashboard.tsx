@@ -119,6 +119,18 @@ const VISIT_TYPE_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
+const datetimeLocalToIso = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  const [datePart, timePart] = value.split("T");
+  if (!datePart || !timePart) return undefined;
+
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = timePart.split(":").map(Number);
+  if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) return undefined;
+
+  return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
+};
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 }
@@ -1198,7 +1210,11 @@ function CaregiverSchedule() {
       setReschedError("Reason for reschedule is required.");
       return;
     }
-    const iso = new Date(reschedDateTime).toISOString();
+    const iso = datetimeLocalToIso(reschedDateTime);
+    if (!iso) {
+      setReschedError("Please select a valid new date and time.");
+      return;
+    }
     setReschedSubmitting(true);
     setReschedError("");
     try {

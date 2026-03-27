@@ -58,8 +58,8 @@ const VITAL_VALUE_PATTERNS: Record<VitalType, RegExp> = {
   RESPIRATORY_RATE:  /^\d{1,2}$/,                     // "16"
 };
 
-const VALID_TYPES  = Object.values(VitalType);
-const VALID_TRENDS = Object.values(VitalTrend);
+const VALID_TYPES  = Object.values(VitalType) as VitalType[];
+const VALID_TRENDS = Object.values(VitalTrend) as VitalTrend[];
 
 function getUser(req: Request): { id: string; role: string } {
   return (req as any).user;

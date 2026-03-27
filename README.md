@@ -175,10 +175,35 @@ The data layer prioritizes integrity, access control, and security, aligning wit
 - Prisma schema and database configuration
 - Scripts for creating admin and test users
 
+### Repository root (`package.json`)
+- Unified npm scripts for **Server** and **Client/web** using **`concurrently`** for local dev
+- **Vercel** uses `npm run setup` from the root as the install step for the monorepo frontend build
+
+## Monorepo scripts (run from repository root)
+
+The root `package.json` orchestrates both backend and web. **First-time setup:** install root dev dependencies (including `concurrently`) with `npm install` at the repo root once, then install subprojects:
+
+| Script | What it does |
+|--------|----------------|
+| `npm run setup` | Installs dependencies for **Server** and **Client/web** (includes devDependencies such as Vite, needed for CI and Vercel) |
+| `npm run dev` | Runs **backend + frontend** together (Express dev server + Vite) |
+| `npm run build` | Builds **Server** then **Client/web** (Prisma generate + `tsc`, then Vite production build) |
+| `npm run start` | Starts the **backend** production server (`node dist/index.js` under `Server`) |
+| `npm run lint` | Runs the **web** ESLint (`Client/web`) |
+
+**Typical workflow**
+
+1. From repo root: `npm install` (root, for `concurrently`)
+2. First time (or after clone): `npm run setup`
+3. Daily development: `npm run dev`
+4. Full production build check: `npm run build` (verified from repo root for both server and web)
+
+You can still run commands inside `Server/` or `Client/web/` directly when you only need one side.
+
 ## Setup and Local Development Overview
 
 ### Backend Setup
-- Clone the repository and navigate to the Server directory
+- Clone the repository and navigate to the Server directory (or use root scripts above)
 - Install backend dependencies (`npm install` or `yarn`)
   - If you previously used SendGrid, you can remove it with `npm uninstall @sendgrid/mail` since it's no longer required.
 - Create an environment configuration file containing database connection details, authentication secrets, and Twilio credentials for OTP/email verification
@@ -190,9 +215,9 @@ The data layer prioritizes integrity, access control, and security, aligning wit
 - Start the backend server in development mode using nodemon and ts-node (`npm run dev`)
 
 ### Web Application Setup
-- Navigate to the Client web directory
-- Install frontend dependencies
-- Configure the API base URL to point to the locally running backend server
+- Navigate to the Client web directory (or use `npm run dev` from the repository root)
+- Install frontend dependencies (`npm run setup` from root installs both Server and Client/web)
+- Configure the API base URL to point to the locally running backend server (`VITE_API_URL` for production builds; dev defaults to `http://localhost:4000`)
 - Start the Vite development server and access the application through the browser
 
 ### Mobile Application Setup

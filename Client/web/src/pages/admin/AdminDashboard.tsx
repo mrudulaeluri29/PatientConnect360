@@ -1566,10 +1566,24 @@ function AppointmentsReview() {
     refresh();
   }, []);
 
+  const datetimeLocalToIso = (value?: string): string | undefined => {
+    if (!value) return undefined;
+    const [datePart, timePart] = value.split("T");
+    if (!datePart || !timePart) return undefined;
+
+    const [y, m, d] = datePart.split("-").map(Number);
+    const [hh, mm] = timePart.split(":").map(Number);
+    if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) return undefined;
+
+    // datetime-local is a local wall-clock value; build a local Date explicitly
+    // before converting to UTC ISO for the API contract.
+    return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
+  };
+
   const runReview = async (visitId: string, action: "APPROVE" | "REJECT") => {
     setReviewingId(visitId);
     try {
-      const overrideIso = scheduleOverrides[visitId] ? new Date(scheduleOverrides[visitId]).toISOString() : undefined;
+      const overrideIso = datetimeLocalToIso(scheduleOverrides[visitId]);
       await reviewVisitRequest(visitId, {
         action,
         reviewNote: reviewNotes[visitId] || undefined,

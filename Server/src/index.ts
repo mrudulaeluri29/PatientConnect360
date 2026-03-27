@@ -28,8 +28,34 @@ import { prisma } from "./db";
 
 const app = express(); //Creates an Express "application" this is our server.
 
+// Behind managed proxies (Render/Railway/etc.) so secure cookies can work correctly.
+app.set("trust proxy", 1);
 
-app.use(cors({ origin: ["http://localhost:5173", "http://localhost:5174"], credentials: true })); //allows requests from our React app.
+function parseAllowedOrigins(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
+const localDevOrigins = ["http://localhost:5173", "http://localhost:5174"];
+const allowedOrigins = [
+  ...localDevOrigins,
+  ...parseAllowedOrigins(process.env.CORS_ORIGINS),
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // allow non-browser requests (curl/postman) with no origin
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+); // allows requests from the web app and sends cookies
 app.use(express.json());//tells Express to read JSON bodies
 app.use(cookieParser()); //to access cookies later
 
