@@ -42,7 +42,7 @@ export function medicationCardClass(riskLevel: MedicationRiskLevel): string {
     CHANGED:   "changed",
     HIGH_RISK: "high-risk",
   };
-  return map[riskLevel];
+  return map[riskLevel] ?? "";
 }
 
 /** Returns days until refill is due, or null if no refill date */

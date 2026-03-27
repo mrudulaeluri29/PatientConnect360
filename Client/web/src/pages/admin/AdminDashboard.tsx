@@ -1557,7 +1557,7 @@ function AvailabilityReview() {
     setReviewingId(id);
     try {
       const updated = await reviewAvailability(id, status, reviewNote || undefined);
-      setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)).filter((r) => statusFilter === "" || r.status === statusFilter));
       setReviewModalRecord(null);
       setReviewNote("");
     } catch (err: any) {
