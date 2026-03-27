@@ -8,6 +8,32 @@ const express_1 = require("express");
 const db_1 = require("../db");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const router = (0, express_1.Router)();
+async function getCaregiverLinkedPatientIds(caregiverId) {
+    const links = await db_1.prisma.caregiverPatientLink.findMany({
+        where: { caregiverId, isActive: true },
+        select: { patientId: true },
+    });
+    return links.map((l) => String(l.patientId));
+}
+async function getCaregiverAllowedClinicianIds(caregiverId) {
+    const patientIds = await getCaregiverLinkedPatientIds(caregiverId);
+    if (!patientIds.length)
+        return [];
+    const assignments = await db_1.prisma.patientAssignment.findMany({
+        where: {
+            patientId: { in: patientIds },
+            isActive: true,
+        },
+        select: { clinicianId: true },
+    });
+    const uniqueIds = [];
+    for (const assignment of assignments) {
+        const id = String(assignment.clinicianId);
+        if (!uniqueIds.includes(id))
+            uniqueIds.push(id);
+    }
+    return uniqueIds;
+}
 // Middleware to get current user from JWT cookie
 function getCurrentUser(req) {
     try {
@@ -22,19 +48,29 @@ function getCurrentUser(req) {
     }
 }
 // GET /api/simple-messages/assigned-clinicians
-// Get all clinicians assigned to the current patient
+// Get all clinicians assigned to the current patient (or caregiver-linked patients)
 router.get("/assigned-clinicians", async (req, res) => {
     try {
         const user = getCurrentUser(req);
         if (!user) {
             return res.status(401).json({ error: "Unauthorized" });
         }
-        if (user.role !== "PATIENT") {
-            return res.status(403).json({ error: "Only patients can access this endpoint" });
+        let patientIds = [];
+        if (user.role === "PATIENT") {
+            patientIds = [user.uid];
+        }
+        else if (user.role === "CAREGIVER") {
+            patientIds = await getCaregiverLinkedPatientIds(user.uid);
+        }
+        else {
+            return res.status(403).json({ error: "Only patients and caregivers can access this endpoint" });
+        }
+        if (!patientIds.length) {
+            return res.json({ clinicians: [] });
         }
         const assignments = await db_1.prisma.patientAssignment.findMany({
             where: {
-                patientId: user.uid,
+                patientId: { in: patientIds },
                 isActive: true,
             },
             include: {
@@ -48,12 +84,16 @@ router.get("/assigned-clinicians", async (req, res) => {
                 },
             },
         });
-        const clinicians = assignments.map((a) => ({
-            id: a.clinician.id,
-            username: a.clinician.username,
-            email: a.clinician.email,
-            specialization: a.clinician.clinicianProfile?.specialization ?? null,
-        }));
+        const clinicianMap = new Map();
+        assignments.forEach((a) => {
+            clinicianMap.set(a.clinician.id, {
+                id: a.clinician.id,
+                username: a.clinician.username,
+                email: a.clinician.email,
+                specialization: a.clinician.clinicianProfile?.specialization ?? null,
+            });
+        });
+        const clinicians = Array.from(clinicianMap.values());
         res.json({ clinicians });
     }
     catch (error) {
@@ -125,7 +165,7 @@ router.post("/send", async (req, res) => {
         if (!recipientId || !subject || !body) {
             return res.status(400).json({ error: "recipientId, subject, and body are required" });
         }
-        // Validate assignment in either direction
+        // Validate assignment/link in either direction
         if (user.role === "PATIENT") {
             const assignment = await db_1.prisma.patientAssignment.findFirst({
                 where: {
@@ -148,6 +188,12 @@ router.post("/send", async (req, res) => {
             });
             if (!assignment) {
                 return res.status(403).json({ error: "You can only message patients assigned to you" });
+            }
+        }
+        else if (user.role === "CAREGIVER") {
+            const allowedClinicianIds = await getCaregiverAllowedClinicianIds(user.uid);
+            if (!allowedClinicianIds.includes(recipientId)) {
+                return res.status(403).json({ error: "You can only message clinicians linked to your patient(s)" });
             }
         }
         // Get or create conversation between these two users

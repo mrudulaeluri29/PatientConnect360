@@ -81,6 +81,7 @@ router.get("/search", async (req, res) => {
 // ADMIN     → all medications (filterable by patientId, status)
 // CLINICIAN → medications for their assigned patients (filterable by patientId, status)
 // PATIENT   → their own medications
+// CAREGIVER → medications for their linked active patients (filterable by patientId, status)
 router.get("/", async (req, res) => {
     try {
         const user = getUser(req);
@@ -110,6 +111,22 @@ router.get("/", async (req, res) => {
         else if (user.role === "ADMIN") {
             if (patientId)
                 where.patientId = patientId;
+        }
+        else if (user.role === "CAREGIVER") {
+            const links = await db_1.prisma.caregiverPatientLink.findMany({
+                where: { caregiverId: user.id, isActive: true },
+                select: { patientId: true },
+            });
+            const linkedIds = links.map((l) => l.patientId);
+            if (patientId) {
+                if (!linkedIds.includes(patientId)) {
+                    return res.status(403).json({ error: "Patient not linked to you" });
+                }
+                where.patientId = patientId;
+            }
+            else {
+                where.patientId = { in: linkedIds };
+            }
         }
         else {
             return res.json({ medications: [] });
@@ -153,6 +170,13 @@ router.get("/:id", async (req, res) => {
             });
             if (!assignment)
                 return res.status(403).json({ error: "Patient not assigned to you" });
+        }
+        if (user.role === "CAREGIVER") {
+            const link = await db_1.prisma.caregiverPatientLink.findFirst({
+                where: { caregiverId: user.id, patientId: med.patient.id, isActive: true },
+            });
+            if (!link)
+                return res.status(403).json({ error: "Patient not linked to you" });
         }
         res.json({ medication: med });
     }

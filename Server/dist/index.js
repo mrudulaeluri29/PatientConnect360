@@ -20,6 +20,7 @@ const availability_1 = __importDefault(require("./routes/availability"));
 const caregiverInvitations_1 = __importDefault(require("./routes/caregiverInvitations"));
 const caregiverLinks_1 = __importDefault(require("./routes/caregiverLinks"));
 const caregiverOverview_1 = __importDefault(require("./routes/caregiverOverview"));
+const caregiverProgress_1 = __importDefault(require("./routes/caregiverProgress"));
 // Import our Prisma database client
 const db_1 = require("./db");
 // No mailer in use since SendGrid was removed
@@ -57,6 +58,7 @@ app.use("/api/availability", availability_1.default);
 app.use("/api/caregiver-invitations", caregiverInvitations_1.default);
 app.use("/api/caregiver-links", caregiverLinks_1.default);
 app.use("/api/caregiver/overview", caregiverOverview_1.default);
+app.use("/api/caregiver/progress", caregiverProgress_1.default);
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 // Start server immediately (no email dependency)
 app.listen(PORT, () => {
