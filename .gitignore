@@ -13,4 +13,11 @@ node_modules/
 .env.local
 .env.*.local
 
+# IDE/workspace-local config
+.vscode/
+
+# Local helper/test scripts generated during development
+Server/seed_phase*.js
+Server/test_*.ps1
+
 

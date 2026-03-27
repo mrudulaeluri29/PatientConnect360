@@ -1526,6 +1526,7 @@ function SystemSettings() {
 // ─── Availability Review (Admin) ─────────────────────────────────────────────
 function AvailabilityReview() {
   const [records, setRecords] = useState<ApiAvailability[]>([]);
+  const [allRecords, setAllRecords] = useState<ApiAvailability[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<AvailabilityStatus | "">("");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
@@ -1536,11 +1537,14 @@ function AvailabilityReview() {
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const params: any = {};
-      if (statusFilter) params.status = statusFilter;
-      const data = await getAllAvailability(params);
-      setRecords(data);
+      const [allData, filteredData] = await Promise.all([
+        getAllAvailability(),
+        getAllAvailability(statusFilter ? { status: statusFilter } : undefined),
+      ]);
+      setAllRecords(allData);
+      setRecords(filteredData);
     } catch {
+      setAllRecords([]);
       setRecords([]);
     } finally {
       setLoading(false);
@@ -1549,15 +1553,20 @@ function AvailabilityReview() {
 
   useEffect(() => { fetchRecords(); }, [statusFilter]);
 
-  const pendingCount = records.filter((r) => r.status === "PENDING").length;
-  const approvedCount = records.filter((r) => r.status === "APPROVED").length;
-  const rejectedCount = records.filter((r) => r.status === "REJECTED").length;
+  const pendingCount = allRecords.filter((r) => r.status === "PENDING").length;
+  const approvedCount = allRecords.filter((r) => r.status === "APPROVED").length;
+  const rejectedCount = allRecords.filter((r) => r.status === "REJECTED").length;
 
   const handleReview = async (id: string, status: "APPROVED" | "REJECTED") => {
     setReviewingId(id);
     try {
       const updated = await reviewAvailability(id, status, reviewNote || undefined);
-      setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)).filter((r) => statusFilter === "" || r.status === statusFilter));
+      setRecords((prev) =>
+        prev
+          .map((r) => (r.id === id ? updated : r))
+          .filter((r) => statusFilter === "" || r.status === statusFilter)
+      );
+      setAllRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
       setReviewModalRecord(null);
       setReviewNote("");
     } catch (err: any) {
@@ -1573,6 +1582,7 @@ function AvailabilityReview() {
     try {
       await deleteAvailability(id);
       setRecords((prev) => prev.filter((r) => r.id !== id));
+      setAllRecords((prev) => prev.filter((r) => r.id !== id));
     } catch (err: any) {
       alert(err.response?.data?.error || "Delete failed");
     } finally {
