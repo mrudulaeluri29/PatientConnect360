@@ -378,19 +378,13 @@ function AppointmentsHub() {
   const [availabilityByDate, setAvailabilityByDate] = useState<Record<string, { start: string; end: string }>>({});
   const [submitMessage, setSubmitMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [appointments, setAppointments] = useState<ApiVisit[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true);
 
   // Submitted availability history
   const [submissions, setSubmissions] = useState<ApiAvailability[]>([]);
   const [subsLoading, setSubsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const upcomingAppointments = [
-    { id: "a1", patient: "John Doe", type: "Home Health Follow-up", date: "2026-03-05", time: "09:00 AM", location: "Phoenix, AZ", status: "Confirmed" },
-    { id: "a2", patient: "Jane Smith", type: "Medication Review", date: "2026-03-05", time: "11:30 AM", location: "Phoenix, AZ", status: "Confirmed" },
-    { id: "a3", patient: "Robert Johnson", type: "Post-Discharge Visit", date: "2026-03-06", time: "02:00 PM", location: "Scottsdale, AZ", status: "Pending" },
-    { id: "a4", patient: "Mary Williams", type: "Routine Check-in", date: "2026-03-07", time: "10:15 AM", location: "Mesa, AZ", status: "Confirmed" },
-    { id: "a5", patient: "Carlos Martinez", type: "Wound Care", date: "2026-03-08", time: "01:00 PM", location: "Tempe, AZ", status: "Confirmed" },
-  ];
 
   useEffect(() => {
     getMyAvailability()
@@ -398,6 +392,34 @@ function AppointmentsHub() {
       .catch(() => setSubmissions([]))
       .finally(() => setSubsLoading(false));
   }, []);
+
+  useEffect(() => {
+    const nowIso = new Date().toISOString();
+    setAppointmentsLoading(true);
+    getVisits({ from: nowIso })
+      .then((rows) => {
+        const upcoming = rows.filter((v) =>
+          ["SCHEDULED", "CONFIRMED"].includes(v.status) && new Date(v.scheduledAt).getTime() >= Date.now()
+        );
+        setAppointments(upcoming);
+      })
+      .catch(() => setAppointments([]))
+      .finally(() => setAppointmentsLoading(false));
+  }, []);
+
+  const upcomingAppointments = appointments.map((appt) => {
+    const { date, time } = formatVisitDateTime(appt.scheduledAt);
+    const displayStatus = appt.status === "CONFIRMED" ? "Confirmed" : "Pending";
+    return {
+      id: appt.id,
+      patient: appt.patient.patientProfile?.legalName || appt.patient.username,
+      type: visitTypeLabel(appt.visitType),
+      date,
+      time,
+      location: appt.address || appt.patient.patientProfile?.homeAddress || "Address not provided",
+      status: displayStatus,
+    };
+  });
 
   const filteredAppointments = upcomingAppointments.filter((appt) =>
     appt.patient.toLowerCase().includes(searchTerm.toLowerCase())
@@ -530,8 +552,10 @@ function AppointmentsHub() {
             />
           </div>
           <div className="appointments-list">
-            {filteredAppointments.length === 0 ? (
-              <div className="appointments-empty">No appointments found for that patient.</div>
+            {appointmentsLoading ? (
+              <div className="appointments-empty">Loading appointments...</div>
+            ) : filteredAppointments.length === 0 ? (
+              <div className="appointments-empty">No upcoming appointments found for that patient.</div>
             ) : (
               filteredAppointments.map((appt) => (
                 <article key={appt.id} className="appointment-card">
@@ -546,7 +570,7 @@ function AppointmentsHub() {
                       {appt.patient}
                     </h4>
                     <p>{appt.type}</p>
-                    <p>{formatDateForUi(appt.date)} at {appt.time}</p>
+                    <p>{appt.date} at {appt.time}</p>
                     <p>{appt.location}</p>
                   </div>
                   <span className={`appointment-status status-${appt.status.toLowerCase()}`}>{appt.status}</span>
@@ -1513,6 +1537,21 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
     }
   };
 
+  const handleReply = () => {
+    if (!selectedConversation) return;
+    const recipient = selectedConversation.participants?.find((p: any) => p.userId !== user?.id)?.user;
+    if (!recipient?.id) {
+      alert("Unable to determine reply recipient for this conversation.");
+      return;
+    }
+
+    const currentSubject = String(selectedConversation.subject || "").trim();
+    setSelectedPatient(String(recipient.id));
+    setSubject(currentSubject.toLowerCase().startsWith("re:") ? currentSubject : `Re: ${currentSubject}`);
+    setMessageBody("");
+    setShowNewMessageModal(true);
+  };
+
   return (
     <div className="clinician-content">
       {/* Folder Tabs */}
@@ -1641,7 +1680,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
               </div>
 
               <div className="message-reply-section">
-                <button className="btn-primary">
+                <button className="btn-primary" onClick={handleReply}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="9 14 4 9 9 4"></polyline>
                     <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>

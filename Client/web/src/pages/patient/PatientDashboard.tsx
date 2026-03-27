@@ -9,6 +9,7 @@ import {
   getVisits,
   updateVisitStatus,
   createVisitRequest,
+  submitRescheduleRequest,
   formatVisitDateTime,
   visitTypeLabel,
   clinicianAvatar,
@@ -419,6 +420,11 @@ function UpcomingVisits() {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showRescheduleModal, setShowRescheduleModal] = useState<null | ApiVisit>(null);
+  const [rescheduleDateTime, setRescheduleDateTime] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
+  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState("");
   const [careTeam, setCareTeam] = useState<{ id: string; username: string; specialization: string | null }[]>([]);
 
   const fetchVisits = () => {
@@ -445,7 +451,7 @@ function UpcomingVisits() {
   }, []);
 
   const upcomingVisits = visits
-    .filter((v) => !["COMPLETED", "CANCELLED", "MISSED"].includes(v.status))
+    .filter((v) => !["COMPLETED", "CANCELLED", "MISSED", "REJECTED", "RESCHEDULED"].includes(v.status))
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 
   const pastVisits = visits
@@ -465,15 +471,54 @@ function UpcomingVisits() {
   };
 
   const handleCancel = async (id: string) => {
-    if (!confirm("Are you sure you want to cancel this visit?")) return;
+    const reason = prompt("Please enter a reason for cancellation:");
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("Cancellation reason is required.");
+      return;
+    }
     setCancelling(id);
     try {
-      const updated = await updateVisitStatus(id, "CANCELLED");
+      const updated = await updateVisitStatus(id, "CANCELLED", reason.trim());
       setVisits((prev) => prev.map((v) => (v.id === id ? updated : v)));
     } catch (err: any) {
       alert(err.response?.data?.error || "Failed to cancel visit");
     } finally {
       setCancelling(null);
+    }
+  };
+
+  const openReschedule = (visit: ApiVisit) => {
+    setShowRescheduleModal(visit);
+    setRescheduleDateTime("");
+    setRescheduleReason("");
+    setRescheduleError("");
+  };
+
+  const submitReschedule = async () => {
+    if (!showRescheduleModal) return;
+    if (!rescheduleDateTime) {
+      setRescheduleError("Please select a new date/time.");
+      return;
+    }
+    if (!rescheduleReason.trim()) {
+      setRescheduleError("Reason for reschedule is required.");
+      return;
+    }
+    setRescheduleSubmitting(true);
+    setRescheduleError("");
+    try {
+      await submitRescheduleRequest(showRescheduleModal.id, {
+        scheduledAt: new Date(rescheduleDateTime).toISOString(),
+        reason: rescheduleReason.trim(),
+      });
+      setShowRescheduleModal(null);
+      fetchVisits();
+      alert("Reschedule request submitted for admin review.");
+    } catch (err: any) {
+      setRescheduleError(err?.response?.data?.error || "Failed to submit reschedule request.");
+    } finally {
+      setRescheduleSubmitting(false);
     }
   };
 
@@ -513,7 +558,7 @@ function UpcomingVisits() {
             const avatar = clinicianAvatar(visit.clinician.username);
             const discipline = visit.clinician.clinicianProfile?.specialization ?? visitTypeLabel(visit.visitType);
             const isConfirmed = visit.status === "CONFIRMED";
-            const canCancel = !["COMPLETED", "CANCELLED", "MISSED"].includes(visit.status);
+            const canCancel = !["COMPLETED", "CANCELLED", "MISSED", "REJECTED"].includes(visit.status);
 
             return (
               <div key={visit.id} className="visit-card-large">
@@ -566,6 +611,15 @@ function UpcomingVisits() {
                   {isConfirmed && (
                     <button className="btn-confirm" disabled style={{ opacity: 0.6 }}>
                       Confirmed ✓
+                    </button>
+                  )}
+                  {["CONFIRMED", "SCHEDULED"].includes(visit.status) && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => openReschedule(visit)}
+                      disabled={cancelling === visit.id}
+                    >
+                      Request Reschedule
                     </button>
                   )}
                   {canCancel && (
@@ -626,6 +680,53 @@ function UpcomingVisits() {
           onClose={() => setShowRequestModal(false)}
           onCreated={() => { fetchVisits(); setShowRequestModal(false); }}
         />
+      )}
+
+      {showRescheduleModal && (
+        <div className="modal-overlay" onClick={() => setShowRescheduleModal(null)}>
+          <div className="modal-content visit-request-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Request Reschedule</h3>
+              <button className="modal-close" onClick={() => setShowRescheduleModal(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>New date & time</label>
+                <input
+                  type="datetime-local"
+                  value={rescheduleDateTime}
+                  onChange={(e) => setRescheduleDateTime(e.target.value)}
+                  className="form-input"
+                  disabled={rescheduleSubmitting}
+                />
+              </div>
+              <div className="form-group">
+                <label>Reason for reschedule *</label>
+                <textarea
+                  value={rescheduleReason}
+                  onChange={(e) => setRescheduleReason(e.target.value)}
+                  rows={3}
+                  className="form-textarea"
+                  disabled={rescheduleSubmitting}
+                />
+              </div>
+              {rescheduleError && <div className="visit-request-error">{rescheduleError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowRescheduleModal(null)} disabled={rescheduleSubmitting}>
+                Close
+              </button>
+              <button className="btn-primary" onClick={submitReschedule} disabled={rescheduleSubmitting}>
+                {rescheduleSubmitting ? "Submitting..." : "Submit Request"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1115,6 +1216,21 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
     }
   };
 
+  const handleReply = () => {
+    if (!selectedConversation) return;
+    const recipient = selectedConversation.participants?.find((p: any) => p.userId !== user?.id)?.user;
+    if (!recipient?.id) {
+      alert("Unable to determine reply recipient for this conversation.");
+      return;
+    }
+
+    const currentSubject = String(selectedConversation.subject || "").trim();
+    setSelectedClinician(String(recipient.id));
+    setSubject(currentSubject.toLowerCase().startsWith("re:") ? currentSubject : `Re: ${currentSubject}`);
+    setMessageBody("");
+    setShowNewMessageModal(true);
+  };
+
   return (
     <div className="patient-content">
       <div className="content-header">
@@ -1307,7 +1423,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
               </div>
 
               <div className="message-reply-section-patient">
-                <button className="btn-primary">
+                <button className="btn-primary" onClick={handleReply}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="9 14 4 9 9 4"></polyline>
                     <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>

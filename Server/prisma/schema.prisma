@@ -244,13 +244,21 @@ model Message {
 // ─────────────────────────────────────────────
 
 enum VisitStatus {
-  SCHEDULED    // Created by admin/clinician, awaiting confirmation
+  REQUESTED            // New appointment request awaiting admin review
+  RESCHEDULE_REQUESTED // Reschedule request awaiting admin review
+  REJECTED             // Request rejected by admin
+  SCHEDULED            // Legacy/admin-created schedule
   CONFIRMED    // Patient confirmed
   IN_PROGRESS  // Clinician checked in
   COMPLETED    // Visit finished
   CANCELLED    // Cancelled by any party
   MISSED       // No-show
   RESCHEDULED  // Replaced by another visit
+}
+
+enum VisitRequestType {
+  INITIAL
+  RESCHEDULE
 }
 
 enum VisitType {
@@ -283,9 +291,20 @@ model Visit {
   cancelledAt     DateTime?
   cancelReason    String?
   createdBy       String?                     // Admin user ID who created the visit
+  requestType     VisitRequestType @default(INITIAL)
+  requestedById   String?
+  originalVisitId String?
+  rescheduleReason String?    @db.Text
+  reviewNote      String?     @db.Text
+  reviewedByAdminId String?
+  reviewedAt      DateTime?
+  cancellationRequestedById String?
+  cancellationRequestedAt DateTime?
   
   patient         User        @relation("PatientVisits",   fields: [patientId],   references: [id], onDelete: Cascade)
   clinician       User        @relation("ClinicianVisits", fields: [clinicianId], references: [id], onDelete: Cascade)
+  originalVisit   Visit?      @relation("VisitRescheduleChain", fields: [originalVisitId], references: [id], onDelete: SetNull)
+  rescheduleChildren Visit[]  @relation("VisitRescheduleChain")
 
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -294,6 +313,8 @@ model Visit {
   @@index([clinicianId])
   @@index([scheduledAt])
   @@index([status])
+  @@index([originalVisitId])
+  @@index([requestType])
 }
 
 // ─────────────────────────────────────────────

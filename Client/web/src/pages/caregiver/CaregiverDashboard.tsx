@@ -4,11 +4,10 @@ import { api } from "../../lib/axios";
 import {
   getVisits,
   updateVisitStatus,
-  createVisitRequest,
+  submitRescheduleRequest,
   formatVisitDateTime,
   visitTypeLabel,
   type ApiVisit,
-  type VisitType,
 } from "../../api/visits";
 import {
   getMedications,
@@ -1143,7 +1142,7 @@ function CaregiverSchedule() {
 
   const now = Date.now();
   const upcoming = filteredVisits
-    .filter((v) => new Date(v.scheduledAt).getTime() >= now && v.status !== "CANCELLED")
+    .filter((v) => new Date(v.scheduledAt).getTime() >= now && !["CANCELLED", "REJECTED", "RESCHEDULED"].includes(v.status))
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   const history = filteredVisits
     .filter((v) => new Date(v.scheduledAt).getTime() < now || ["COMPLETED", "MISSED", "CANCELLED"].includes(v.status))
@@ -1162,10 +1161,15 @@ function CaregiverSchedule() {
   };
 
   const handleCancel = async (v: ApiVisit) => {
-    if (!confirm("Cancel this visit?")) return;
+    const reason = prompt("Please enter a reason for cancellation:");
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("Cancellation reason is required.");
+      return;
+    }
     setActionId(v.id);
     try {
-      const updated = await updateVisitStatus(v.id, "CANCELLED", "Cancelled by caregiver");
+      const updated = await updateVisitStatus(v.id, "CANCELLED", reason.trim());
       setVisits((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
     } catch (e: any) {
       alert(e?.response?.data?.error || "Failed to cancel visit");
@@ -1190,20 +1194,17 @@ function CaregiverSchedule() {
       return;
     }
 
+    if (!reschedReason.trim()) {
+      setReschedError("Reason for reschedule is required.");
+      return;
+    }
     const iso = new Date(reschedDateTime).toISOString();
     setReschedSubmitting(true);
     setReschedError("");
     try {
-      const notes = `Reschedule request for visit ${showReschedule.id} (original: ${showReschedule.scheduledAt}). Reason: ${reschedReason || "—"}`;
-      await createVisitRequest({
-        patientId: selectedPatient.id,
-        clinicianId: showReschedule.clinician.id,
+      await submitRescheduleRequest(showReschedule.id, {
         scheduledAt: iso,
-        visitType: showReschedule.visitType as VisitType,
-        purpose: showReschedule.purpose || undefined,
-        address: showReschedule.address || undefined,
-        notes,
-        durationMinutes: showReschedule.durationMinutes,
+        reason: reschedReason.trim(),
       });
       await refreshVisits();
       setShowReschedule(null);
@@ -1370,7 +1371,7 @@ function CaregiverSchedule() {
                 />
               </div>
               <div className="form-group">
-                <label>Reason (optional)</label>
+                <label>Reason *</label>
                 <textarea
                   value={reschedReason}
                   onChange={(e) => setReschedReason(e.target.value)}
