@@ -49,6 +49,18 @@ import {
   type ApiCaregiverLink,
 } from "../../api/caregiverInvitations";
 
+const datetimeLocalToIso = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  const [datePart, timePart] = value.split("T");
+  if (!datePart || !timePart) return undefined;
+
+  const [y, m, d] = datePart.split("-").map(Number);
+  const [hh, mm] = timePart.split(":").map(Number);
+  if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) return undefined;
+
+  return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
+};
+
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [pendingConversation, setPendingConversation] = useState<{ convId: string; messageId?: string } | null>(null);
@@ -508,8 +520,14 @@ function UpcomingVisits() {
     setRescheduleSubmitting(true);
     setRescheduleError("");
     try {
+      const scheduledAtIso = datetimeLocalToIso(rescheduleDateTime);
+      if (!scheduledAtIso) {
+        setRescheduleError("Please select a valid new date/time.");
+        setRescheduleSubmitting(false);
+        return;
+      }
       await submitRescheduleRequest(showRescheduleModal.id, {
-        scheduledAt: new Date(rescheduleDateTime).toISOString(),
+        scheduledAt: scheduledAtIso,
         reason: rescheduleReason.trim(),
       });
       setShowRescheduleModal(null);
@@ -1971,7 +1989,12 @@ function VisitRequestModal({ clinician, careTeam, onClose, onCreated }: VisitReq
     setError("");
 
     try {
-      const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
+      const scheduledAt = datetimeLocalToIso(`${scheduledDate}T${scheduledTime}`);
+      if (!scheduledAt) {
+        setError("Please select a valid date and time.");
+        setSubmitting(false);
+        return;
+      }
       await createVisitRequest({
         clinicianId: selectedClinicianId,
         scheduledAt,
