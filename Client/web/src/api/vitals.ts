@@ -56,7 +56,7 @@ export function vitalTrendClass(trend: VitalTrend): string {
     DECLINING: "trend-declining",
     CRITICAL:  "trend-critical",
   };
-  return map[trend];
+  return map[trend] ?? "trend-stable";
 }
 
 /** Format value + unit for display: "120/80 mmHg", "72 bpm" */

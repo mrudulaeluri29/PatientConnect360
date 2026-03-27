@@ -110,6 +110,30 @@ router.post("/send-otp", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "email, username, and password are required" });
     }
 
+    // ── Caregiver invitation code validation ─────────────────────────────
+    if (role === "CAREGIVER") {
+      const invitationCode = profileData?.invitationCode;
+      if (!invitationCode) {
+        return res.status(400).json({ error: "Invitation code is required for caregiver signup" });
+      }
+      const invitation = await prisma.caregiverInvitation.findUnique({
+        where: { code: invitationCode.toUpperCase() },
+      });
+      if (!invitation) {
+        return res.status(400).json({ error: "Invalid invitation code" });
+      }
+      if (invitation.status !== "PENDING") {
+        return res.status(400).json({ error: `Invitation has been ${invitation.status.toLowerCase()}` });
+      }
+      if (new Date() > invitation.expiresAt) {
+        await prisma.caregiverInvitation.update({
+          where: { id: invitation.id },
+          data: { status: "EXPIRED" },
+        });
+        return res.status(400).json({ error: "Invitation code has expired" });
+      }
+    }
+
     // Hash password before storing pending data
     const passwordHash = await bcrypt.hash(password, 12);
 
@@ -276,6 +300,62 @@ router.post("/verify-otp", async (req: Request, res: Response) => {
       }
     }
 
+    // ── Caregiver: create user + profile + link in a single transaction ──
+    if (pending.role === "CAREGIVER" && pending.profileData?.invitationCode) {
+      const invCode = pending.profileData.invitationCode.toUpperCase();
+      const invitation = await prisma.caregiverInvitation.findUnique({ where: { code: invCode } });
+      if (!invitation || invitation.status !== "PENDING") {
+        await (prisma as any).pendingVerification.delete({ where: { email } });
+        return res.status(400).json({ error: "Invitation code is no longer valid" });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
+          data: {
+            email: pending.email,
+            username: pending.username,
+            passwordHash: pending.passwordHash,
+            role: "CAREGIVER" as any,
+            caregiverProfile: {
+              create: {
+                legalFirstName: pending.profileData.legalFirstName || null,
+                legalLastName: pending.profileData.legalLastName || null,
+                phoneNumber: pending.profileData.phoneNumber || null,
+                relationship: pending.profileData.relationship || null,
+              },
+            },
+          },
+          select: { id: true, email: true, username: true, role: true },
+        });
+
+        await tx.caregiverPatientLink.create({
+          data: {
+            caregiverId: newUser.id,
+            patientId: invitation.patientId,
+            invitationId: invitation.id,
+            relationship: pending.profileData.relationship || null,
+            isPrimary: false,
+            isActive: true,
+          },
+        });
+
+        await tx.caregiverInvitation.update({
+          where: { id: invitation.id },
+          data: {
+            status: "ACCEPTED",
+            usedAt: new Date(),
+            usedByUserId: newUser.id,
+          },
+        });
+
+        return newUser;
+      });
+
+      await (prisma as any).pendingVerification.delete({ where: { email } });
+      return res.json({ ok: true, user: result });
+    }
+
+    // ── Standard (patient / clinician) user creation ─────────────────────
     const createdUser = await prisma.user.create({
       data: {
         email: pending.email,

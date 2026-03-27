@@ -25,7 +25,9 @@ export default function Login() {
         navigate("/admin/dashboard");
       } else if (userData.role === "CLINICIAN") {
         navigate("/clinician/dashboard");
-      } else if (userData.role === "PATIENT" || userData.role === "CAREGIVER") {
+      } else if (userData.role === "CAREGIVER") {
+        navigate("/caregiver/dashboard");
+      } else if (userData.role === "PATIENT") {
         navigate("/patient/dashboard");
       } else {
         navigate("/dashboard");

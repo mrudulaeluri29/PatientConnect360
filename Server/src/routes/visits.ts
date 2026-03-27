@@ -92,8 +92,18 @@ router.get("/", async (req: Request, res: Response) => {
       // Admin can filter by any user
       if (patientId)   where.patientId   = patientId as string;
       if (clinicianId) where.clinicianId = clinicianId as string;
+    } else if (user.role === "CAREGIVER") {
+      const links = await prisma.caregiverPatientLink.findMany({
+        where: { caregiverId: user.id, isActive: true },
+        select: { patientId: true },
+      });
+      const patientIds = links.map((l) => l.patientId);
+      if (patientIds.length === 0) return res.json({ visits: [] });
+      where.patientId = { in: patientIds };
+      if (patientId && patientIds.includes(patientId as string)) {
+        where.patientId = patientId as string;
+      }
     } else {
-      // CAREGIVER — not yet implemented
       return res.json({ visits: [] });
     }
 
@@ -140,9 +150,18 @@ router.get("/:id", async (req: Request, res: Response) => {
 
     // Non-admins can only see visits they are part of
     if (user.role !== "ADMIN") {
-      const isParty =
-        visit.patient.id === user.id || visit.clinician.id === user.id;
-      if (!isParty) return res.status(403).json({ error: "Forbidden" });
+      const isParty = visit.patient.id === user.id || visit.clinician.id === user.id;
+      if (!isParty) {
+        if (user.role === "CAREGIVER") {
+          const link = await prisma.caregiverPatientLink.findFirst({
+            where: { caregiverId: user.id, patientId: visit.patient.id, isActive: true },
+            select: { id: true },
+          });
+          if (!link) return res.status(403).json({ error: "Forbidden" });
+        } else {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+      }
     }
 
     res.json({ visit });
@@ -164,8 +183,8 @@ router.post("/", async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
 
-    if (user.role !== "ADMIN" && user.role !== "PATIENT") {
-      return res.status(403).json({ error: "Only admins and patients can create visits" });
+    if (user.role !== "ADMIN" && user.role !== "PATIENT" && user.role !== "CAREGIVER") {
+      return res.status(403).json({ error: "Only admins, patients, and caregivers can create visits" });
     }
 
     const {
@@ -200,6 +219,17 @@ router.post("/", async (req: Request, res: Response) => {
       return res.status(400).json({
         error: `Invalid visitType. Valid values: ${VALID_TYPES.join(", ")}`,
       });
+    }
+
+    // CAREGIVER: must be linked to the patient
+    if (user.role === "CAREGIVER") {
+      const link = await prisma.caregiverPatientLink.findFirst({
+        where: { caregiverId: user.id, patientId, isActive: true },
+        select: { id: true },
+      });
+      if (!link) {
+        return res.status(403).json({ error: "Not linked to this patient" });
+      }
     }
 
     // Confirm patient and clinician exist with correct roles
@@ -277,9 +307,18 @@ router.patch("/:id", async (req: Request, res: Response) => {
 
     // Access check for non-admins
     if (user.role !== "ADMIN") {
-      const isParty =
-        existing.patientId === user.id || existing.clinicianId === user.id;
-      if (!isParty) return res.status(403).json({ error: "Forbidden" });
+      const isParty = existing.patientId === user.id || existing.clinicianId === user.id;
+      if (!isParty) {
+        if (user.role === "CAREGIVER") {
+          const link = await prisma.caregiverPatientLink.findFirst({
+            where: { caregiverId: user.id, patientId: existing.patientId, isActive: true },
+            select: { id: true },
+          });
+          if (!link) return res.status(403).json({ error: "Forbidden" });
+        } else {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+      }
     }
 
     // Build the update payload based on role
@@ -355,6 +394,22 @@ router.patch("/:id", async (req: Request, res: Response) => {
           });
         }
         // Patients can only cancel/confirm their own future visits
+        if (existing.status === VisitStatus.COMPLETED || existing.status === VisitStatus.MISSED) {
+          return res.status(400).json({ error: "Cannot modify a completed or missed visit" });
+        }
+        data.status = status;
+        if (status === VisitStatus.CANCELLED) data.cancelledAt = new Date();
+      }
+    } else if (user.role === "CAREGIVER") {
+      const { status } = req.body || {};
+
+      if (status) {
+        const allowed: VisitStatus[] = [VisitStatus.CONFIRMED, VisitStatus.CANCELLED];
+        if (!allowed.includes(status)) {
+          return res.status(403).json({
+            error: `Caregivers can only set status to: ${allowed.join(", ")}`,
+          });
+        }
         if (existing.status === VisitStatus.COMPLETED || existing.status === VisitStatus.MISSED) {
           return res.status(400).json({ error: "Cannot modify a completed or missed visit" });
         }

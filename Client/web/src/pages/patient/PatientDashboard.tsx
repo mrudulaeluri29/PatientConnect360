@@ -34,6 +34,19 @@ import {
   formatAvailabilityDate,
   type ApiAvailability,
 } from "../../api/availability";
+import {
+  createInvitation,
+  getInvitations,
+  revokeInvitation,
+  getCaregiverLinks,
+  removeCaregiverLink,
+  updateCaregiverLink,
+  invitationStatusClass,
+  formatExpiryCountdown,
+  caregiverDisplayName,
+  type ApiInvitation,
+  type ApiCaregiverLink,
+} from "../../api/caregiverInvitations";
 
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -1396,145 +1409,406 @@ function formatTime(dateString: string): string {
   return date.toLocaleDateString();
 }
 
-// Family Access Panel Component
+// ─── Family & Caregivers Panel ───────────────────────────────────────────────
 function FamilyAccessPanel() {
-  const [isCaregiverView, setIsCaregiverView] = useState(false);
+  const [links, setLinks] = useState<ApiCaregiverLink[]>([]);
+  const [invitations, setInvitations] = useState<ApiInvitation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showCodeResult, setShowCodeResult] = useState<ApiInvitation | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const notifications = [
-    {
-      id: "1",
-      type: "visit",
-      message: "Visit rescheduled to Friday, Jan 26 at 2:00 PM",
-      time: "2 hours ago",
-      read: false,
-    },
-    {
-      id: "2",
-      type: "medication",
-      message: "New medication added: Aspirin 81mg",
-      time: "1 day ago",
-      read: false,
-    },
-    {
-      id: "3",
-      type: "care-plan",
-      message: "Care plan updated with new goals",
-      time: "3 days ago",
-      read: true,
-    },
-  ];
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [linksData, invData] = await Promise.all([
+        getCaregiverLinks({ active: true }),
+        getInvitations(),
+      ]);
+      setLinks(linksData);
+      setInvitations(invData);
+    } catch {
+      /* leave empty on error */
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  const handleRevoke = async (id: string) => {
+    setRevokingId(id);
+    try {
+      await revokeInvitation(id);
+      setInvitations((prev) => prev.map((inv) => inv.id === id ? { ...inv, status: "REVOKED" as const } : inv));
+    } catch { /* ignore */ }
+    finally { setRevokingId(null); }
+  };
+
+  const handleRemoveLink = async (id: string) => {
+    if (!confirm("Remove this caregiver's access? They will no longer be able to view your information.")) return;
+    setRemovingId(id);
+    try {
+      await removeCaregiverLink(id);
+      setLinks((prev) => prev.filter((l) => l.id !== id));
+    } catch { /* ignore */ }
+    finally { setRemovingId(null); }
+  };
+
+  const handleTogglePrimary = async (link: ApiCaregiverLink) => {
+    setTogglingId(link.id);
+    try {
+      const updated = await updateCaregiverLink(link.id, { isPrimary: !link.isPrimary });
+      setLinks((prev) => prev.map((l) => {
+        if (l.id === updated.id) return updated;
+        if (updated.isPrimary && l.isPrimary && l.id !== updated.id) return { ...l, isPrimary: false };
+        return l;
+      }));
+    } catch { /* ignore */ }
+    finally { setTogglingId(null); }
+  };
+
+  const handleInvitationCreated = (inv: ApiInvitation) => {
+    setShowAddModal(false);
+    setShowCodeResult(inv);
+    setInvitations((prev) => [inv, ...prev]);
+  };
+
+  const handleShare = async (inv: ApiInvitation) => {
+    const text = `Your caregiver access code for MediHealth is: ${inv.code}\n\nGo to ${window.location.origin}/register/caregiver to sign up and enter this code.\n\nThis code expires in 72 hours.`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "MediHealth Caregiver Code", text });
+        return;
+      } catch { /* user cancelled share, fall through to clipboard */ }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch { /* ignore */ }
+  };
+
+  const pendingInvitations = invitations.filter((i) => i.status === "PENDING");
+  const pastInvitations = invitations.filter((i) => i.status !== "PENDING");
 
   return (
     <div className="patient-content">
-      <div className="content-header">
-        <h2 className="section-title">Family Access Panel</h2>
+      <div className="content-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2 className="section-title">Family &amp; Caregivers</h2>
+        <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6, verticalAlign: "middle" }}>
+            <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"></path>
+            <circle cx="8.5" cy="7" r="4"></circle>
+            <line x1="20" y1="8" x2="20" y2="14"></line>
+            <line x1="23" y1="11" x2="17" y2="11"></line>
+          </svg>
+          Add Caregiver
+        </button>
       </div>
 
-      <div className="family-container">
-        {/* MPOA/Caregiver Toggle */}
-        <div className="caregiver-toggle-card">
-          <div className="toggle-header">
-            <h3>Account View</h3>
-            <div className="toggle-switch">
-              <button
-                className={`toggle-option ${!isCaregiverView ? "active" : ""}`}
-                onClick={() => setIsCaregiverView(false)}
-              >
-                Patient View
-              </button>
-              <button
-                className={`toggle-option ${isCaregiverView ? "active" : ""}`}
-                onClick={() => setIsCaregiverView(true)}
-              >
-                Caregiver View
+      {loading ? (
+        <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading...</div>
+      ) : (
+        <div className="family-container">
+          {/* ── Linked Caregivers ── */}
+          <div className="cg-section-card">
+            <h3 className="cg-section-title">Linked Caregivers</h3>
+            {links.length === 0 ? (
+              <div className="cg-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" style={{ marginBottom: 8 }}>
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 00-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 010 7.75"></path>
+                </svg>
+                <p>No caregivers linked yet.</p>
+                <p style={{ fontSize: "0.82rem", color: "#9ca3af" }}>Use the "Add Caregiver" button to invite one.</p>
+              </div>
+            ) : (
+              <div className="cg-link-list">
+                {links.map((link) => (
+                  <div key={link.id} className="cg-link-row">
+                    <div className="cg-link-avatar">
+                      {(link.caregiver.caregiverProfile?.legalFirstName?.[0] || link.caregiver.username[0]).toUpperCase()}
+                    </div>
+                    <div className="cg-link-info">
+                      <div className="cg-link-name">
+                        {caregiverDisplayName(link)}
+                        {link.isPrimary && <span className="cg-primary-badge">Primary MPOA</span>}
+                      </div>
+                      <div className="cg-link-meta">
+                        {link.caregiver.email}
+                        {link.relationship ? ` \u00B7 ${link.relationship}` : ""}
+                      </div>
+                    </div>
+                    <div className="cg-link-actions">
+                      <button
+                        className={`cg-btn-toggle-primary ${link.isPrimary ? "active" : ""}`}
+                        onClick={() => handleTogglePrimary(link)}
+                        disabled={togglingId === link.id}
+                        title={link.isPrimary ? "Remove primary MPOA" : "Set as primary MPOA"}
+                      >
+                        {link.isPrimary ? "Primary" : "Set Primary"}
+                      </button>
+                      <button
+                        className="cg-btn-remove"
+                        onClick={() => handleRemoveLink(link.id)}
+                        disabled={removingId === link.id}
+                      >
+                        {removingId === link.id ? "Removing..." : "Remove"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Pending Invitations ── */}
+          {pendingInvitations.length > 0 && (
+            <div className="cg-section-card">
+              <h3 className="cg-section-title">Pending Invitations</h3>
+              <div className="cg-inv-list">
+                {pendingInvitations.map((inv) => (
+                  <div key={inv.id} className="cg-inv-row">
+                    <div className="cg-inv-info">
+                      <div className="cg-inv-name">{inv.firstName} {inv.lastName}</div>
+                      <div className="cg-inv-meta">{inv.email} &middot; {inv.phoneNumber}</div>
+                      <div className="cg-inv-expiry">{formatExpiryCountdown(inv.expiresAt)}</div>
+                    </div>
+                    <div className="cg-inv-code-display">
+                      <span className="cg-inv-code">{inv.code}</span>
+                    </div>
+                    <div className="cg-inv-actions">
+                      <button className="cg-btn-share" onClick={() => handleShare(inv)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="18" cy="5" r="3"></circle>
+                          <circle cx="6" cy="12" r="3"></circle>
+                          <circle cx="18" cy="19" r="3"></circle>
+                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                        </svg>
+                        Share
+                      </button>
+                      <button
+                        className="cg-btn-revoke"
+                        onClick={() => handleRevoke(inv.id)}
+                        disabled={revokingId === inv.id}
+                      >
+                        {revokingId === inv.id ? "..." : "Revoke"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Past Invitations ── */}
+          {pastInvitations.length > 0 && (
+            <div className="cg-section-card">
+              <h3 className="cg-section-title">Invitation History</h3>
+              <div className="cg-inv-list">
+                {pastInvitations.map((inv) => (
+                  <div key={inv.id} className="cg-inv-row past">
+                    <div className="cg-inv-info">
+                      <div className="cg-inv-name">{inv.firstName} {inv.lastName}</div>
+                      <div className="cg-inv-meta">{inv.email}</div>
+                    </div>
+                    <span className={`cg-inv-status-badge ${invitationStatusClass(inv.status)}`}>
+                      {inv.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Add Caregiver Modal ── */}
+      {showAddModal && (
+        <AddCaregiverModal
+          onClose={() => setShowAddModal(false)}
+          onCreated={handleInvitationCreated}
+        />
+      )}
+
+      {/* ── Code Result Modal (shown after successful creation) ── */}
+      {showCodeResult && (
+        <div className="modal-overlay" onClick={() => setShowCodeResult(null)}>
+          <div className="modal-content cg-code-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Invitation Created</h3>
+              <button className="modal-close" onClick={() => setShowCodeResult(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
               </button>
             </div>
+            <div className="modal-body" style={{ textAlign: "center" }}>
+              <div className="cg-code-success-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2">
+                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+              <p style={{ color: "#4b5563", margin: "0.75rem 0 0.5rem" }}>
+                Share this code with <strong>{showCodeResult.firstName} {showCodeResult.lastName}</strong>:
+              </p>
+              <div className="cg-code-display-large">{showCodeResult.code}</div>
+              <p className="cg-code-expiry-note">
+                This code expires in 72 hours. The caregiver should visit{" "}
+                <strong>{window.location.origin}/register/caregiver</strong> and enter this code during sign up.
+              </p>
+              <div className="cg-code-actions">
+                <button className="btn-primary" onClick={() => handleShare(showCodeResult)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6, verticalAlign: "middle" }}>
+                    <circle cx="18" cy="5" r="3"></circle>
+                    <circle cx="6" cy="12" r="3"></circle>
+                    <circle cx="18" cy="19" r="3"></circle>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                  </svg>
+                  {copied ? "Copied!" : "Share Code"}
+                </button>
+                <button className="btn-secondary" onClick={() => setShowCodeResult(null)}>Done</button>
+              </div>
+            </div>
           </div>
-          <p className="toggle-description">
-            {isCaregiverView
-              ? "You are viewing as a caregiver. You can manage patient care, view medical records, and communicate with the care team."
-              : "You are viewing as the patient. Switch to caregiver view to manage care on behalf of the patient."
-            }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Add Caregiver Modal ─────────────────────────────────────────────────────
+function AddCaregiverModal({ onClose, onCreated }: { onClose: () => void; onCreated: (inv: ApiInvitation) => void }) {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const formatPhone = (value: string): string => {
+    const nums = value.replace(/\D/g, "");
+    if (nums.length <= 3) return nums;
+    if (nums.length <= 6) return `(${nums.slice(0, 3)}) ${nums.slice(3)}`;
+    return `(${nums.slice(0, 3)}) ${nums.slice(3, 6)}-${nums.slice(6, 10)}`;
+  };
+
+  const handleSubmit = async () => {
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phoneNumber.trim()) {
+      setError("All fields are required.");
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    if (phoneNumber.replace(/\D/g, "").length < 10) {
+      setError("Please enter a valid phone number.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+    try {
+      const inv = await createInvitation({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        phoneNumber: phoneNumber.trim(),
+      });
+      onCreated(inv);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to create invitation.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content cg-add-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Add Caregiver</h3>
+          <button className="modal-close" onClick={onClose}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div className="modal-body">
+          <p style={{ color: "#6b7280", fontSize: "0.88rem", marginBottom: "1rem" }}>
+            Enter the caregiver's details. A one-time access code will be generated for them to sign up.
           </p>
-        </div>
 
-        {/* Notifications */}
-        <div className="notifications-section">
-          <h3 className="subsection-title">Notifications</h3>
-          <div className="notifications-list">
-            {notifications.map((notification) => (
-              <div key={notification.id} className={`notification-item ${notification.read ? "read" : "unread"}`}>
-                <div className="notification-icon">
-                  {notification.type === "visit" && (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                  )}
-                  {notification.type === "medication" && (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                      <line x1="9" y1="3" x2="9" y2="21"></line>
-                    </svg>
-                  )}
-                  {notification.type === "care-plan" && (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                    </svg>
-                  )}
-                </div>
-                <div className="notification-content">
-                  <div className="notification-message">{notification.message}</div>
-                  <div className="notification-time">{notification.time}</div>
-                </div>
-                {!notification.read && <div className="notification-dot"></div>}
-              </div>
-            ))}
-          </div>
-        </div>
+          {error && <div className="visit-request-error">{error}</div>}
 
-        {/* Insurance & Billing */}
-        <div className="insurance-billing-section">
-          <h3 className="subsection-title">Insurance & Billing</h3>
-          <div className="insurance-billing-grid">
-            <div className="info-card">
-              <h4>Insurance Information</h4>
-              <div className="info-item">
-                <span className="info-label">Provider:</span>
-                <span className="info-value">Medicare</span>
-              </div>
-              <div className="info-item">
-                <span className="info-label">Policy Number:</span>
-                <span className="info-value">***-**-1234</span>
-              </div>
-              <button className="btn-text">View Full Details</button>
+          <div className="form-row-inline">
+            <div className="form-group">
+              <label>Legal First Name</label>
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="Jane"
+                className="form-input"
+                disabled={submitting}
+              />
             </div>
-            <div className="info-card">
-              <h4>Bill Summary</h4>
-              <div className="info-item">
-                <span className="info-label">Current Balance:</span>
-                <span className="info-value">$0.00</span>
-              </div>
-              <div className="info-item">
-                <span className="info-label">Last Payment:</span>
-                <span className="info-value">Jan 15, 2024</span>
-              </div>
-              <button className="btn-text">View Billing History</button>
-            </div>
-            <div className="info-card">
-              <h4>Consents</h4>
-              <div className="info-item">
-                <span className="info-label">HIPAA Consent:</span>
-                <span className="info-value status-active">Active</span>
-              </div>
-              <div className="info-item">
-                <span className="info-label">Treatment Consent:</span>
-                <span className="info-value status-active">Active</span>
-              </div>
-              <button className="btn-text">Manage Consents</button>
+            <div className="form-group">
+              <label>Legal Last Name</label>
+              <input
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Doe"
+                className="form-input"
+                disabled={submitting}
+              />
             </div>
           </div>
+
+          <div className="form-group">
+            <label>Email Address</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="jane.doe@example.com"
+              className="form-input"
+              disabled={submitting}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Phone Number</label>
+            <input
+              type="tel"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(formatPhone(e.target.value))}
+              placeholder="(555) 123-4567"
+              className="form-input"
+              disabled={submitting}
+              maxLength={14}
+            />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-secondary" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="btn-primary" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Creating..." : "Generate Invitation Code"}
+          </button>
         </div>
       </div>
     </div>

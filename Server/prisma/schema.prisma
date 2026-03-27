@@ -67,6 +67,12 @@ model User {
 
   // Relations for availability
   availability     ClinicianAvailability[] @relation("ClinicianAvailability")
+
+  // Relations for caregiver invitations & links
+  caregiverInvitations     CaregiverInvitation[]   @relation("PatientInvitations")
+  usedInvitations          CaregiverInvitation[]   @relation("CaregiverInvitationsUsed")
+  caregiverLinks           CaregiverPatientLink[]  @relation("CaregiverLinks")
+  patientCaregiverLinks    CaregiverPatientLink[]  @relation("PatientCaregiverLinks")
 }
 
 // Patient-specific profile information
@@ -122,8 +128,10 @@ model CaregiverProfile {
   userId                String   @unique
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // Professional Information (can be expanded later)
-  relationship          String?  // e.g., "family member", "professional caregiver"
+  legalFirstName        String?
+  legalLastName         String?
+  phoneNumber           String?
+  relationship          String?  // e.g., "Family Member", "MPOA", "Spouse/Partner"
   certifications        String?
   
   createdAt             DateTime @default(now())
@@ -409,4 +417,61 @@ model ClinicianAvailability {
   @@index([clinicianId])
   @@index([date])
   @@index([status])
+}
+
+// ─────────────────────────────────────────────
+// CAREGIVER INVITATION & LINKING
+// ─────────────────────────────────────────────
+
+enum InvitationStatus {
+  PENDING    // Awaiting caregiver to sign up with the code
+  ACCEPTED   // Caregiver signed up and linked
+  EXPIRED    // Code expired (72h window passed)
+  REVOKED    // Patient cancelled the invitation
+}
+
+// A one-time invitation code sent by a patient to a prospective caregiver
+model CaregiverInvitation {
+  id            String           @id @default(cuid())
+  patientId     String
+  code          String           @unique
+  firstName     String
+  lastName      String
+  email         String
+  phoneNumber   String
+  expiresAt     DateTime
+  usedAt        DateTime?
+  usedByUserId  String?
+  status        InvitationStatus @default(PENDING)
+
+  patient       User             @relation("PatientInvitations", fields: [patientId], references: [id], onDelete: Cascade)
+  usedBy        User?            @relation("CaregiverInvitationsUsed", fields: [usedByUserId], references: [id])
+
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([patientId])
+  @@index([code])
+  @@index([expiresAt])
+}
+
+// Active link between a caregiver user and a patient user
+model CaregiverPatientLink {
+  id            String   @id @default(cuid())
+  caregiverId   String
+  patientId     String
+  invitationId  String?
+  relationship  String?
+  isPrimary     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+
+  caregiver     User     @relation("CaregiverLinks", fields: [caregiverId], references: [id], onDelete: Cascade)
+  patient       User     @relation("PatientCaregiverLinks", fields: [patientId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([caregiverId, patientId])
+  @@index([caregiverId])
+  @@index([patientId])
 }
