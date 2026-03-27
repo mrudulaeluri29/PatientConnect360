@@ -428,6 +428,139 @@
 .cg-med-risk.high-risk { background: #fee2e2; color: #991b1b; }
 .cg-med-risk.changed { background: #fef3c7; color: #92400e; }
 
+.cg-med-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.25rem;
+}
+
+.cg-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.cg-kpi-card {
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  padding: 0.9rem 1rem;
+}
+
+.cg-kpi-card.warning { border-color: #fde68a; background: #fffbeb; }
+.cg-kpi-card.danger { border-color: #fecaca; background: #fef2f2; }
+.cg-kpi-card.info { border-color: #bfdbfe; background: #eff6ff; }
+
+.cg-kpi-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.cg-kpi-label {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-top: 0.1rem;
+}
+
+.cg-med-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cg-checkline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+.cg-med-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.cg-med-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+}
+
+.cg-med-meta {
+  margin-top: 0.15rem;
+  font-size: 0.76rem;
+  color: #6b7280;
+}
+
+.cg-refill {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.cg-refill.urgent {
+  color: #b45309;
+}
+
+.cg-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cg-order-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+}
+
+.cg-order-name {
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: #1f2937;
+}
+
+.cg-order-sub {
+  margin-top: 0.12rem;
+  font-size: 0.76rem;
+  color: #6b7280;
+}
+
+.cg-order-status {
+  margin-top: 0.35rem;
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+}
+
+.cg-order-status.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.cg-order-status.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.cg-order-status.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.cg-order-note {
+  margin-top: 0.8rem;
+  font-size: 0.78rem;
+  color: #6b7280;
+  line-height: 1.45;
+}
+
 /* ─── Patient Info Card ───────────────────────────────────────────────────── */
 
 .cg-patient-info-grid {
@@ -785,6 +918,12 @@
 @media (max-width: 1024px) {
   .cg-overview-grid {
     grid-template-columns: 1fr;
+  }
+  .cg-med-grid {
+    grid-template-columns: 1fr;
+  }
+  .cg-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
