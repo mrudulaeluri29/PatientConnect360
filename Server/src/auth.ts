@@ -16,10 +16,14 @@ function setAuthCookie(res: Response, userId: string, role: string) {
   const token = jwt.sign({ uid: userId, role }, process.env.JWT_SECRET || "dev_secret", {
     expiresIn: "7d",
   });
+  const isProduction = process.env.NODE_ENV === "production";
+  // Cross-site auth cookie support for frontend on a different domain.
+  const cookieSameSite = isProduction ? "none" : "lax";
+
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: false,     // set to true in production (HTTPS)
+    sameSite: cookieSameSite,
+    secure: isProduction,
     maxAge: 7 * 24 * 60 * 60 * 1000
   });
 }

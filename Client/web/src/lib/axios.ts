@@ -1,7 +1,9 @@
 import axios from "axios";
 
-// Default to localhost:4000 if VITE_API_URL is not set
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+// In production, require VITE_API_URL (backend host). In dev, default to localhost.
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:4000" : window.location.origin);
 
 export const api = axios.create({
   baseURL: API_URL,
