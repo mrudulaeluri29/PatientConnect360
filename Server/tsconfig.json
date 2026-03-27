@@ -5,6 +5,7 @@
     "rootDir": "src",            // where our .ts source code lives
     "outDir": "dist",            // where compiled .js files go
     "strict": true,              // enforce type-safety
+    "noImplicitAny": false,      // temporarily relax implicit-any in legacy route handlers
     "esModuleInterop": true      // Allows clean imports from libraries like Express
   },
   "include": ["src/**/*"]
