@@ -3,6 +3,22 @@ import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
 import "./ClinicianDashboard.css";
+import {
+  getVisits,
+  updateVisitStatus,
+  formatVisitDateTime,
+  visitTypeLabel,
+  type ApiVisit,
+} from "../../api/visits";
+import {
+  submitAvailabilityBatch,
+  getMyAvailability,
+  deleteAvailability,
+  availabilityStatusClass,
+  formatAvailabilityDate,
+  type ApiAvailability,
+  type AvailabilityStatus,
+} from "../../api/availability";
 
 export default function ClinicianDashboard() {
   const [activeTab, setActiveTab] = useState("schedule");
@@ -361,20 +377,58 @@ function AppointmentsHub() {
   const [rangeEnd, setRangeEnd] = useState("");
   const [availabilityByDate, setAvailabilityByDate] = useState<Record<string, { start: string; end: string }>>({});
   const [submitMessage, setSubmitMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [appointments, setAppointments] = useState<ApiVisit[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true);
 
-  const upcomingAppointments = [
-    { id: "a1", patient: "John Doe", type: "Home Health Follow-up", date: "2026-03-05", time: "09:00 AM", location: "Phoenix, AZ", status: "Confirmed" },
-    { id: "a2", patient: "Jane Smith", type: "Medication Review", date: "2026-03-05", time: "11:30 AM", location: "Phoenix, AZ", status: "Confirmed" },
-    { id: "a3", patient: "Robert Johnson", type: "Post-Discharge Visit", date: "2026-03-06", time: "02:00 PM", location: "Scottsdale, AZ", status: "Pending" },
-    { id: "a4", patient: "Mary Williams", type: "Routine Check-in", date: "2026-03-07", time: "10:15 AM", location: "Mesa, AZ", status: "Confirmed" },
-    { id: "a5", patient: "Carlos Martinez", type: "Wound Care", date: "2026-03-08", time: "01:00 PM", location: "Tempe, AZ", status: "Confirmed" },
-  ];
+  // Submitted availability history
+  const [submissions, setSubmissions] = useState<ApiAvailability[]>([]);
+  const [subsLoading, setSubsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMyAvailability()
+      .then(setSubmissions)
+      .catch(() => setSubmissions([]))
+      .finally(() => setSubsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const nowIso = new Date().toISOString();
+    setAppointmentsLoading(true);
+    getVisits({ from: nowIso })
+      .then((rows) => {
+        const upcoming = rows.filter((v) =>
+          ["SCHEDULED", "CONFIRMED"].includes(v.status) && new Date(v.scheduledAt).getTime() >= Date.now()
+        );
+        setAppointments(upcoming);
+      })
+      .catch(() => setAppointments([]))
+      .finally(() => setAppointmentsLoading(false));
+  }, []);
+
+  const upcomingAppointments = appointments.map((appt) => {
+    const { date, time } = formatVisitDateTime(appt.scheduledAt);
+    const displayStatus = appt.status === "CONFIRMED" ? "Confirmed" : "Pending";
+    return {
+      id: appt.id,
+      patient: appt.patient.patientProfile?.legalName || appt.patient.username,
+      type: visitTypeLabel(appt.visitType),
+      date,
+      time,
+      location: appt.address || appt.patient.patientProfile?.homeAddress || "Address not provided",
+      status: displayStatus,
+    };
+  });
 
   const filteredAppointments = upcomingAppointments.filter((appt) =>
     appt.patient.toLowerCase().includes(searchTerm.toLowerCase())
   );
   const confirmedAppointments = upcomingAppointments.filter((appt) => appt.status === "Confirmed").length;
   const pendingAppointments = upcomingAppointments.filter((appt) => appt.status === "Pending").length;
+
+  const pendingSubmissions = submissions.filter((s) => s.status === "PENDING").length;
+  const approvedSubmissions = submissions.filter((s) => s.status === "APPROVED").length;
 
   const buildDateRange = (start: string, end: string) => {
     const dates: string[] = [];
@@ -418,12 +472,55 @@ function AppointmentsHub() {
     }));
   };
 
-  const handleSubmitAvailability = () => {
-    if (Object.keys(availabilityByDate).length === 0) {
+  const handleRemoveDay = (date: string) => {
+    setAvailabilityByDate((prev) => {
+      const next = { ...prev };
+      delete next[date];
+      return next;
+    });
+  };
+
+  const handleSubmitAvailability = async () => {
+    const entries = Object.entries(availabilityByDate);
+    if (entries.length === 0) {
       setSubmitMessage("Add an availability date range before submitting.");
       return;
     }
-    setSubmitMessage("Sent to admin.");
+
+    setSubmitting(true);
+    setSubmitMessage("");
+
+    try {
+      const days = entries.map(([date, times]) => ({
+        date,
+        startTime: times.start,
+        endTime: times.end,
+      }));
+      const result = await submitAvailabilityBatch(days);
+      setSubmitMessage(`Submitted ${result.count} day${result.count === 1 ? "" : "s"} — pending admin review.`);
+      setAvailabilityByDate({});
+      setRangeStart("");
+      setRangeEnd("");
+      // Refresh the submissions list
+      const refreshed = await getMyAvailability();
+      setSubmissions(refreshed);
+    } catch (err: any) {
+      setSubmitMessage(err.response?.data?.error || "Failed to submit availability.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteSubmission = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteAvailability(id);
+      setSubmissions((prev) => prev.filter((s) => s.id !== id));
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to delete submission.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -435,7 +532,8 @@ function AppointmentsHub() {
             chips={[
               { label: "Upcoming", value: upcomingAppointments.length },
               { label: "Confirmed", value: confirmedAppointments },
-              { label: "Pending", value: pendingAppointments },
+              { label: "Pending Review", value: pendingSubmissions },
+              { label: "Approved", value: approvedSubmissions },
             ]}
           />
         </div>
@@ -454,8 +552,10 @@ function AppointmentsHub() {
             />
           </div>
           <div className="appointments-list">
-            {filteredAppointments.length === 0 ? (
-              <div className="appointments-empty">No appointments found for that patient.</div>
+            {appointmentsLoading ? (
+              <div className="appointments-empty">Loading appointments...</div>
+            ) : filteredAppointments.length === 0 ? (
+              <div className="appointments-empty">No upcoming appointments found for that patient.</div>
             ) : (
               filteredAppointments.map((appt) => (
                 <article key={appt.id} className="appointment-card">
@@ -470,7 +570,7 @@ function AppointmentsHub() {
                       {appt.patient}
                     </h4>
                     <p>{appt.type}</p>
-                    <p>{formatDateForUi(appt.date)} at {appt.time}</p>
+                    <p>{appt.date} at {appt.time}</p>
                     <p>{appt.location}</p>
                   </div>
                   <span className={`appointment-status status-${appt.status.toLowerCase()}`}>{appt.status}</span>
@@ -482,7 +582,7 @@ function AppointmentsHub() {
 
         <section className="availability-panel">
           <h3>Submit Availability to Admin</h3>
-          <p className="availability-subtitle">Select a date range, adjust daily hours, then submit.</p>
+          <p className="availability-subtitle">Select a date range, adjust daily hours, then submit. Resubmitting a date resets it to pending for re-approval.</p>
           <div className="availability-range">
             <div className="availability-field">
               <label>Start Date</label>
@@ -522,17 +622,71 @@ function AppointmentsHub() {
                         />
                       </label>
                     </div>
+                    <button
+                      className="btn-remove-day"
+                      onClick={() => handleRemoveDay(date)}
+                      title="Remove this day"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
                   </div>
                 ))
             )}
           </div>
 
           <div className="availability-actions">
-            <button className="btn-primary" onClick={handleSubmitAvailability}>Submit Availability</button>
+            <button className="btn-primary" onClick={handleSubmitAvailability} disabled={submitting}>
+              {submitting ? "Submitting..." : "Submit Availability"}
+            </button>
             {submitMessage && <span className="availability-message">{submitMessage}</span>}
           </div>
         </section>
       </div>
+
+      {/* My Submissions History */}
+      <section className="submissions-history-panel">
+        <h3>My Submissions</h3>
+        {subsLoading ? (
+          <div style={{ color: "#6b7280", padding: "1rem 0" }}>Loading submissions...</div>
+        ) : submissions.length === 0 ? (
+          <div className="availability-empty">No availability submissions yet.</div>
+        ) : (
+          <div className="submissions-list">
+            {submissions.map((sub) => (
+              <div key={sub.id} className="submission-row">
+                <div className="submission-date">{formatAvailabilityDate(sub.date)}</div>
+                <div className="submission-time">{sub.startTime} – {sub.endTime}</div>
+                <span className={`submission-status ${availabilityStatusClass(sub.status)}`}>
+                  {sub.status}
+                </span>
+                {sub.reviewNote && (
+                  <div className="submission-note" title={sub.reviewNote}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="16" x2="12" y2="12"></line>
+                      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                    </svg>
+                    {sub.reviewNote}
+                  </div>
+                )}
+                {sub.status === "PENDING" && (
+                  <button
+                    className="btn-delete-submission"
+                    onClick={() => handleDeleteSubmission(sub.id)}
+                    disabled={deletingId === sub.id}
+                    title="Withdraw this submission"
+                  >
+                    {deletingId === sub.id ? "..." : "Withdraw"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -692,51 +846,55 @@ function ContactStaffHub() {
 
 // Today's Schedule Component
 function TodaySchedule() {
+  const { user } = useAuth();
   const [selectedVisit, setSelectedVisit] = useState<string | null>(null);
+  const [visits, setVisits] = useState<ApiVisit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [checkingIn, setCheckingIn] = useState<string | null>(null);
 
-  const visits = [
-    {
-      id: "1",
-      time: "9:00 AM",
-      patient: "John Doe",
-      address: "123 Main St, Phoenix, AZ 85001",
-      travelTime: "15 min",
-      status: "Scheduled",
-      alerts: ["Needs wound care", "Med reconciliation"],
-      estimatedArrival: "9:15 AM",
-    },
-    {
-      id: "2",
-      time: "11:30 AM",
-      patient: "Jane Smith",
-      address: "456 Oak Ave, Phoenix, AZ 85002",
-      travelTime: "25 min",
-      status: "Scheduled",
-      alerts: ["New fall risk"],
-      estimatedArrival: "11:55 AM",
-    },
-    {
-      id: "3",
-      time: "2:00 PM",
-      patient: "Robert Johnson",
-      address: "789 Pine Rd, Phoenix, AZ 85003",
-      travelTime: "20 min",
-      status: "Scheduled",
-      alerts: ["Order pending from MD"],
-      estimatedArrival: "2:20 PM",
-    },
-    {
-      id: "4",
-      time: "4:00 PM",
-      patient: "Mary Williams",
-      address: "321 Elm St, Phoenix, AZ 85004",
-      travelTime: "30 min",
-      status: "Scheduled",
-      alerts: [],
-      estimatedArrival: "4:30 PM",
-    },
-  ];
-  const totalScheduleAlerts = visits.reduce((sum, visit) => sum + visit.alerts.length, 0);
+  const toOffsetIsoString = (d: Date) => {
+    const pad = (n: number) => String(Math.trunc(Math.abs(n))).padStart(2, "0");
+    const tzMinutes = -d.getTimezoneOffset(); // local offset from UTC in minutes
+    const sign = tzMinutes >= 0 ? "+" : "-";
+    const hh = pad(tzMinutes / 60);
+    const mm = pad(tzMinutes % 60);
+
+    return (
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+      `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, "0")}` +
+      `${sign}${hh}:${mm}`
+    );
+  };
+
+  const fetchToday = () => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    setLoading(true);
+    getVisits({ from: toOffsetIsoString(todayStart), to: toOffsetIsoString(todayEnd) })
+      .then(setVisits)
+      .catch(() => setVisits([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchToday(); }, []);
+
+  const handleCheckIn = async (id: string) => {
+    setCheckingIn(id);
+    try {
+      const updated = await updateVisitStatus(id, "IN_PROGRESS");
+      setVisits((prev) => prev.map((v) => (v.id === id ? updated : v)));
+    } catch {
+      // silently ignore
+    } finally {
+      setCheckingIn(null);
+    }
+  };
+
+  const sorted = [...visits].sort(
+    (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+  );
 
   return (
     <div className="clinician-content">
@@ -746,13 +904,13 @@ function TodaySchedule() {
           <SectionKpiChips
             chips={[
               { label: "Visits", value: visits.length },
-              { label: "Active Alerts", value: totalScheduleAlerts },
-              { label: "Selected", value: selectedVisit ? 1 : 0 },
+              { label: "Completed", value: visits.filter((v) => v.status === "COMPLETED").length },
+              { label: "Remaining", value: visits.filter((v) => !["COMPLETED","CANCELLED","MISSED"].includes(v.status)).length },
             ]}
           />
         </div>
         <div className="header-actions">
-          <button className="btn-secondary">
+          <button className="btn-secondary" onClick={fetchToday}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="23 4 23 10 17 10"></polyline>
               <polyline points="1 20 1 14 7 14"></polyline>
@@ -763,97 +921,124 @@ function TodaySchedule() {
         </div>
       </div>
 
-      <div className="schedule-container">
-        <div className="schedule-list">
-          {visits.map((visit) => (
-            <div
-              key={visit.id}
-              className={`visit-card ${selectedVisit === visit.id ? "selected" : ""}`}
-              onClick={() => setSelectedVisit(visit.id)}
-            >
-              <div className="visit-time">
-                <div className="time-primary">{visit.time}</div>
-                <div className="time-secondary">ETA: {visit.estimatedArrival}</div>
+      {loading ? (
+        <div style={{ padding: "2rem", color: "#6b7280" }}>Loading today's schedule...</div>
+      ) : (
+        <div className="schedule-container">
+          <div className="schedule-list">
+            {sorted.length === 0 ? (
+              <div style={{ padding: "2rem", color: "#6b7280", textAlign: "center" }}>
+                No visits scheduled for today.
               </div>
-              <div className="visit-details">
-                <div className="visit-patient card-title-row">
-                  <span className="card-icon-badge">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="8" r="4"></circle>
-                      <path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path>
-                    </svg>
-                  </span>
-                  {visit.patient}
-                </div>
-                <div className="visit-address">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                    <circle cx="12" cy="10" r="3"></circle>
-                  </svg>
-                  {visit.address}
-                </div>
-                <div className="visit-travel">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                  </svg>
-                  Travel: {visit.travelTime}
-                </div>
-                {visit.alerts.length > 0 && (
-                  <div className="visit-alerts">
-                    {visit.alerts.map((alert, idx) => (
-                      <span key={idx} className="alert-badge">{alert}</span>
-                    ))}
+            ) : (
+              sorted.map((visit) => {
+                const { time } = formatVisitDateTime(visit.scheduledAt);
+                const patientName = visit.patient.patientProfile?.legalName ?? visit.patient.username;
+                const isInProgress = visit.status === "IN_PROGRESS";
+                const isDone = visit.status === "COMPLETED" || visit.status === "CANCELLED" || visit.status === "MISSED";
+
+                return (
+                  <div
+                    key={visit.id}
+                    className={`visit-card ${selectedVisit === visit.id ? "selected" : ""}`}
+                    onClick={() => setSelectedVisit(visit.id)}
+                  >
+                    <div className="visit-time">
+                      <div className="time-primary">{time}</div>
+                      <div className="time-secondary">{visit.status.replace("_", " ")}</div>
+                    </div>
+                    <div className="visit-details">
+                      <div className="visit-patient card-title-row">
+                        <span className="card-icon-badge">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="8" r="4"></circle>
+                            <path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path>
+                          </svg>
+                        </span>
+                        {patientName}
+                      </div>
+                      {visit.address && (
+                        <div className="visit-address">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                          </svg>
+                          {visit.address}
+                        </div>
+                      )}
+                      {visit.purpose && (
+                        <div className="visit-travel">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                          </svg>
+                          {visit.purpose}
+                        </div>
+                      )}
+                    </div>
+                    <div className="visit-actions">
+                      {!isInProgress && !isDone && (
+                        <button
+                          className="btn-arrival"
+                          disabled={checkingIn === visit.id}
+                          onClick={(e) => { e.stopPropagation(); handleCheckIn(visit.id); }}
+                        >
+                          {checkingIn === visit.id ? "Checking in..." : "Confirm Arrival"}
+                        </button>
+                      )}
+                      {isInProgress && (
+                        <button className="btn-arrival" disabled style={{ opacity: 0.6 }}>In Progress</button>
+                      )}
+                      {isDone && (
+                        <button className="btn-arrival" disabled style={{ opacity: 0.6 }}>{visit.status}</button>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-              <div className="visit-actions">
-                <button className="btn-arrival">Confirm Arrival</button>
-              </div>
-            </div>
-          ))}
-        </div>
+                );
+              })
+            )}
+          </div>
 
-        <div className="route-panel">
-          <div className="route-header">
-            <h3>Route & Navigation</h3>
-          </div>
-          <div className="route-map">
-            <div className="map-placeholder-route">
-              <div className="route-content">
-                <div className="route-marker start">Start</div>
-                <div className="route-line"></div>
-                <div className="route-marker waypoint">Stop 1</div>
-                <div className="route-line"></div>
-                <div className="route-marker waypoint">Stop 2</div>
-                <div className="route-line"></div>
-                <div className="route-marker waypoint">Stop 3</div>
-                <div className="route-line"></div>
-                <div className="route-marker end">End</div>
+          <div className="route-panel">
+            <div className="route-header"><h3>Route & Navigation</h3></div>
+            <div className="route-map">
+              <div className="map-placeholder-route">
+                <div className="route-content">
+                  <div className="route-marker start">Start</div>
+                  {sorted.slice(0, 3).map((_, i) => (
+                    <div key={i}>
+                      <div className="route-line"></div>
+                      <div className="route-marker waypoint">Stop {i + 1}</div>
+                    </div>
+                  ))}
+                  <div className="route-line"></div>
+                  <div className="route-marker end">End</div>
+                </div>
+              </div>
+            </div>
+            <div className="route-summary">
+              <div className="route-stat">
+                <span className="stat-label">Visits Today</span>
+                <span className="stat-value">{visits.length}</span>
+              </div>
+              <div className="route-stat">
+                <span className="stat-label">Completed</span>
+                <span className="stat-value">{visits.filter((v) => v.status === "COMPLETED").length}</span>
+              </div>
+              <div className="route-stat">
+                <span className="stat-label">Remaining</span>
+                <span className="stat-value">
+                  {visits.filter((v) => !["COMPLETED","CANCELLED","MISSED"].includes(v.status)).length}
+                </span>
               </div>
             </div>
           </div>
-          <div className="route-summary">
-            <div className="route-stat">
-              <span className="stat-label">Total Distance</span>
-              <span className="stat-value">45 miles</span>
-            </div>
-            <div className="route-stat">
-              <span className="stat-label">Total Time</span>
-              <span className="stat-value">1h 30m</span>
-            </div>
-            <div className="route-stat">
-              <span className="stat-label">Visits</span>
-              <span className="stat-value">4</span>
-            </div>
-          </div>
         </div>
-      </div>
+      )}
     </div>
-    
-
-  
   );
-} 
+}
+ 
 
 // Patient Snapshot Panel Component
 function PatientSnapshot() {
@@ -1352,6 +1537,21 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
     }
   };
 
+  const handleReply = () => {
+    if (!selectedConversation) return;
+    const recipient = selectedConversation.participants?.find((p: any) => p.userId !== user?.id)?.user;
+    if (!recipient?.id) {
+      alert("Unable to determine reply recipient for this conversation.");
+      return;
+    }
+
+    const currentSubject = String(selectedConversation.subject || "").trim();
+    setSelectedPatient(String(recipient.id));
+    setSubject(currentSubject.toLowerCase().startsWith("re:") ? currentSubject : `Re: ${currentSubject}`);
+    setMessageBody("");
+    setShowNewMessageModal(true);
+  };
+
   return (
     <div className="clinician-content">
       {/* Folder Tabs */}
@@ -1480,7 +1680,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
               </div>
 
               <div className="message-reply-section">
-                <button className="btn-primary">
+                <button className="btn-primary" onClick={handleReply}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="9 14 4 9 9 4"></polyline>
                     <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>

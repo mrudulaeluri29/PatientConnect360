@@ -18,6 +18,8 @@ import ClinicianDashboard from "./pages/clinician/ClinicianDashboard";
 import RequireClinician from "./middleware/RequireClinician";
 import PatientDashboard from "./pages/patient/PatientDashboard";
 import RequirePatient from "./middleware/RequirePatient";
+import CaregiverDashboard from "./pages/caregiver/CaregiverDashboard";
+import RequireCaregiver from "./middleware/RequireCaregiver";
 
 function ProtectedRoute({ children }: { children: React.ReactElement }) {
   const { user, loading } = useAuth();
@@ -62,6 +64,14 @@ export default function App() {
               <RequirePatient>
                 <PatientDashboard />
               </RequirePatient>
+            }
+          />
+          <Route
+            path="/caregiver/dashboard"
+            element={
+              <RequireCaregiver>
+                <CaregiverDashboard />
+              </RequireCaregiver>
             }
           />
           <Route path="/forgot-password" element={<ForgotPassword />} />

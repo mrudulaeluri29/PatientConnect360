@@ -9,6 +9,17 @@ import passwordResetRoutes from "./passwordReset";
 import adminRoutes from "./routes/admin";
 import messagesRoutes from "./routes/messages_fixed";
 import simpleMessagesRoutes from "./routes/simpleMessages";
+import visitRoutes from "./routes/visits";
+import medicationRoutes from "./routes/medications";
+import vitalRoutes from "./routes/vitals";
+import availabilityRoutes from "./routes/availability";
+import caregiverInvitationRoutes from "./routes/caregiverInvitations";
+import caregiverLinkRoutes from "./routes/caregiverLinks";
+import caregiverOverviewRoutes from "./routes/caregiverOverview";
+import caregiverProgressRoutes from "./routes/caregiverProgress";
+import caregiverAlertsRoutes from "./routes/caregiverAlerts";
+import caregiverAccessRoutes from "./routes/caregiverAccess";
+import caregiverSafetyRoutes from "./routes/caregiverSafety";
 
 // Import our Prisma database client
 import { prisma } from "./db";
@@ -17,8 +28,34 @@ import { prisma } from "./db";
 
 const app = express(); //Creates an Express "application" this is our server.
 
+// Behind managed proxies (Render/Railway/etc.) so secure cookies can work correctly.
+app.set("trust proxy", 1);
 
-app.use(cors({ origin: ["http://localhost:5173", "http://localhost:5174"], credentials: true })); //allows requests from our React app.
+function parseAllowedOrigins(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
+const localDevOrigins = ["http://localhost:5173", "http://localhost:5174"];
+const allowedOrigins = [
+  ...localDevOrigins,
+  ...parseAllowedOrigins(process.env.CORS_ORIGINS),
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // allow non-browser requests (curl/postman) with no origin
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+); // allows requests from the web app and sends cookies
 app.use(express.json());//tells Express to read JSON bodies
 app.use(cookieParser()); //to access cookies later
 
@@ -45,6 +82,17 @@ app.use("/api/password-reset", passwordResetRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/messages", messagesRoutes);
 app.use("/api/simple-messages", simpleMessagesRoutes);
+app.use("/api/visits", visitRoutes);
+app.use("/api/medications", medicationRoutes);
+app.use("/api/vitals", vitalRoutes);
+app.use("/api/availability", availabilityRoutes);
+app.use("/api/caregiver-invitations", caregiverInvitationRoutes);
+app.use("/api/caregiver-links", caregiverLinkRoutes);
+app.use("/api/caregiver/overview", caregiverOverviewRoutes);
+app.use("/api/caregiver/progress", caregiverProgressRoutes);
+app.use("/api/caregiver/alerts", caregiverAlertsRoutes);
+app.use("/api/caregiver/access", caregiverAccessRoutes);
+app.use("/api/caregiver/safety", caregiverSafetyRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 

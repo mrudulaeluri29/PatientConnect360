@@ -1,0 +1,15 @@
+{
+  "name": "patientconnect360",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "setup": "npm install --include=dev --prefix Server && npm install --include=dev --prefix Client/web",
+    "dev": "concurrently \"npm run dev --prefix Server\" \"npm run dev --prefix Client/web\"",
+    "build": "npm run build --prefix Server && npm run build --prefix Client/web",
+    "start": "npm run start --prefix Server",
+    "lint": "npm run lint --prefix Client/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

@@ -1685,3 +1685,660 @@
   padding: 0.1rem 0.4rem;
   border-radius: 8px;
 }
+
+/* ─── Care Team Availability ──────────────────────────────────────────────── */
+
+.team-availability-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.team-avail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  transition: all 0.2s;
+}
+
+.team-avail-item:hover {
+  border-color: #6E5B9A;
+  box-shadow: 0 2px 6px rgba(110, 91, 154, 0.1);
+}
+
+.team-avail-clinician {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.team-avail-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.team-avail-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+
+.team-avail-spec {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.team-avail-schedule {
+  text-align: right;
+}
+
+.team-avail-date {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.team-avail-time {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+/* ─── Clickable Care Team ─────────────────────────────────────────────────── */
+
+.clinician-item-clickable {
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 8px;
+  padding: 0.5rem;
+  margin: -0.25rem -0.5rem;
+  position: relative;
+}
+
+.clinician-item-clickable:hover {
+  background: #f3f0f9;
+}
+
+.clinician-item-clickable.clinician-item-active {
+  background: #ede9f5;
+  border-left: 3px solid #6E5B9A;
+}
+
+.clinician-chevron {
+  margin-left: auto;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.clinician-detail-panel {
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.clinician-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.clinician-visit-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.history-visit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.history-visit-date {
+  font-weight: 500;
+  color: #1f2937;
+  min-width: 170px;
+}
+
+.history-visit-type {
+  color: #6b7280;
+  flex: 1;
+}
+
+.history-visit-status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  padding: 0.2rem 0.55rem;
+  text-transform: uppercase;
+}
+
+.status-scheduled {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.status-confirmed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-in_progress,
+.status-in-progress {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.status-completed {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.status-cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-missed {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-rescheduled {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+/* ─── Cancel Visit Button ─────────────────────────────────────────────────── */
+
+.btn-cancel-visit {
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #6b7280;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel-visit:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.btn-cancel-visit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Visit Request Modal ─────────────────────────────────────────────────── */
+
+.visit-request-modal {
+  max-width: 520px;
+}
+
+.visit-request-note {
+  font-size: 0.88rem;
+  color: #6b7280;
+  background: #f0f4ff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.visit-request-error {
+  font-size: 0.88rem;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.visit-request-clinician-badge {
+  display: inline-block;
+  background: #ede9f5;
+  color: #6E5B9A;
+  font-weight: 600;
+  padding: 0.4rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.form-row-inline {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.form-input {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #6E5B9A;
+  box-shadow: 0 0 0 2px rgba(110, 91, 154, 0.15);
+}
+
+.form-textarea {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.form-textarea:focus {
+  outline: none;
+  border-color: #6E5B9A;
+  box-shadow: 0 0 0 2px rgba(110, 91, 154, 0.15);
+}
+
+.form-select {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: white;
+  box-sizing: border-box;
+}
+
+.form-select:focus {
+  outline: none;
+  border-color: #6E5B9A;
+  box-shadow: 0 0 0 2px rgba(110, 91, 154, 0.15);
+}
+
+.form-group {
+  margin-bottom: 0.85rem;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.3rem;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* ─── Caregiver Management (Family Tab) ───────────────────────────────────── */
+
+.cg-section-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1.25rem;
+}
+
+.cg-section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.cg-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+/* Linked caregivers list */
+.cg-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cg-link-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  transition: border-color 0.2s;
+}
+
+.cg-link-row:hover {
+  border-color: #6E5B9A;
+}
+
+.cg-link-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #ede9f5;
+  color: #6E5B9A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.cg-link-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cg-link-name {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cg-primary-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+}
+
+.cg-link-meta {
+  font-size: 0.82rem;
+  color: #6b7280;
+  margin-top: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cg-link-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.cg-btn-toggle-primary {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cg-btn-toggle-primary:hover {
+  border-color: #f59e0b;
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.cg-btn-toggle-primary.active {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
+.cg-btn-remove {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cg-btn-remove:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.cg-btn-remove:disabled,
+.cg-btn-toggle-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Invitation list */
+.cg-inv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cg-inv-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.cg-inv-row.past {
+  opacity: 0.7;
+}
+
+.cg-inv-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cg-inv-name {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.9rem;
+}
+
+.cg-inv-meta {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-top: 0.1rem;
+}
+
+.cg-inv-expiry {
+  font-size: 0.78rem;
+  color: #f59e0b;
+  font-weight: 600;
+  margin-top: 0.15rem;
+}
+
+.cg-inv-code-display {
+  flex-shrink: 0;
+}
+
+.cg-inv-code {
+  display: inline-block;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  background: #ede9f5;
+  color: #6E5B9A;
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+}
+
+.cg-inv-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.cg-btn-share {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #6E5B9A;
+  background: #ede9f5;
+  color: #6E5B9A;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cg-btn-share:hover {
+  background: #6E5B9A;
+  color: white;
+}
+
+.cg-btn-revoke {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: white;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cg-btn-revoke:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.cg-btn-revoke:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Invitation status badges */
+.cg-inv-status-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.inv-status-pending  { background: #fef3c7; color: #92400e; }
+.inv-status-accepted { background: #dcfce7; color: #166534; }
+.inv-status-expired  { background: #f3f4f6; color: #6b7280; }
+.inv-status-revoked  { background: #fee2e2; color: #991b1b; }
+
+/* Code result modal */
+.cg-code-modal {
+  max-width: 460px;
+}
+
+.cg-code-success-icon {
+  margin-bottom: 0.25rem;
+}
+
+.cg-code-display-large {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  background: #ede9f5;
+  color: #6E5B9A;
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  margin: 0.75rem auto;
+  display: inline-block;
+}
+
+.cg-code-expiry-note {
+  font-size: 0.82rem;
+  color: #6b7280;
+  margin: 0.75rem 0;
+  line-height: 1.5;
+}
+
+.cg-code-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+/* Add caregiver modal */
+.cg-add-modal {
+  max-width: 500px;
+}
+
+@media (max-width: 640px) {
+  .cg-link-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .cg-link-actions {
+    align-self: flex-end;
+  }
+
+  .cg-inv-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .cg-inv-actions {
+    align-self: flex-end;
+  }
+
+  .cg-code-display-large {
+    font-size: 1.5rem;
+    letter-spacing: 0.15em;
+    padding: 0.5rem 1rem;
+  }
+}

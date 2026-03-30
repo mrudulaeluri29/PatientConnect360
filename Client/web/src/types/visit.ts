@@ -1,3 +1,5 @@
+// Legacy mock shape — kept for backward compatibility.
+// New code should use ApiVisit from src/api/visits.ts
 export interface Visit {
   id: string;
   date: string;

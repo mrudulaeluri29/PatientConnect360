@@ -2,6 +2,20 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../lib/axios";
 import "./AdminDashboard.css";
+import {
+  getAllAvailability,
+  reviewAvailability,
+  deleteAvailability,
+  availabilityStatusClass,
+  formatAvailabilityDate,
+  type ApiAvailability,
+  type AvailabilityStatus,
+} from "../../api/availability";
+import {
+  getAdminVisitRequests,
+  reviewVisitRequest,
+  type ApiVisit,
+} from "../../api/visits";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -27,6 +41,12 @@ export default function AdminDashboard() {
             </button>
             <button className={`nav-item ${activeTab === "assign" ? "active" : ""}`} onClick={() => setActiveTab("assign")}>
               Assign Patients
+            </button>
+            <button className={`nav-item ${activeTab === "availability" ? "active" : ""}`} onClick={() => setActiveTab("availability")}>
+              Availability
+            </button>
+            <button className={`nav-item ${activeTab === "appointments" ? "active" : ""}`} onClick={() => setActiveTab("appointments")}>
+              Appointments
             </button>
             <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
               Messages
@@ -393,6 +413,16 @@ export default function AdminDashboard() {
             <AssignmentManager />
           </div>
         )}
+        {activeTab === "availability" && (
+          <div className="admin-content">
+            <AvailabilityReview />
+          </div>
+        )}
+        {activeTab === "appointments" && (
+          <div className="admin-content">
+            <AppointmentsReview />
+          </div>
+        )}
         {activeTab === "messages" && (
           <div className="admin-content">
             <AdminMessages />
@@ -489,149 +519,114 @@ function AssignmentManager() {
   };
 
   return (
-    <div className="w-full space-y-6">
-      {/* Page Title */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Assign Patient to Clinician</h1>
-        <p className="text-gray-600 mt-1">Select a patient and clinician to create a care relationship</p>
+    <div className="user-management">
+      <div className="section-header">
+        <h2 className="section-title">Assign Patient to Clinician</h2>
       </div>
 
-      {/* Loading & Error States */}
+      {/* Assignment Form */}
+      <div className="assign-form">
+        <div className="assign-form-row">
+          <div className="form-group">
+            <label>Select Patient</label>
+            <select
+              value={selectedPatient}
+              onChange={(e) => setSelectedPatient(e.target.value)}
+              className="filter-select"
+              style={{ width: "100%" }}
+            >
+              <option value="">Choose a patient...</option>
+              {patients.map(p => (
+                <option key={p.id} value={p.id}>{p.username} ({p.email})</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Select Clinician</label>
+            <select
+              value={selectedClinician}
+              onChange={(e) => setSelectedClinician(e.target.value)}
+              className="filter-select"
+              style={{ width: "100%" }}
+            >
+              <option value="">Choose a clinician...</option>
+              {clinicians.map(c => (
+                <option key={c.id} value={c.id}>{c.username} ({c.email})</option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="btn-primary"
+            onClick={handleCreate}
+            disabled={!selectedPatient || !selectedClinician}
+            style={{ alignSelf: "flex-end" }}
+          >
+            Assign
+          </button>
+        </div>
+      </div>
+
+      {/* Loading / Error */}
       {loading && (
-        <div className="flex items-center justify-center py-12">
-          <p className="text-gray-600">Loading...</p>
-        </div>
+        <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading assignments...</div>
       )}
-      
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700">{error}</p>
+        <div style={{ padding: "1rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", color: "#991b1b", marginTop: "1rem" }}>
+          {error}
         </div>
       )}
 
+      {/* Assignments Table */}
       {!loading && !error && (
-        <>
-          {/* Assignment Form Card */}
-          <div className="bg-white rounded-lg shadow-md p-8 border border-gray-200">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Patient Dropdown */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Patient</label>
-                <select
-                  value={selectedPatient}
-                  onChange={(e) => setSelectedPatient(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent hover:border-gray-400 transition bg-white text-gray-900"
-                >
-                  <option value="">Choose a patient...</option>
-                  {patients.map(p => (
-                    <option key={p.id} value={p.id}>{p.username} ({p.email})</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Clinician Dropdown */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Clinician</label>
-                <select
-                  value={selectedClinician}
-                  onChange={(e) => setSelectedClinician(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent hover:border-gray-400 transition bg-white text-gray-900"
-                >
-                  <option value="">Choose a clinician...</option>
-                  {clinicians.map(c => (
-                    <option key={c.id} value={c.id}>{c.username} ({c.email})</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Assign Button */}
-            <div className="flex justify-end">
-              <button
-                onClick={handleCreate}
-                disabled={!selectedPatient || !selectedClinician}
-                className={`px-6 py-3 rounded-lg font-semibold transition ${
-                  selectedPatient && selectedClinician
-                    ? 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                Assign
-              </button>
-            </div>
-          </div>
-
-          {/* Active Assignments Section */}
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Active Assignments</h2>
-            
-            {assignments.length === 0 ? (
-              // Empty State
-              <div className="bg-white rounded-lg p-12 text-center border border-gray-200">
-                <div className="text-gray-400 text-4xl mb-3">📋</div>
-                <p className="text-gray-600 text-lg">No assignments yet</p>
-                <p className="text-gray-500 text-sm mt-1">Create your first assignment using the form above</p>
-              </div>
-            ) : (
-              // Assignments Grid
-              <div className="space-y-3">
-                {assignments.map(a => (
-                  <div key={a.id} className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 hover:shadow-md transition flex items-center justify-between">
-                    {/* Left: Patient Info */}
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 flex-shrink-0">
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
-                          <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"></path>
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-semibold text-gray-900">{a.patient.username}</div>
-                        <div className="text-sm text-gray-500">{a.patient.email}</div>
-                      </div>
-                    </div>
-
-                    {/* Middle: Arrow */}
-                    <div className="text-gray-400 text-2xl mx-4 flex-shrink-0">→</div>
-
-                    {/* Right: Clinician Info */}
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 flex-shrink-0">
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M10.5 1.5H5.75A2.25 2.25 0 003.5 3.75v12.5A2.25 2.25 0 005.75 18.5h8.5a2.25 2.25 0 002.25-2.25V6.5m-10-3v3m0 4.5h6m-6 3h6m-6 3h3"></path>
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-semibold text-gray-900">{a.clinician.username}</div>
-                        <div className="text-sm text-gray-500">{a.clinician.email}</div>
-                      </div>
-                    </div>
-
-                    {/* Status Toggle */}
-                    <div className="flex items-center gap-3 mx-4 flex-shrink-0">
-                      <select
-                        value={a.isActive ? "true" : "false"}
-                        onChange={() => handleToggleActive(a.id, a.isActive)}
-                        className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900"
+        <div className="users-table" style={{ marginTop: "1.5rem" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Patient</th>
+                <th>Clinician</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assignments.length === 0 ? (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: "center", padding: "2rem", color: "#6b7280" }}>
+                    No assignments yet. Create one using the form above.
+                  </td>
+                </tr>
+              ) : (
+                assignments.map(a => (
+                  <tr key={a.id}>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{a.patient.username}</div>
+                      <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>{a.patient.email}</div>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{a.clinician.username}</div>
+                      <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>{a.clinician.email}</div>
+                    </td>
+                    <td>
+                      <span
+                        className={`role-badge ${a.isActive ? "role-clinician" : "role-caregiver"}`}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleToggleActive(a.id, a.isActive)}
+                        title="Click to toggle"
                       >
-                        <option value="true">Active</option>
-                        <option value="false">Inactive</option>
-                      </select>
-                    </div>
-
-                    {/* Remove Button */}
-                    <button
-                      onClick={() => handleRemove(a.id)}
-                      className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition font-medium text-sm flex-shrink-0"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
+                        {a.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td>
+                      <button className="btn-remove" onClick={() => handleRemove(a.id)}>
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -1537,6 +1532,437 @@ function SystemSettings() {
           <button className="btn-save">Save Changes</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Appointments Review (Admin) ─────────────────────────────────────────────
+function AppointmentsReview() {
+  const [loading, setLoading] = useState(true);
+  const [newRequests, setNewRequests] = useState<ApiVisit[]>([]);
+  const [rescheduleRequests, setRescheduleRequests] = useState<ApiVisit[]>([]);
+  const [cancellationUpdates, setCancellationUpdates] = useState<ApiVisit[]>([]);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, string>>({});
+
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const data = await getAdminVisitRequests();
+      setNewRequests(data.newRequests || []);
+      setRescheduleRequests(data.rescheduleRequests || []);
+      setCancellationUpdates(data.cancellationUpdates || []);
+    } catch {
+      setNewRequests([]);
+      setRescheduleRequests([]);
+      setCancellationUpdates([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const datetimeLocalToIso = (value?: string): string | undefined => {
+    if (!value) return undefined;
+    const [datePart, timePart] = value.split("T");
+    if (!datePart || !timePart) return undefined;
+
+    const [y, m, d] = datePart.split("-").map(Number);
+    const [hh, mm] = timePart.split(":").map(Number);
+    if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) return undefined;
+
+    // datetime-local is a local wall-clock value; build a local Date explicitly
+    // before converting to UTC ISO for the API contract.
+    return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
+  };
+
+  const runReview = async (visitId: string, action: "APPROVE" | "REJECT") => {
+    setReviewingId(visitId);
+    try {
+      const overrideIso = datetimeLocalToIso(scheduleOverrides[visitId]);
+      await reviewVisitRequest(visitId, {
+        action,
+        reviewNote: reviewNotes[visitId] || undefined,
+        scheduledAt: overrideIso,
+      });
+      await refresh();
+    } catch (e: any) {
+      alert(e?.response?.data?.error || "Review action failed");
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const renderQueue = (title: string, rows: ApiVisit[]) => (
+    <div className="avail-table-wrap" style={{ marginBottom: "1rem" }}>
+      <h3 style={{ margin: "0 0 0.75rem 0" }}>{title}</h3>
+      {rows.length === 0 ? (
+        <div className="avail-empty">No records.</div>
+      ) : (
+        <table className="avail-table">
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>Clinician</th>
+              <th>Requested Date/Time</th>
+              <th>Type</th>
+              <th>Reason/Notes</th>
+              <th>Admin Review</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((v) => (
+              <tr key={v.id}>
+                <td>{v.patient.patientProfile?.legalName || v.patient.username}</td>
+                <td>{v.clinician.username}</td>
+                <td>{new Date(v.scheduledAt).toLocaleString()}</td>
+                <td>{v.status.replaceAll("_", " ")}</td>
+                <td>{v.rescheduleReason || v.purpose || v.notes || "—"}</td>
+                <td>
+                  <div style={{ display: "grid", gap: "0.35rem" }}>
+                    <input
+                      type="datetime-local"
+                      value={scheduleOverrides[v.id] || ""}
+                      onChange={(e) =>
+                        setScheduleOverrides((prev) => ({ ...prev, [v.id]: e.target.value }))
+                      }
+                    />
+                    <textarea
+                      rows={2}
+                      placeholder="Review note (optional)"
+                      value={reviewNotes[v.id] || ""}
+                      onChange={(e) =>
+                        setReviewNotes((prev) => ({ ...prev, [v.id]: e.target.value }))
+                      }
+                    />
+                    <div style={{ display: "flex", gap: "0.35rem" }}>
+                      <button
+                        className="btn-approve"
+                        disabled={reviewingId === v.id}
+                        onClick={() => runReview(v.id, "APPROVE")}
+                      >
+                        Approve/Schedule
+                      </button>
+                      <button
+                        className="btn-reject"
+                        disabled={reviewingId === v.id}
+                        onClick={() => runReview(v.id, "REJECT")}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="content-header" style={{ marginBottom: "1.5rem" }}>
+        <h2 className="section-title">Appointment Requests</h2>
+      </div>
+
+      <div className="avail-kpi-row" style={{ marginBottom: "1rem" }}>
+        <div className="avail-kpi-chip pending">
+          <span className="avail-kpi-value">{newRequests.length}</span>
+          <span className="avail-kpi-label">New Requests</span>
+        </div>
+        <div className="avail-kpi-chip approved">
+          <span className="avail-kpi-value">{rescheduleRequests.length}</span>
+          <span className="avail-kpi-label">Reschedule Requests</span>
+        </div>
+        <div className="avail-kpi-chip rejected">
+          <span className="avail-kpi-value">{cancellationUpdates.length}</span>
+          <span className="avail-kpi-label">Cancellation Updates</span>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading appointment queue...</div>
+      ) : (
+        <>
+          {renderQueue("New Appointment Requests", newRequests)}
+          {renderQueue("Reschedule Requests", rescheduleRequests)}
+          <div className="avail-table-wrap">
+            <h3 style={{ margin: "0 0 0.75rem 0" }}>Cancellation Updates</h3>
+            {cancellationUpdates.length === 0 ? (
+              <div className="avail-empty">No cancellation updates.</div>
+            ) : (
+              <table className="avail-table">
+                <thead>
+                  <tr>
+                    <th>Patient</th>
+                    <th>Clinician</th>
+                    <th>Cancelled Date/Time</th>
+                    <th>Reason</th>
+                    <th>Requested By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cancellationUpdates.map((v) => (
+                    <tr key={v.id}>
+                      <td>{v.patient.patientProfile?.legalName || v.patient.username}</td>
+                      <td>{v.clinician.username}</td>
+                      <td>{new Date(v.scheduledAt).toLocaleString()}</td>
+                      <td>{v.cancelReason || "—"}</td>
+                      <td>{v.cancellationRequestedById || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Availability Review (Admin) ─────────────────────────────────────────────
+function AvailabilityReview() {
+  const [records, setRecords] = useState<ApiAvailability[]>([]);
+  const [allRecords, setAllRecords] = useState<ApiAvailability[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<AvailabilityStatus | "">("");
+  const [updateNotice, setUpdateNotice] = useState<string>("");
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewModalRecord, setReviewModalRecord] = useState<ApiAvailability | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const fetchRecords = async () => {
+    setLoading(true);
+    try {
+      const [allData, filteredData] = await Promise.all([
+        getAllAvailability(),
+        getAllAvailability(statusFilter ? { status: statusFilter } : undefined),
+      ]);
+      setAllRecords(allData);
+      setRecords(filteredData);
+    } catch {
+      setAllRecords([]);
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchRecords(); }, [statusFilter]);
+
+  const pendingCount = allRecords.filter((r) => r.status === "PENDING").length;
+  const approvedCount = allRecords.filter((r) => r.status === "APPROVED").length;
+  const rejectedCount = allRecords.filter((r) => r.status === "REJECTED").length;
+
+  const handleReview = async (id: string, status: "APPROVED" | "REJECTED") => {
+    setReviewingId(id);
+    try {
+      const updated = await reviewAvailability(id, status, reviewNote || undefined);
+      setRecords((prev) =>
+        prev
+          .map((r) => (r.id === id ? updated : r))
+          .filter((r) => statusFilter === "" || r.status === statusFilter)
+      );
+      setAllRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      if (statusFilter && statusFilter !== status) {
+        setUpdateNotice(`Record marked ${status} and removed from the "${statusFilter}" view.`);
+      } else {
+        setUpdateNotice(`Record marked ${status}.`);
+      }
+      setReviewModalRecord(null);
+      setReviewNote("");
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Review failed");
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this availability record?")) return;
+    setDeletingId(id);
+    try {
+      await deleteAvailability(id);
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+      setAllRecords((prev) => prev.filter((r) => r.id !== id));
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Delete failed");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div>
+      <div className="content-header" style={{ marginBottom: "1.5rem" }}>
+        <h2 className="section-title">Clinician Availability Review</h2>
+      </div>
+
+      {/* KPI Summary */}
+      <div className="avail-kpi-row">
+        <div className="avail-kpi-chip pending" onClick={() => setStatusFilter("PENDING")}>
+          <span className="avail-kpi-value">{pendingCount}</span>
+          <span className="avail-kpi-label">Pending</span>
+        </div>
+        <div className="avail-kpi-chip approved" onClick={() => setStatusFilter("APPROVED")}>
+          <span className="avail-kpi-value">{approvedCount}</span>
+          <span className="avail-kpi-label">Approved</span>
+        </div>
+        <div className="avail-kpi-chip rejected" onClick={() => setStatusFilter("REJECTED")}>
+          <span className="avail-kpi-value">{rejectedCount}</span>
+          <span className="avail-kpi-label">Rejected</span>
+        </div>
+        <div className={`avail-kpi-chip all ${statusFilter === "" ? "active" : ""}`} onClick={() => setStatusFilter("")}>
+          <span className="avail-kpi-value">{allRecords.length}</span>
+          <span className="avail-kpi-label">All</span>
+        </div>
+      </div>
+      {statusFilter && (
+        <div style={{ marginTop: "0.75rem", color: "#6b7280", fontSize: "0.9rem" }}>
+          Showing {records.length} of {allRecords.length} total records.
+        </div>
+      )}
+      {updateNotice && (
+        <div
+          style={{
+            marginTop: "0.75rem",
+            marginBottom: "0.5rem",
+            padding: "0.65rem 0.85rem",
+            borderRadius: "8px",
+            border: "1px solid #bfdbfe",
+            background: "#eff6ff",
+            color: "#1e3a8a",
+            fontSize: "0.9rem",
+          }}
+        >
+          {updateNotice}
+        </div>
+      )}
+
+      {/* Records Table */}
+      {loading ? (
+        <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading availability records...</div>
+      ) : records.length === 0 ? (
+        <div className="avail-empty">
+          No availability records {statusFilter ? `with status "${statusFilter}"` : "found"}.
+        </div>
+      ) : (
+        <div className="avail-table-wrap">
+          <table className="avail-table">
+            <thead>
+              <tr>
+                <th>Clinician</th>
+                <th>Specialization</th>
+                <th>Date</th>
+                <th>Hours</th>
+                <th>Status</th>
+                <th>Review Note</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((rec) => (
+                <tr key={rec.id}>
+                  <td className="avail-cell-clinician">
+                    <div className="avail-clinician-name">{rec.clinician.username}</div>
+                    <div className="avail-clinician-email">{rec.clinician.email}</div>
+                  </td>
+                  <td>{rec.clinician.clinicianProfile?.specialization || "—"}</td>
+                  <td>{formatAvailabilityDate(rec.date)}</td>
+                  <td>{rec.startTime} – {rec.endTime}</td>
+                  <td>
+                    <span className={`submission-status ${availabilityStatusClass(rec.status)}`}>
+                      {rec.status}
+                    </span>
+                  </td>
+                  <td className="avail-cell-note">{rec.reviewNote || "—"}</td>
+                  <td className="avail-cell-actions">
+                    {rec.status === "PENDING" && (
+                      <>
+                        <button
+                          className="btn-approve"
+                          onClick={() => handleReview(rec.id, "APPROVED")}
+                          disabled={reviewingId === rec.id}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="btn-reject"
+                          onClick={() => { setReviewModalRecord(rec); setReviewNote(""); }}
+                          disabled={reviewingId === rec.id}
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
+                    <button
+                      className="btn-delete-avail"
+                      onClick={() => handleDelete(rec.id)}
+                      disabled={deletingId === rec.id}
+                      title="Delete record"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Reject Modal */}
+      {reviewModalRecord && (
+        <div className="modal-overlay" onClick={() => setReviewModalRecord(null)}>
+          <div className="modal-content avail-review-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Reject Availability</h3>
+              <button className="modal-close" onClick={() => setReviewModalRecord(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: "0.5rem", color: "#4b5563" }}>
+                <strong>{reviewModalRecord.clinician.username}</strong> — {formatAvailabilityDate(reviewModalRecord.date)}, {reviewModalRecord.startTime} – {reviewModalRecord.endTime}
+              </p>
+              <div className="form-group">
+                <label>Reason for rejection (optional)</label>
+                <textarea
+                  value={reviewNote}
+                  onChange={(e) => setReviewNote(e.target.value)}
+                  placeholder="e.g. Conflicts with scheduled visit for Patient X..."
+                  rows={3}
+                  className="form-textarea"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setReviewModalRecord(null)}>Cancel</button>
+              <button
+                className="btn-reject"
+                onClick={() => handleReview(reviewModalRecord.id, "REJECTED")}
+                disabled={reviewingId === reviewModalRecord.id}
+              >
+                {reviewingId === reviewModalRecord.id ? "Rejecting..." : "Confirm Rejection"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

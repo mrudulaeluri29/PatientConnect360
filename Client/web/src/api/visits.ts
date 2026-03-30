@@ -1,0 +1,199 @@
+import { api } from "../lib/axios";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export type VisitStatus =
+  | "REQUESTED"
+  | "RESCHEDULE_REQUESTED"
+  | "REJECTED"
+  | "SCHEDULED"
+  | "CONFIRMED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "MISSED"
+  | "RESCHEDULED";
+
+export type VisitType =
+  | "HOME_HEALTH"
+  | "WOUND_CARE"
+  | "PHYSICAL_THERAPY"
+  | "OCCUPATIONAL_THERAPY"
+  | "SPEECH_THERAPY"
+  | "MEDICATION_REVIEW"
+  | "POST_DISCHARGE"
+  | "ROUTINE_CHECKUP"
+  | "OTHER";
+
+export interface ApiVisit {
+  id: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  status: VisitStatus;
+  requestType?: "INITIAL" | "RESCHEDULE";
+  requestedById?: string | null;
+  originalVisitId?: string | null;
+  rescheduleReason?: string | null;
+  reviewNote?: string | null;
+  reviewedByAdminId?: string | null;
+  reviewedAt?: string | null;
+  cancellationRequestedById?: string | null;
+  cancellationRequestedAt?: string | null;
+  visitType: VisitType;
+  purpose: string | null;
+  address: string | null;
+  notes: string | null;
+  clinicianNotes: string | null;
+  checkedInAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  patient: {
+    id: string;
+    username: string;
+    email: string;
+    patientProfile: {
+      legalName: string;
+      phoneNumber: string;
+      homeAddress: string;
+    } | null;
+  };
+  clinician: {
+    id: string;
+    username: string;
+    email: string;
+    clinicianProfile: { specialization: string | null } | null;
+  };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Maps API VisitStatus to the badge colour class used in the existing CSS */
+export function visitStatusClass(status: VisitStatus): string {
+  const map: Record<VisitStatus, string> = {
+    REQUESTED: "status-scheduled",
+    RESCHEDULE_REQUESTED: "status-rescheduled",
+    REJECTED: "status-cancelled",
+    SCHEDULED:   "status-scheduled",
+    CONFIRMED:   "status-confirmed",
+    IN_PROGRESS: "status-in-progress",
+    COMPLETED:   "status-completed",
+    CANCELLED:   "status-cancelled",
+    MISSED:      "status-missed",
+    RESCHEDULED: "status-rescheduled",
+  };
+  return map[status] ?? "status-scheduled";
+}
+
+/** Human-readable label for a VisitType enum value */
+export function visitTypeLabel(type: VisitType): string {
+  const map: Record<VisitType, string> = {
+    HOME_HEALTH:          "Home Health",
+    WOUND_CARE:           "Wound Care",
+    PHYSICAL_THERAPY:     "Physical Therapy",
+    OCCUPATIONAL_THERAPY: "Occupational Therapy",
+    SPEECH_THERAPY:       "Speech Therapy",
+    MEDICATION_REVIEW:    "Medication Review",
+    POST_DISCHARGE:       "Post-Discharge",
+    ROUTINE_CHECKUP:      "Routine Check-Up",
+    OTHER:                "Other",
+  };
+  return map[type] ?? type;
+}
+
+/** Format scheduledAt ISO string into display date + time strings */
+export function formatVisitDateTime(scheduledAt: string): { date: string; time: string } {
+  const d = new Date(scheduledAt);
+  const date = d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month:   "short",
+    day:     "numeric",
+    year:    "numeric",
+  });
+  const time = d.toLocaleTimeString("en-US", {
+    hour:   "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return { date, time };
+}
+
+/** Derive initials avatar string from a clinician username */
+export function clinicianAvatar(username: string): string {
+  return username
+    .split(/[\s_]/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+// ─── API calls ───────────────────────────────────────────────────────────────
+
+export async function getVisits(params?: {
+  status?: VisitStatus;
+  from?: string;
+  to?: string;
+}): Promise<ApiVisit[]> {
+  const res = await api.get("/api/visits", { params });
+  return res.data.visits;
+}
+
+export async function getVisit(id: string): Promise<ApiVisit> {
+  const res = await api.get(`/api/visits/${id}`);
+  return res.data.visit;
+}
+
+export async function updateVisitStatus(
+  id: string,
+  status: VisitStatus,
+  cancelReason?: string
+): Promise<ApiVisit> {
+  const res = await api.patch(`/api/visits/${id}`, { status, cancelReason });
+  return res.data.visit;
+}
+
+/** Patient (or admin) creates a new visit request. Starts as SCHEDULED for admin review. */
+export async function createVisitRequest(data: {
+  patientId?: string;
+  clinicianId: string;
+  scheduledAt: string;
+  visitType?: VisitType;
+  purpose?: string;
+  address?: string;
+  notes?: string;
+  durationMinutes?: number;
+}): Promise<ApiVisit> {
+  const res = await api.post("/api/visits", data);
+  return res.data.visit;
+}
+
+export async function submitRescheduleRequest(
+  visitId: string,
+  data: { scheduledAt: string; reason: string }
+): Promise<ApiVisit> {
+  const res = await api.post(`/api/visits/${visitId}/reschedule-request`, data);
+  return res.data.visit;
+}
+
+export async function reviewVisitRequest(
+  visitId: string,
+  data: {
+    action: "APPROVE" | "REJECT";
+    reviewNote?: string;
+    scheduledAt?: string;
+    durationMinutes?: number;
+  }
+): Promise<ApiVisit> {
+  const res = await api.post(`/api/visits/${visitId}/review`, data);
+  return res.data.visit;
+}
+
+export async function getAdminVisitRequests(): Promise<{
+  newRequests: ApiVisit[];
+  rescheduleRequests: ApiVisit[];
+  cancellationUpdates: ApiVisit[];
+}> {
+  const res = await api.get("/api/visits/admin/requests");
+  return res.data;
+}

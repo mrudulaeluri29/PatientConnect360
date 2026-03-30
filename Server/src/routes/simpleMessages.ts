@@ -5,6 +5,34 @@ import jwt from "jsonwebtoken";
 
 const router = Router();
 
+async function getCaregiverLinkedPatientIds(caregiverId: string): Promise<string[]> {
+  const links = await (prisma as any).caregiverPatientLink.findMany({
+    where: { caregiverId, isActive: true },
+    select: { patientId: true },
+  });
+  return links.map((l: any) => String(l.patientId));
+}
+
+async function getCaregiverAllowedClinicianIds(caregiverId: string): Promise<string[]> {
+  const patientIds = await getCaregiverLinkedPatientIds(caregiverId);
+  if (!patientIds.length) return [];
+
+  const assignments = await (prisma as any).patientAssignment.findMany({
+    where: {
+      patientId: { in: patientIds },
+      isActive: true,
+    },
+    select: { clinicianId: true },
+  });
+
+  const uniqueIds: string[] = [];
+  for (const assignment of assignments as any[]) {
+    const id = String(assignment.clinicianId);
+    if (!uniqueIds.includes(id)) uniqueIds.push(id);
+  }
+  return uniqueIds;
+}
+
 // Middleware to get current user from JWT cookie
 function getCurrentUser(req: Request): { uid: string; role: string } | null {
   try {
@@ -18,7 +46,7 @@ function getCurrentUser(req: Request): { uid: string; role: string } | null {
 }
 
 // GET /api/simple-messages/assigned-clinicians
-// Get all clinicians assigned to the current patient
+// Get all clinicians assigned to the current patient (or caregiver-linked patients)
 router.get("/assigned-clinicians", async (req: Request, res: Response) => {
   try {
     const user = getCurrentUser(req);
@@ -26,13 +54,22 @@ router.get("/assigned-clinicians", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    if (user.role !== "PATIENT") {
-      return res.status(403).json({ error: "Only patients can access this endpoint" });
+    let patientIds: string[] = [];
+    if (user.role === "PATIENT") {
+      patientIds = [user.uid];
+    } else if (user.role === "CAREGIVER") {
+      patientIds = await getCaregiverLinkedPatientIds(user.uid);
+    } else {
+      return res.status(403).json({ error: "Only patients and caregivers can access this endpoint" });
+    }
+
+    if (!patientIds.length) {
+      return res.json({ clinicians: [] });
     }
 
     const assignments = await (prisma as any).patientAssignment.findMany({
       where: {
-        patientId: user.uid,
+        patientId: { in: patientIds },
         isActive: true,
       },
       include: {
@@ -41,16 +78,22 @@ router.get("/assigned-clinicians", async (req: Request, res: Response) => {
             id: true,
             username: true,
             email: true,
+            clinicianProfile: { select: { specialization: true } },
           },
         },
       },
     });
 
-    const clinicians = assignments.map((a: any) => ({
-      id: a.clinician.id,
-      username: a.clinician.username,
-      email: a.clinician.email,
-    }));
+    const clinicianMap = new Map<string, any>();
+    assignments.forEach((a: any) => {
+      clinicianMap.set(a.clinician.id, {
+        id: a.clinician.id,
+        username: a.clinician.username,
+        email: a.clinician.email,
+        specialization: a.clinician.clinicianProfile?.specialization ?? null,
+      });
+    });
+    const clinicians = Array.from(clinicianMap.values());
 
     res.json({ clinicians });
   } catch (error) {
@@ -130,7 +173,7 @@ router.post("/send", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "recipientId, subject, and body are required" });
     }
 
-    // Validate assignment in either direction
+    // Validate assignment/link in either direction
     if (user.role === "PATIENT") {
       const assignment = await (prisma as any).patientAssignment.findFirst({
         where: {
@@ -153,6 +196,11 @@ router.post("/send", async (req: Request, res: Response) => {
       });
       if (!assignment) {
         return res.status(403).json({ error: "You can only message patients assigned to you" });
+      }
+    } else if (user.role === "CAREGIVER") {
+      const allowedClinicianIds = await getCaregiverAllowedClinicianIds(user.uid);
+      if (!allowedClinicianIds.includes(recipientId)) {
+        return res.status(403).json({ error: "You can only message clinicians linked to your patient(s)" });
       }
     }
 
