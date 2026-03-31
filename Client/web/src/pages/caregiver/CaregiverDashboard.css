@@ -921,6 +921,7 @@
 
 /* ─── Modal ──────────────────────────────────────────────────────────────── */
 
+/* Above dashboard chrome; below global feedback toasts (10050) */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -929,7 +930,7 @@
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  z-index: 50;
+  z-index: 10020;
 }
 
 .modal-content {

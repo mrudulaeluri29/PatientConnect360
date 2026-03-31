@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
+import { useFeedback } from "../../contexts/FeedbackContext";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
 import "./PatientDashboard.css";
@@ -64,7 +66,6 @@ const datetimeLocalToIso = (value?: string): string | undefined => {
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [pendingConversation, setPendingConversation] = useState<{ convId: string; messageId?: string } | null>(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { user, logout } = useAuth();
 
   const handleLogout = async () => {
@@ -168,18 +169,23 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestClinician, setRequestClinician] = useState<{ id: string; username: string } | null>(null);
 
-  const refreshVisits = () => {
+  const refreshVisits = useCallback(() => {
     getVisits()
       .then((all) => {
         setAllVisits(all);
         const upcoming = all
-          .filter((v) => !["COMPLETED", "CANCELLED", "MISSED"].includes(v.status))
+          .filter(
+            (v) =>
+              !["COMPLETED", "CANCELLED", "MISSED", "REJECTED", "RESCHEDULED"].includes(v.status)
+          )
           .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
           .slice(0, 2);
         setUpcomingVisits(upcoming);
       })
       .catch(() => {});
-  };
+  }, []);
+
+  useRefetchOnIntervalAndFocus(refreshVisits, 25000);
 
   useEffect(() => {
     refreshVisits();
@@ -214,7 +220,7 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
         return days !== null && days <= 7 && days >= 0;
       })))
       .catch(() => {});
-  }, [user?.id]);
+  }, [user?.id, refreshVisits]);
 
   return (
     <div className="patient-content">
@@ -427,6 +433,7 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
 // Upcoming Visits Component
 function UpcomingVisits() {
   const { user } = useAuth();
+  const { showToast, promptDialog } = useFeedback();
   const [visits, setVisits] = useState<ApiVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -439,15 +446,20 @@ function UpcomingVisits() {
   const [rescheduleError, setRescheduleError] = useState("");
   const [careTeam, setCareTeam] = useState<{ id: string; username: string; specialization: string | null }[]>([]);
 
-  const fetchVisits = () => {
-    getVisits({ status: undefined })
+  const fetchVisits = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
+    return getVisits()
       .then(setVisits)
       .catch(() => setVisits([]))
-      .finally(() => setLoading(false));
-  };
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
+  }, []);
+
+  useRefetchOnIntervalAndFocus(() => fetchVisits(true), 25000);
 
   useEffect(() => {
-    fetchVisits();
+    fetchVisits(false);
 
     // Fetch assigned clinicians from actual PatientAssignment records
     api.get("/api/simple-messages/assigned-clinicians")
@@ -460,7 +472,7 @@ function UpcomingVisits() {
         setCareTeam(clinicians);
       })
       .catch(() => {});
-  }, []);
+  }, [fetchVisits]);
 
   const upcomingVisits = visits
     .filter((v) => !["COMPLETED", "CANCELLED", "MISSED", "REJECTED", "RESCHEDULED"].includes(v.status))
@@ -475,6 +487,7 @@ function UpcomingVisits() {
     try {
       const updated = await updateVisitStatus(id, "CONFIRMED");
       setVisits((prev) => prev.map((v) => (v.id === id ? updated : v)));
+      fetchVisits(true);
     } catch {
       // silently ignore — user can retry
     } finally {
@@ -483,18 +496,23 @@ function UpcomingVisits() {
   };
 
   const handleCancel = async (id: string) => {
-    const reason = prompt("Please enter a reason for cancellation:");
+    const reason = await promptDialog("Cancel visit", {
+      placeholder: "Please enter a reason for cancellation…",
+      confirmLabel: "Cancel visit",
+    });
     if (reason === null) return;
     if (!reason.trim()) {
-      alert("Cancellation reason is required.");
+      showToast("Cancellation reason is required.", "error");
       return;
     }
     setCancelling(id);
     try {
       const updated = await updateVisitStatus(id, "CANCELLED", reason.trim());
       setVisits((prev) => prev.map((v) => (v.id === id ? updated : v)));
+      fetchVisits(true);
+      showToast("Visit cancelled.", "success");
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to cancel visit");
+      showToast(err.response?.data?.error || "Failed to cancel visit", "error");
     } finally {
       setCancelling(null);
     }
@@ -531,8 +549,8 @@ function UpcomingVisits() {
         reason: rescheduleReason.trim(),
       });
       setShowRescheduleModal(null);
-      fetchVisits();
-      alert("Reschedule request submitted for admin review.");
+      showToast("Reschedule request submitted for admin review.", "success");
+      await fetchVisits(true);
     } catch (err: any) {
       setRescheduleError(err?.response?.data?.error || "Failed to submit reschedule request.");
     } finally {
@@ -631,7 +649,7 @@ function UpcomingVisits() {
                       Confirmed ✓
                     </button>
                   )}
-                  {["CONFIRMED", "SCHEDULED"].includes(visit.status) && (
+                  {["CONFIRMED", "SCHEDULED", "REQUESTED"].includes(visit.status) && (
                     <button
                       className="btn-secondary"
                       onClick={() => openReschedule(visit)}
@@ -736,10 +754,20 @@ function UpcomingVisits() {
               {rescheduleError && <div className="visit-request-error">{rescheduleError}</div>}
             </div>
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowRescheduleModal(null)} disabled={rescheduleSubmitting}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowRescheduleModal(null)}
+                disabled={rescheduleSubmitting}
+              >
                 Close
               </button>
-              <button className="btn-primary" onClick={submitReschedule} disabled={rescheduleSubmitting}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void submitReschedule()}
+                disabled={rescheduleSubmitting}
+              >
                 {rescheduleSubmitting ? "Submitting..." : "Submit Request"}
               </button>
             </div>
@@ -1019,6 +1047,7 @@ interface SimpleMessagesProps {
 
 function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMessagesProps) {
   const { user } = useAuth();
+  const { showToast } = useFeedback();
   const [conversations, setConversations] = useState<any[]>([]);
   const [sentConversations, setSentConversations] = useState<any[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<any | null>(null);
@@ -1203,7 +1232,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
   const handleSendMessage = async () => {
     if (!selectedClinician || !subject || !messageBody) {
-      alert("Please fill in all fields");
+      showToast("Please fill in all fields", "error");
       return;
     }
 
@@ -1214,7 +1243,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
         subject: subject,
         body: messageBody,
       });
-      alert("Message sent successfully!");
+      showToast("Message sent successfully!", "success");
       setShowNewMessageModal(false);
       setSelectedClinician("");
       setSubject("");
@@ -1228,7 +1257,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
         console.error("Failed to refresh after sending:", refreshError);
       }
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to send message");
+      showToast(e.response?.data?.error || "Failed to send message", "error");
     } finally {
       setLoading(false);
     }
@@ -1238,7 +1267,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
     if (!selectedConversation) return;
     const recipient = selectedConversation.participants?.find((p: any) => p.userId !== user?.id)?.user;
     if (!recipient?.id) {
-      alert("Unable to determine reply recipient for this conversation.");
+      showToast("Unable to determine reply recipient for this conversation.", "error");
       return;
     }
 
@@ -1545,6 +1574,7 @@ function formatTime(dateString: string): string {
 
 // ─── Family & Caregivers Panel ───────────────────────────────────────────────
 function FamilyAccessPanel() {
+  const { confirmDialog } = useFeedback();
   const [links, setLinks] = useState<ApiCaregiverLink[]>([]);
   const [invitations, setInvitations] = useState<ApiInvitation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1583,7 +1613,12 @@ function FamilyAccessPanel() {
   };
 
   const handleRemoveLink = async (id: string) => {
-    if (!confirm("Remove this caregiver's access? They will no longer be able to view your information.")) return;
+    const ok = await confirmDialog(
+      "Remove caregiver access?",
+      "They will no longer be able to view your information.",
+      { danger: true, confirmLabel: "Remove access" }
+    );
+    if (!ok) return;
     setRemovingId(id);
     try {
       await removeCaregiverLink(id);

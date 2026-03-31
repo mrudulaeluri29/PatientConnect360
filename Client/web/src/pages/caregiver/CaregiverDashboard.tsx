@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
+import { useFeedback } from "../../contexts/FeedbackContext";
 import { api } from "../../lib/axios";
 import {
   getVisits,
@@ -1108,6 +1110,7 @@ function HomeOverview() {
 // ─── Schedule Tab ────────────────────────────────────────────────────────────
 
 function CaregiverSchedule() {
+  const { showToast, promptDialog } = useFeedback();
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [visits, setVisits] = useState<ApiVisit[]>([]);
@@ -1121,17 +1124,19 @@ function CaregiverSchedule() {
   const [reschedSubmitting, setReschedSubmitting] = useState(false);
   const [reschedError, setReschedError] = useState("");
 
-  const refreshVisits = async () => {
-    setLoadingVisits(true);
+  const refreshVisits = useCallback(async (silent = false) => {
+    if (!silent) setLoadingVisits(true);
     try {
       const data = await getVisits();
       setVisits(data);
     } catch {
       setVisits([]);
     } finally {
-      setLoadingVisits(false);
+      if (!silent) setLoadingVisits(false);
     }
-  };
+  }, []);
+
+  useRefetchOnIntervalAndFocus(() => void refreshVisits(true), 25000);
 
   useEffect(() => {
     api
@@ -1142,8 +1147,8 @@ function CaregiverSchedule() {
       })
       .catch(() => setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] }))
       .finally(() => setLoadingOverview(false));
-    refreshVisits();
-  }, []);
+    void refreshVisits(false);
+  }, [refreshVisits]);
 
   const selectedPatient =
     overview?.patients.find((p) => p.id === selectedPatientId) || overview?.patients[0] || null;
@@ -1165,26 +1170,32 @@ function CaregiverSchedule() {
     try {
       const updated = await updateVisitStatus(v.id, "CONFIRMED");
       setVisits((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      void refreshVisits(true);
     } catch (e: any) {
-      alert(e?.response?.data?.error || "Failed to confirm visit");
+      showToast(e?.response?.data?.error || "Failed to confirm visit", "error");
     } finally {
       setActionId(null);
     }
   };
 
   const handleCancel = async (v: ApiVisit) => {
-    const reason = prompt("Please enter a reason for cancellation:");
+    const reason = await promptDialog("Cancel visit", {
+      placeholder: "Please enter a reason for cancellation…",
+      confirmLabel: "Cancel visit",
+    });
     if (reason === null) return;
     if (!reason.trim()) {
-      alert("Cancellation reason is required.");
+      showToast("Cancellation reason is required.", "error");
       return;
     }
     setActionId(v.id);
     try {
       const updated = await updateVisitStatus(v.id, "CANCELLED", reason.trim());
       setVisits((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      void refreshVisits(true);
+      showToast("Visit cancelled.", "success");
     } catch (e: any) {
-      alert(e?.response?.data?.error || "Failed to cancel visit");
+      showToast(e?.response?.data?.error || "Failed to cancel visit", "error");
     } finally {
       setActionId(null);
     }
@@ -1222,9 +1233,9 @@ function CaregiverSchedule() {
         scheduledAt: iso,
         reason: reschedReason.trim(),
       });
-      await refreshVisits();
       setShowReschedule(null);
-      alert("Reschedule request submitted for admin review.");
+      showToast("Reschedule request submitted for admin review.", "success");
+      await refreshVisits(true);
     } catch (e: any) {
       setReschedError(e?.response?.data?.error || "Failed to submit reschedule request.");
     } finally {
@@ -1403,10 +1414,20 @@ function CaregiverSchedule() {
               </p>
             </div>
             <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowReschedule(null)} disabled={reschedSubmitting}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowReschedule(null)}
+                disabled={reschedSubmitting}
+              >
                 Close
               </button>
-              <button className="btn-primary" onClick={handleSubmitRescheduleRequest} disabled={reschedSubmitting}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void handleSubmitRescheduleRequest()}
+                disabled={reschedSubmitting}
+              >
                 {reschedSubmitting ? "Submitting..." : "Submit Request"}
               </button>
             </div>

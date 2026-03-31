@@ -54,8 +54,8 @@ app.use((0, cors_1.default)({
     },
     credentials: true,
 })); // allows requests from the web app and sends cookies
-app.use(express_1.default.json()); //tells Express to read JSON bodies
-app.use((0, cookie_parser_1.default)()); //to access cookies later
+app.use((0, cookie_parser_1.default)()); // before route handlers so req.cookies is always available
+app.use(express_1.default.json()); // tells Express to read JSON bodies
 //lets us know that the server is live
 //When someone visits "http://localhost:4000/health", the server replies with { ok: true, time: "..." }
 app.get("/health", (_req, res) => {
