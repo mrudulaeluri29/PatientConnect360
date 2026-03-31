@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
+import { useFeedback } from "../../contexts/FeedbackContext";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
 import "./ClinicianDashboard.css";
@@ -372,6 +374,7 @@ function SectionKpiChips({ chips }: { chips: Array<{ label: string; value: strin
 
 // Appointments Tab Component
 function AppointmentsHub() {
+  const { showToast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState("");
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
@@ -393,19 +396,31 @@ function AppointmentsHub() {
       .finally(() => setSubsLoading(false));
   }, []);
 
-  useEffect(() => {
+  const loadUpcomingAppointments = useCallback((silent = false) => {
     const nowIso = new Date().toISOString();
-    setAppointmentsLoading(true);
+    if (!silent) setAppointmentsLoading(true);
     getVisits({ from: nowIso })
       .then((rows) => {
-        const upcoming = rows.filter((v) =>
-          ["SCHEDULED", "CONFIRMED"].includes(v.status) && new Date(v.scheduledAt).getTime() >= Date.now()
-        );
+        const terminal = new Set(["CANCELLED", "REJECTED", "COMPLETED", "MISSED", "RESCHEDULED"]);
+        const upcoming = rows.filter((v) => {
+          if (terminal.has(v.status)) return false;
+          const t = new Date(v.scheduledAt).getTime();
+          if (v.status === "IN_PROGRESS") return true;
+          return t >= Date.now();
+        });
         setAppointments(upcoming);
       })
       .catch(() => setAppointments([]))
-      .finally(() => setAppointmentsLoading(false));
+      .finally(() => {
+        if (!silent) setAppointmentsLoading(false);
+      });
   }, []);
+
+  useRefetchOnIntervalAndFocus(() => loadUpcomingAppointments(true), 25000);
+
+  useEffect(() => {
+    loadUpcomingAppointments(false);
+  }, [loadUpcomingAppointments]);
 
   const upcomingAppointments = appointments.map((appt) => {
     const { date, time } = formatVisitDateTime(appt.scheduledAt);
@@ -517,7 +532,7 @@ function AppointmentsHub() {
       await deleteAvailability(id);
       setSubmissions((prev) => prev.filter((s) => s.id !== id));
     } catch (err: any) {
-      alert(err.response?.data?.error || "Failed to delete submission.");
+      showToast(err.response?.data?.error || "Failed to delete submission.", "error");
     } finally {
       setDeletingId(null);
     }
@@ -866,25 +881,32 @@ function TodaySchedule() {
     );
   };
 
-  const fetchToday = () => {
+  const fetchToday = useCallback((silent = false) => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
-    setLoading(true);
+    if (!silent) setLoading(true);
     getVisits({ from: toOffsetIsoString(todayStart), to: toOffsetIsoString(todayEnd) })
       .then(setVisits)
       .catch(() => setVisits([]))
-      .finally(() => setLoading(false));
-  };
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
+  }, []);
 
-  useEffect(() => { fetchToday(); }, []);
+  useRefetchOnIntervalAndFocus(() => fetchToday(true), 25000);
+
+  useEffect(() => {
+    fetchToday(false);
+  }, [fetchToday]);
 
   const handleCheckIn = async (id: string) => {
     setCheckingIn(id);
     try {
       const updated = await updateVisitStatus(id, "IN_PROGRESS");
       setVisits((prev) => prev.map((v) => (v.id === id ? updated : v)));
+      fetchToday(true);
     } catch {
       // silently ignore
     } finally {
@@ -910,7 +932,7 @@ function TodaySchedule() {
           />
         </div>
         <div className="header-actions">
-          <button className="btn-secondary" onClick={fetchToday}>
+          <button className="btn-secondary" onClick={() => fetchToday(false)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="23 4 23 10 17 10"></polyline>
               <polyline points="1 20 1 14 7 14"></polyline>
@@ -1309,6 +1331,7 @@ interface SimpleMessagesProps {
 
 function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMessagesProps) {
   const { user } = useAuth();
+  const { showToast } = useFeedback();
   const [conversations, setConversations] = useState<any[]>([]);
   const [sentConversations, setSentConversations] = useState<any[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<any | null>(null);
@@ -1514,7 +1537,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
   const handleSendMessage = async () => {
     if (!selectedPatient || !subject || !messageBody) {
-      alert("Please fill in all fields");
+      showToast("Please fill in all fields", "error");
       return;
     }
     setSending(true);
@@ -1530,8 +1553,9 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       setMessageBody("");
       // Refresh Sent
       await fetchSent();
+      showToast("Message sent.", "success");
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to send message");
+      showToast(e.response?.data?.error || "Failed to send message", "error");
     } finally {
       setSending(false);
     }
@@ -1541,7 +1565,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
     if (!selectedConversation) return;
     const recipient = selectedConversation.participants?.find((p: any) => p.userId !== user?.id)?.user;
     if (!recipient?.id) {
-      alert("Unable to determine reply recipient for this conversation.");
+      showToast("Unable to determine reply recipient for this conversation.", "error");
       return;
     }
 

@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { FeedbackProvider } from "./contexts/FeedbackContext";
 import Homepage from "./pages/Homepage";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -31,6 +32,7 @@ function ProtectedRoute({ children }: { children: React.ReactElement }) {
 export default function App() {
   return (
     <AuthProvider>
+      <FeedbackProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Homepage />} />
@@ -86,6 +88,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </FeedbackProvider>
     </AuthProvider>
   );
 }

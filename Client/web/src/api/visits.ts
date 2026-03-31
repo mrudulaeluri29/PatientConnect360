@@ -135,7 +135,11 @@ export async function getVisits(params?: {
   from?: string;
   to?: string;
 }): Promise<ApiVisit[]> {
-  const res = await api.get("/api/visits", { params });
+  const q: Record<string, string> = {};
+  if (params?.status) q.status = params.status;
+  if (params?.from) q.from = params.from;
+  if (params?.to) q.to = params.to;
+  const res = await api.get("/api/visits", Object.keys(q).length ? { params: q } : {});
   return res.data.visits;
 }
 

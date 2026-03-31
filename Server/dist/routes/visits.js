@@ -5,6 +5,7 @@ const db_1 = require("../db");
 const requireAuth_1 = require("../middleware/requireAuth");
 const requireRole_1 = require("../middleware/requireRole");
 const client_1 = require("@prisma/client");
+const availabilityTime_1 = require("../availabilityTime");
 const router = (0, express_1.Router)();
 // All routes require authentication
 router.use(requireAuth_1.requireAuth);
@@ -76,14 +77,9 @@ function minutesFromTimeString(value) {
         return null;
     return hh * 60 + mm;
 }
-function toDayKey(date) {
-    const y = date.getUTCFullYear();
-    const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(date.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-}
 async function assertWithinApprovedAvailability(clinicianId, scheduledAt, durationMinutes) {
-    const dayKey = toDayKey(scheduledAt);
+    const tz = (0, availabilityTime_1.getAvailabilityTimeZone)();
+    const dayKey = (0, availabilityTime_1.dayKeyInTimeZone)(scheduledAt, tz);
     const slot = await db_1.prisma.clinicianAvailability.findFirst({
         where: {
             clinicianId,
@@ -103,7 +99,7 @@ async function assertWithinApprovedAvailability(clinicianId, scheduledAt, durati
     if (start === null || end === null || end <= start) {
         return "Clinician availability slot is invalid.";
     }
-    const visitStart = scheduledAt.getUTCHours() * 60 + scheduledAt.getUTCMinutes();
+    const visitStart = (0, availabilityTime_1.wallClockMinutesInTimeZone)(scheduledAt, tz);
     const visitEnd = visitStart + durationMinutes;
     if (visitStart < start || visitEnd > end) {
         return `Visit must be fully within approved availability (${slot.startTime}-${slot.endTime}).`;

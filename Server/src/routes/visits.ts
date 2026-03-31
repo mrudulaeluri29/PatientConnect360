@@ -3,6 +3,11 @@ import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
 import { requireAdmin } from "../middleware/requireRole";
 import { VisitRequestType, VisitStatus, VisitType } from "@prisma/client";
+import {
+  dayKeyInTimeZone,
+  getAvailabilityTimeZone,
+  wallClockMinutesInTimeZone,
+} from "../availabilityTime";
 
 const router = Router();
 
@@ -80,19 +85,13 @@ function minutesFromTimeString(value: string): number | null {
   return hh * 60 + mm;
 }
 
-function toDayKey(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 async function assertWithinApprovedAvailability(
   clinicianId: string,
   scheduledAt: Date,
   durationMinutes: number
 ): Promise<string | null> {
-  const dayKey = toDayKey(scheduledAt);
+  const tz = getAvailabilityTimeZone();
+  const dayKey = dayKeyInTimeZone(scheduledAt, tz);
   const slot = await prisma.clinicianAvailability.findFirst({
     where: {
       clinicianId,
@@ -115,7 +114,7 @@ async function assertWithinApprovedAvailability(
     return "Clinician availability slot is invalid.";
   }
 
-  const visitStart = scheduledAt.getUTCHours() * 60 + scheduledAt.getUTCMinutes();
+  const visitStart = wallClockMinutesInTimeZone(scheduledAt, tz);
   const visitEnd = visitStart + durationMinutes;
   if (visitStart < start || visitEnd > end) {
     return `Visit must be fully within approved availability (${slot.startTime}-${slot.endTime}).`;

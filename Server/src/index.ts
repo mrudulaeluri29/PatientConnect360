@@ -56,8 +56,8 @@ app.use(
     credentials: true,
   })
 ); // allows requests from the web app and sends cookies
-app.use(express.json());//tells Express to read JSON bodies
-app.use(cookieParser()); //to access cookies later
+app.use(cookieParser()); // before route handlers so req.cookies is always available
+app.use(express.json()); // tells Express to read JSON bodies
 
 //lets us know that the server is live
 //When someone visits "http://localhost:4000/health", the server replies with { ok: true, time: "..." }
