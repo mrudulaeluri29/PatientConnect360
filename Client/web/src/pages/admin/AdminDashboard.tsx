@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
+import NotificationBell from "../../components/NotificationBell";
 import { api } from "../../lib/axios";
 import "./AdminDashboard.css";
 import {
@@ -22,7 +23,7 @@ import {
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const { user, logout } = useAuth();
-  
+
   const handleLogout = async () => {
     await logout();
     window.location.href = "/";
@@ -62,13 +63,14 @@ export default function AdminDashboard() {
           </nav>
         </div>
         <div className="admin-header-right">
+          <NotificationBell onMessageClick={(view) => setActiveTab(view)} />
           <div className="admin-user-info">
             <span className="admin-user-name">{user?.username || user?.email || "Admin User"}</span>
             <div className="admin-user-badges">
               <span className="badge badge-admin">Admin</span>
             </div>
           </div>
-          <button 
+          <button
             className="btn-logout"
             onClick={handleLogout}
           >
@@ -487,8 +489,8 @@ function AssignmentManager() {
   const handleCreate = async () => {
     if (!selectedPatient || !selectedClinician) return;
     try {
-      await api.post("/api/admin/assignments", { 
-        patientId: selectedPatient, 
+      await api.post("/api/admin/assignments", {
+        patientId: selectedPatient,
         clinicianId: selectedClinician
       });
       // Refresh assignments list
@@ -649,7 +651,7 @@ function AdminMessages() {
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>("");
-  
+
   // Filtering states
   const [selectedFromType, setSelectedFromType] = useState<string>("all");
   const [selectedFromUser, setSelectedFromUser] = useState<string>("all");
@@ -703,12 +705,12 @@ function AdminMessages() {
         console.log('User is not admin or not logged in:', user);
         return [];
       }
-      
+
       console.log(`Fetching users for role: ${role}`);
       const response = await api.get('/api/admin/users/by-role', {
         params: { role: role.toLowerCase() }
       });
-      
+
       console.log(`Found ${response.data.users?.length || 0} ${role} users`);
       return response.data.users || [];
     } catch (error: any) {
@@ -724,26 +726,26 @@ function AdminMessages() {
   const handleFromTypeChange = async (roleType: string) => {
     setSelectedFromType(roleType);
     setSelectedFromUser('all');
-    
+
     // Reset To selection when From changes and check for incompatible combinations
     const shouldResetTo = () => {
       if (selectedToType === 'all') return false;
-      
+
       // Check if current To selection is incompatible with new From selection
       if (roleType === 'patient' && selectedToType === 'admin') return true;
       if (roleType === 'clinician' && selectedToType === 'admin') return true;
       if (roleType === 'caregiver' && selectedToType === 'admin') return true;
       if (roleType === 'admin' && selectedToType === 'admin') return true; // admin can't message admin
-      
+
       return false;
     };
-    
+
     if (shouldResetTo()) {
       setSelectedToType('all');
       setSelectedToUser('all');
       setToUsers([]);
     }
-    
+
     if (roleType !== 'all') {
       try {
         console.log(`[DEBUG] handleFromTypeChange: roleType = ${roleType}`);
@@ -764,26 +766,26 @@ function AdminMessages() {
   const handleToTypeChange = async (roleType: string) => {
     setSelectedToType(roleType);
     setSelectedToUser('all');
-    
+
     // Reset From selection when To changes and check for incompatible combinations
     const shouldResetFrom = () => {
       if (selectedFromType === 'all') return false;
-      
+
       // Check if current From selection is incompatible with new To selection
       if (roleType === 'patient' && !['clinician', 'caregiver', 'admin'].includes(selectedFromType)) return true;
       if (roleType === 'clinician' && !['patient', 'caregiver', 'admin'].includes(selectedFromType)) return true;
       if (roleType === 'caregiver' && !['patient', 'clinician', 'admin'].includes(selectedFromType)) return true;
       // admin cannot be selected as To, so no check needed
-      
+
       return false;
     };
-    
+
     if (shouldResetFrom()) {
       setSelectedFromType('all');
       setSelectedFromUser('all');
       setFromUsers([]);
     }
-    
+
     if (roleType !== 'all') {
       try {
         const roleUsers = await fetchUsersByRole(roleType);
@@ -838,8 +840,8 @@ function AdminMessages() {
 
   // Broadcast functionality
   const handleBroadcastRecipientChange = (value: string) => {
-    setBroadcastRecipients(prev => 
-      prev.includes(value) 
+    setBroadcastRecipients(prev =>
+      prev.includes(value)
         ? prev.filter(r => r !== value)
         : [...prev, value]
     );
@@ -850,7 +852,7 @@ function AdminMessages() {
     console.log("Subject:", broadcastSubject);
     console.log("Message:", broadcastMessage);
     console.log("Recipients:", broadcastRecipients);
-    
+
     if (!broadcastSubject.trim() || !broadcastMessage.trim() || broadcastRecipients.length === 0) {
       console.log("❌ Validation failed");
       showToast("Please fill in all fields and select recipients", "error");
@@ -860,13 +862,13 @@ function AdminMessages() {
     setSendingBroadcast(true);
     try {
       console.log("📡 Starting broadcast to recipients:", broadcastRecipients);
-      
+
       // Send to each recipient type
       for (const recipientType of broadcastRecipients) {
         console.log("📋 Fetching users for role:", recipientType);
         const recipients = await fetchUsersByRole(recipientType);
         console.log("👥 Found recipients:", recipients);
-        
+
         for (const recipient of recipients) {
           console.log("📤 Sending message to:", recipient.username, recipient.id);
           const response = await api.post('/messages/send', {
@@ -877,12 +879,12 @@ function AdminMessages() {
           console.log("✅ Message sent, response:", response.data);
         }
       }
-      
+
       // Reset form
       setBroadcastSubject("");
       setBroadcastMessage("");
       setBroadcastRecipients([]);
-      
+
       console.log("🎉 Broadcast completed successfully!");
       showToast("Broadcast sent successfully!", "success");
     } catch (error: any) {
@@ -909,13 +911,13 @@ function AdminMessages() {
       <div className="section-header">
         <h2 className="section-title">System Messages</h2>
         <div className="message-tabs">
-          <button 
+          <button
             className={`tab-btn ${activeView === "all-messages" ? "active" : ""}`}
             onClick={() => setActiveView("all-messages")}
           >
             All Messages
           </button>
-          <button 
+          <button
             className={`tab-btn ${activeView === "broadcast" ? "active" : ""}`}
             onClick={() => setActiveView("broadcast")}
           >
@@ -930,17 +932,17 @@ function AdminMessages() {
           {/* Search and Filters */}
           <div className="messages-toolbar">
             <div className="search-filters">
-              <input 
-                type="text" 
-                placeholder="Search messages..." 
+              <input
+                type="text"
+                placeholder="Search messages..."
                 className="search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
-              
+
               <div className="filter-group">
                 <label className="filter-label">From:</label>
-                <select 
+                <select
                   className="filter-select"
                   value={selectedFromType}
                   onChange={(e) => handleFromTypeChange(e.target.value)}
@@ -963,9 +965,9 @@ function AdminMessages() {
                     <option value="admin">Admins</option>
                   )}
                 </select>
-                
+
                 {selectedFromType !== 'all' && (
-                  <select 
+                  <select
                     className="filter-select"
                     value={selectedFromUser}
                     onChange={(e) => setSelectedFromUser(e.target.value)}
@@ -982,7 +984,7 @@ function AdminMessages() {
 
               <div className="filter-group">
                 <label className="filter-label">To:</label>
-                <select 
+                <select
                   className="filter-select"
                   value={selectedToType}
                   onChange={(e) => handleToTypeChange(e.target.value)}
@@ -1002,9 +1004,9 @@ function AdminMessages() {
                   )}
                   {/* Admin cannot be selected as To recipient */}
                 </select>
-                
+
                 {selectedToType !== 'all' && (
-                  <select 
+                  <select
                     className="filter-select"
                     value={selectedToUser}
                     onChange={(e) => setSelectedToUser(e.target.value)}
@@ -1085,7 +1087,7 @@ function AdminMessages() {
                         </td>
                         <td>
                           <div className="action-buttons">
-                            <button 
+                            <button
                               className="btn-action view"
                               title="View Message"
                               onClick={() => handleViewMessage(message)}
@@ -1094,7 +1096,7 @@ function AdminMessages() {
                             </button>
 
                             {!message.isRead && (
-                              <button 
+                              <button
                                 className="btn-action mark-read"
                                 title="Mark as Read"
                                 onClick={() => handleMarkAsRead(message.id)}
@@ -1102,7 +1104,7 @@ function AdminMessages() {
                                 📬
                               </button>
                             )}
-                            <button 
+                            <button
                               className="btn-action delete"
                               title="Delete Message"
                               onClick={() => handleDeleteMessage(message.id)}
@@ -1129,21 +1131,21 @@ function AdminMessages() {
             <p className="broadcast-description">
               Send important announcements to multiple users at once. Select recipient groups and compose your message.
             </p>
-            
+
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Recipients</label>
                 <div className="recipient-options">
                   <label className="checkbox-label">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       checked={broadcastRecipients.includes('patient')}
                       onChange={() => handleBroadcastRecipientChange('patient')}
                     />
                     <span>All Patients</span>
                   </label>
                   <label className="checkbox-label">
-                    <input 
+                    <input
                       type="checkbox"
                       checked={broadcastRecipients.includes('clinician')}
                       onChange={() => handleBroadcastRecipientChange('clinician')}
@@ -1151,7 +1153,7 @@ function AdminMessages() {
                     <span>All Clinicians</span>
                   </label>
                   <label className="checkbox-label">
-                    <input 
+                    <input
                       type="checkbox"
                       checked={broadcastRecipients.includes('caregiver')}
                       onChange={() => handleBroadcastRecipientChange('caregiver')}
@@ -1163,31 +1165,31 @@ function AdminMessages() {
 
 
             </div>
-            
+
             <div className="form-group">
               <label className="form-label">Subject</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 className="form-input"
                 placeholder="Enter broadcast subject..."
                 value={broadcastSubject}
                 onChange={(e) => setBroadcastSubject(e.target.value)}
               />
             </div>
-            
+
             <div className="form-group">
               <label className="form-label">Message</label>
-              <textarea 
-                className="form-textarea" 
+              <textarea
+                className="form-textarea"
                 rows={8}
                 placeholder="Compose your broadcast message here..."
                 value={broadcastMessage}
                 onChange={(e) => setBroadcastMessage(e.target.value)}
               />
             </div>
-            
+
             <div className="form-actions">
-              <button 
+              <button
                 className="btn-secondary"
                 onClick={() => {
                   setBroadcastSubject("");
@@ -1197,7 +1199,7 @@ function AdminMessages() {
               >
                 Clear
               </button>
-              <button 
+              <button
                 className="btn-primary"
                 onClick={sendBroadcast}
                 disabled={sendingBroadcast || !broadcastSubject.trim() || !broadcastMessage.trim() || broadcastRecipients.length === 0}

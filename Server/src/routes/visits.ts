@@ -8,6 +8,14 @@ import {
   getAvailabilityTimeZone,
   wallClockMinutesInTimeZone,
 } from "../availabilityTime";
+// Feature 2 — notification hooks
+import {
+  onVisitRequestCreated,
+  onVisitApproved,
+  onVisitDenied,
+  onVisitCancelled,
+} from "../helpers/notificationHelpers";
+import { cancelPendingReminders } from "../jobs/visitReminders";
 
 const router = Router();
 
@@ -325,7 +333,7 @@ router.post("/", async (req: Request, res: Response) => {
     // Confirm patient and clinician exist with correct roles
     const [patient, clinician] = await Promise.all([
       prisma.user.findUnique({ where: { id: patientId }, select: { id: true, role: true } }),
-      prisma.user.findUnique({ where: { id: clinicianId }, select: { id: true, role: true } }),
+      prisma.user.findUnique({ where: { id: clinicianId }, select: { id: true, role: true, username: true } }),
     ]);
 
     if (!patient || patient.role !== "PATIENT") {
@@ -383,6 +391,11 @@ router.post("/", async (req: Request, res: Response) => {
       },
       select: visitSelect,
     });
+
+    // ── Feature 2: Notify requester that visit request was received ──
+    if (createStatus === VisitStatus.REQUESTED) {
+      onVisitRequestCreated(user.id, visit.id, clinician.username, scheduledDate);
+    }
 
     res.status(201).json({ visit });
   } catch (e) {
@@ -460,6 +473,9 @@ router.post("/:id/reschedule-request", async (req: Request, res: Response) => {
       select: visitSelect,
     });
 
+    // ── Feature 2: Notify requester that reschedule request was received ──
+    onVisitRequestCreated(user.id, requestVisit.id, original.clinician.username, nextDate);
+
     res.status(201).json({ visit: requestVisit });
   } catch (e) {
     console.error("POST /api/visits/:id/reschedule-request failed:", e);
@@ -498,6 +514,16 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
         },
         select: visitSelect,
       });
+
+      // ── Feature 2: Notify patient/caregivers that visit was denied ──
+      onVisitDenied(
+        existing.patient.id,
+        existing.requestedById,
+        existing.id,
+        existing.clinician.username,
+        reviewNote ?? null
+      );
+
       return res.json({ visit: rejected });
     }
 
@@ -536,6 +562,18 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
           select: visitSelect,
         });
       });
+
+      // ── Feature 2: Notify that reschedule was approved ──
+      onVisitApproved(
+        existing.patient.id,
+        existing.requestedById,
+        existing.id,
+        existing.clinician.username,
+        nextScheduledAt
+      );
+      // Cancel any pending reminders for the original visit
+      cancelPendingReminders(existing.originalVisitId!);
+
       return res.json({ visit: updated });
     }
 
@@ -551,6 +589,16 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
       },
       select: visitSelect,
     });
+
+    // ── Feature 2: Notify that visit was approved ──
+    onVisitApproved(
+      existing.patient.id,
+      existing.requestedById,
+      existing.id,
+      existing.clinician.username,
+      nextScheduledAt
+    );
+
     return res.json({ visit: approved });
   } catch (e) {
     console.error("POST /api/visits/:id/review failed:", e);
@@ -714,6 +762,23 @@ router.patch("/:id", async (req: Request, res: Response) => {
       data,
       select: visitSelect,
     });
+
+    // ── Feature 2: Notify on cancellation ──
+    if (data.status === VisitStatus.CANCELLED) {
+      // Look up username for the cancelling user
+      const cancellingUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { username: true },
+      });
+      onVisitCancelled(
+        existing.patientId,
+        existing.clinicianId,
+        existing.id,
+        data.cancelReason || null,
+        cancellingUser?.username || "A user"
+      );
+      cancelPendingReminders(existing.id);
+    }
 
     res.json({ visit });
   } catch (e) {

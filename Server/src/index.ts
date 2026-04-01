@@ -21,6 +21,11 @@ import caregiverAlertsRoutes from "./routes/caregiverAlerts";
 import caregiverAccessRoutes from "./routes/caregiverAccess";
 import caregiverSafetyRoutes from "./routes/caregiverSafety";
 
+// Feature 2 imports
+import notificationRoutes from "./routes/notifications";
+import messageUpgradeRoutes from "./routes/messageUpgrades";
+import { startReminderScheduler } from "./jobs/visitReminders";
+
 // Import our Prisma database client
 import { prisma } from "./db";
 
@@ -94,9 +99,15 @@ app.use("/api/caregiver/alerts", caregiverAlertsRoutes);
 app.use("/api/caregiver/access", caregiverAccessRoutes);
 app.use("/api/caregiver/safety", caregiverSafetyRoutes);
 
+// Feature 2 routes
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/messages", messageUpgradeRoutes);
+
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 
 // Start server immediately (no email dependency)
 app.listen(PORT, () => {
   console.log(`API running at http://localhost:${PORT}`);
+  // Feature 2: Start the visit reminder background job
+  startReminderScheduler();
 });

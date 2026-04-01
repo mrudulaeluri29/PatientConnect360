@@ -4,14 +4,20 @@ import { api } from "../lib/axios";
 import "./NotificationBell.css";
 
 interface NotificationItem {
-  messageId: string;
-  conversationId: string;
-  subject: string;
-  content: string;
-  senderName: string;
-  senderRole: string;
-  createdAt: string;
+  id: string;
+  type: string;
+  title: string;
+  body: string;
   isRead: boolean;
+  createdAt: string;
+  meta?: any;
+  // For message-based notifications (legacy)
+  messageId?: string;
+  conversationId?: string;
+  subject?: string;
+  content?: string;
+  senderName?: string;
+  senderRole?: string;
 }
 
 interface NotificationBellProps {
@@ -26,34 +32,51 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
 
-  const fetchNotifications = async () => {
+  // Fetch both in-app notifications AND unread message count
+  const fetchAllNotifications = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/api/simple-messages/inbox");
-      const conversations = res.data.conversations || [];
-      
-      console.log("🔔 NotificationBell - Raw conversations from API:", conversations);
-      
-      // Convert inbox messages to notification format
-      const unreadNotifications = conversations
-        .filter((conv: any) => {
-          console.log("🔔 Checking conversation:", conv.id, "unread:", conv.unread);
-          return conv.unread;
-        })
+      // Fetch in-app notifications from Feature 2 API
+      const [notifRes, msgRes] = await Promise.all([
+        api.get("/api/notifications?unreadOnly=false").catch(() => ({ data: { notifications: [], unreadCount: 0 } })),
+        api.get("/api/simple-messages/inbox").catch(() => ({ data: { conversations: [] } })),
+      ]);
+
+      const inAppNotifs: NotificationItem[] = (notifRes.data.notifications || []).map((n: any) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        body: n.body,
+        isRead: n.isRead,
+        createdAt: n.createdAt,
+        meta: n.meta,
+      }));
+
+      // Convert unread messages to notification items (legacy compatibility)
+      const messageNotifs: NotificationItem[] = (msgRes.data.conversations || [])
+        .filter((conv: any) => conv.unread)
         .map((conv: any) => ({
+          id: `msg-${conv.id}`,
+          type: "MESSAGE",
+          title: `Message from ${conv.from || "Unknown"}`,
+          body: conv.preview || conv.subject || "New message",
+          isRead: false,
+          createdAt: conv.time,
           messageId: conv.id,
           conversationId: conv.conversationId,
-          subject: conv.subject || "No subject",
-          content: conv.preview || "",
-          senderName: conv.from || "Unknown",
-          senderRole: "Patient", // We'll determine this from the sender
-          createdAt: conv.time,
-          isRead: !conv.unread
+          senderName: conv.from,
         }));
-      
-      console.log("🔔 NotificationBell - Unread notifications:", unreadNotifications);
-      setNotifications(unreadNotifications);
-      setTotalUnread(unreadNotifications.length);
+
+      const combined = [...inAppNotifs, ...messageNotifs].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      setNotifications(combined);
+
+      // Total unread = in-app unread + message unread
+      const inAppUnread = notifRes.data.unreadCount || 0;
+      const msgUnread = messageNotifs.length;
+      setTotalUnread(inAppUnread + msgUnread);
     } catch (error) {
       console.error("Failed to fetch notifications:", error);
     } finally {
@@ -63,11 +86,14 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
 
   const fetchUnreadCount = async () => {
     try {
-      const res = await api.get("/api/simple-messages/inbox");
-      const conversations = res.data.conversations || [];
-      const unreadCount = conversations.filter((conv: any) => conv.unread).length;
-      setTotalUnread(unreadCount);
-      console.log("🔔 Notification Bell - Unread count:", unreadCount);
+      const [notifRes, msgRes] = await Promise.all([
+        api.get("/api/notifications?unreadOnly=true").catch(() => ({ data: { unreadCount: 0 } })),
+        api.get("/api/simple-messages/inbox").catch(() => ({ data: { conversations: [] } })),
+      ]);
+
+      const inAppUnread = notifRes.data.unreadCount || 0;
+      const msgUnread = (msgRes.data.conversations || []).filter((c: any) => c.unread).length;
+      setTotalUnread(inAppUnread + msgUnread);
     } catch (error) {
       console.error("Failed to fetch unread count:", error);
     }
@@ -75,39 +101,33 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
 
   useEffect(() => {
     if (user) {
-      // Initial fetch
-      setTimeout(() => fetchUnreadCount(), 100); // Small delay to ensure API is ready
-      
-      // Poll for unread count every 30 seconds for better responsiveness
+      setTimeout(() => fetchUnreadCount(), 100);
+
+      // Poll every 30 seconds (per plan: 30–60s)
       const interval = setInterval(fetchUnreadCount, 30000);
       return () => clearInterval(interval);
     }
   }, [user]);
 
-  // Add method to refresh notifications when messages are read
   const refreshNotifications = () => {
     fetchUnreadCount();
     if (isDropdownOpen) {
-      fetchNotifications();
+      fetchAllNotifications();
     }
   };
 
-  // Expose refresh method globally for other components to call
   useEffect(() => {
     (window as any).refreshNotifications = refreshNotifications;
-    
-    // Listen for custom message read events
-    const handleMessageRead = (event: any) => {
-      console.log("🔔 NotificationBell - Received messageRead event:", event.detail);
-      console.log("🔔 NotificationBell - Current unread count before refresh:", totalUnread);
+
+    const handleMessageRead = () => {
       fetchUnreadCount();
     };
-    
-    window.addEventListener('messageRead', handleMessageRead);
-    
+
+    window.addEventListener("messageRead", handleMessageRead);
+
     return () => {
       delete (window as any).refreshNotifications;
-      window.removeEventListener('messageRead', handleMessageRead);
+      window.removeEventListener("messageRead", handleMessageRead);
     };
   }, [isDropdownOpen]);
 
@@ -125,23 +145,40 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
 
   const handleBellClick = () => {
     if (!isDropdownOpen) {
-      fetchNotifications();
+      fetchAllNotifications();
     }
     setIsDropdownOpen(!isDropdownOpen);
   };
 
-  const handleNotificationClick = (conversationId: string, messageId: string) => {
+  const handleNotificationClick = async (notif: NotificationItem) => {
     setIsDropdownOpen(false);
-    console.log("🔔 NotificationBell - Clicked notification:", { conversationId, messageId });
-    
-    if (onMessageClick) {
-      onMessageClick("messages", conversationId, messageId);
+
+    // If it's a message notification, navigate to messages
+    if (notif.type === "MESSAGE" && notif.conversationId && onMessageClick) {
+      onMessageClick("messages", notif.conversationId, notif.messageId);
     }
-    
-    // Refresh notifications after a short delay to allow the message to be marked as read
-    setTimeout(() => {
+
+    // Mark in-app notification as read
+    if (notif.type !== "MESSAGE" && !notif.isRead) {
+      try {
+        await api.post(`/api/notifications/${notif.id}/read`);
+        fetchUnreadCount();
+      } catch (e) {
+        console.error("Failed to mark notification as read:", e);
+      }
+    }
+
+    setTimeout(() => fetchUnreadCount(), 200);
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await api.post("/api/notifications/read-all");
       fetchUnreadCount();
-    }, 200);
+      if (isDropdownOpen) fetchAllNotifications();
+    } catch (e) {
+      console.error("Failed to mark all as read:", e);
+    }
   };
 
   const formatTimeAgo = (dateString: string) => {
@@ -157,6 +194,28 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
     return `${days}d ago`;
+  };
+
+  const getNotifIcon = (type: string) => {
+    switch (type) {
+      case "VISIT_REQUEST_RECEIVED":
+      case "VISIT_APPROVED":
+        return "✅";
+      case "VISIT_DENIED":
+        return "❌";
+      case "VISIT_CANCELLED":
+        return "🚫";
+      case "VISIT_REMINDER_24H":
+      case "VISIT_REMINDER_1H":
+        return "⏰";
+      case "CAREPLAN_UPDATED":
+        return "📋";
+      case "MESSAGE":
+      case "MESSAGE_RECEIVED":
+        return "💬";
+      default:
+        return "🔔";
+    }
   };
 
   return (
@@ -194,9 +253,26 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
         <div className="notification-dropdown">
           <div className="notification-dropdown-header">
             <h3>Notifications</h3>
-            {totalUnread > 0 && (
-              <span className="total-unread">{totalUnread} unread</span>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              {totalUnread > 0 && (
+                <>
+                  <span className="total-unread">{totalUnread} unread</span>
+                  <button
+                    onClick={handleMarkAllRead}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#6E5B9A",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Mark all read
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="notification-dropdown-content">
@@ -216,51 +292,27 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
                   <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
                   <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
                 </svg>
-                <p>No new messages</p>
+                <p>No notifications</p>
               </div>
             ) : (
-              notifications.map((notification) => (
+              notifications.slice(0, 20).map((notif) => (
                 <div
-                  key={notification.messageId}
-                  className="notification-item"
-                  onClick={() => handleNotificationClick(notification.conversationId, notification.messageId)}
+                  key={notif.id}
+                  className={`notification-item ${!notif.isRead ? "unread" : ""}`}
+                  onClick={() => handleNotificationClick(notif)}
+                  style={{ cursor: "pointer" }}
                 >
-                  <div className="notification-item-content">
-                    <div className="notification-item-header">
-                      <span className="notification-sender">
-                        {notification.senderName} ({notification.senderRole.toLowerCase()})
-                      </span>
-                      <span className="notification-time">
-                        {formatTimeAgo(notification.createdAt)}
-                      </span>
-                    </div>
-                    <div className="notification-subject">
-                      <strong>{notification.subject}</strong>
-                    </div>
-                    <div className="notification-preview">
-                      {notification.content.replace(/\*\*Subject:\*\*[^]*?\n\n/, '')}
-                    </div>
+                  <div className="notification-icon">{getNotifIcon(notif.type)}</div>
+                  <div className="notification-content">
+                    <div className="notification-title">{notif.title}</div>
+                    <div className="notification-body">{notif.body.slice(0, 120)}</div>
+                    <div className="notification-time">{formatTimeAgo(notif.createdAt)}</div>
                   </div>
+                  {!notif.isRead && <div className="notification-unread-dot" />}
                 </div>
               ))
             )}
           </div>
-
-          {notifications.length > 0 && (
-            <div className="notification-dropdown-footer">
-              <button
-                className="view-all-messages"
-                onClick={() => {
-                  setIsDropdownOpen(false);
-                  if (onMessageClick) {
-                    onMessageClick("messages");
-                  }
-                }}
-              >
-                View All Messages
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>

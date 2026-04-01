@@ -12,7 +12,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (emailOrUsername: string, password: string) => Promise<User>;
+  login: (emailOrUsername: string, password: string, rememberMe?: boolean) => Promise<User>;
   register: (email: string, username: string, password: string, role?: string, profileData?: any) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -83,7 +83,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = async (emailOrUsername: string, password: string) => {
+  // Feature 2 (B7): added rememberMe parameter
+  const login = async (emailOrUsername: string, password: string, rememberMe: boolean = false) => {
     setLoading(true);
     
     if (DEV_MODE) {
@@ -128,11 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return userData;
     }
 
-    // Real API call
+    // Real API call — Feature 2: pass rememberMe to backend
     try {
       const response = await api.post("/api/auth/login", {
         emailOrUsername,
         password,
+        rememberMe,
       });
       const userData = response.data.user;
       setUser(userData);
@@ -221,4 +223,3 @@ export function useAuth() {
   }
   return context;
 }
-

@@ -12,9 +12,13 @@ const router = Router();
 const COOKIE_NAME = "auth";
 
 // Create a JWT and set it in an httpOnly cookie
-function setAuthCookie(res: Response, userId: string, role: string) {
+// Feature 2 (B7): rememberMe flag extends expiry from 7d to 30d
+function setAuthCookie(res: Response, userId: string, role: string, rememberMe: boolean = false) {
+  const expiresIn = rememberMe ? "30d" : "7d";
+  const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+
   const token = jwt.sign({ uid: userId, role }, process.env.JWT_SECRET || "dev_secret", {
-    expiresIn: "7d",
+    expiresIn,
   });
   const isProduction = process.env.NODE_ENV === "production";
   // Cross-site auth cookie support for frontend on a different domain.
@@ -24,7 +28,7 @@ function setAuthCookie(res: Response, userId: string, role: string) {
     httpOnly: true,
     sameSite: cookieSameSite,
     secure: isProduction,
-    maxAge: 7 * 24 * 60 * 60 * 1000
+    maxAge,
   });
 }
 
@@ -382,7 +386,7 @@ router.post("/verify-otp", async (req: Request, res: Response) => {
 });
 
 // POST /api/auth/login
-// Body: { emailOrUsername, password }
+// Body: { emailOrUsername, password, rememberMe? }
 // helper that creates a default admin account if none exist.
 // credentials are pulled from env vars (used by the createAdmin script),
 // or fall back to an obvious development account.  This function returns
@@ -421,7 +425,7 @@ async function ensureAdminExists(): Promise<{username:string,password:string}|nu
 
 router.post("/login", async (req: Request, res: Response) => {
   try {
-    const { emailOrUsername, password } = req.body || {};
+    const { emailOrUsername, password, rememberMe } = req.body || {};
     if (!emailOrUsername || !password) {
       return res.status(400).json({ error: "emailOrUsername and password are required" });
     }
@@ -483,7 +487,8 @@ router.post("/login", async (req: Request, res: Response) => {
       console.error("Failed to update login metadata:", e);
     }
 
-    setAuthCookie(res, user.id, user.role);
+    // Feature 2 (B7): pass rememberMe flag to extend cookie/JWT expiry
+    setAuthCookie(res, user.id, user.role, Boolean(rememberMe));
     res.json({ user: { id: user.id, email: user.email, username: user.username, role: user.role } });
   } catch (e) {
     console.error(e);
@@ -515,4 +520,3 @@ router.get("/me", async (req: Request, res: Response) => {
 });
 
 export default router;
-

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
+import NotificationBell from "../../components/NotificationBell";
 import { api } from "../../lib/axios";
 import {
   getVisits,
@@ -213,6 +214,7 @@ export default function CaregiverDashboard() {
           </nav>
         </div>
         <div className="cg-header-right">
+          <NotificationBell onMessageClick={(view) => setActiveTab(view)} />
           <div className="cg-user-info">
             <span className="cg-user-name">{user?.username || user?.email || "Caregiver"}</span>
             <div className="cg-user-badges">
@@ -1591,8 +1593,8 @@ function CaregiverMedications() {
                         {refillDays === null
                           ? "No refill date"
                           : refillDays < 0
-                          ? `Refill overdue by ${Math.abs(refillDays)}d`
-                          : `Refill in ${refillDays}d`}
+                            ? `Refill overdue by ${Math.abs(refillDays)}d`
+                            : `Refill in ${refillDays}d`}
                       </div>
                       <button
                         className={`cg-btn ${taken ? "cg-btn-confirm" : "cg-btn-resched"}`}
@@ -1705,8 +1707,8 @@ function CaregiverProgress() {
     selected.weeklyUpdate.vitalTrend === "IMPROVING"
       ? "ok"
       : selected.weeklyUpdate.vitalTrend === "STABLE"
-      ? "warning"
-      : "danger";
+        ? "warning"
+        : "danger";
 
   return (
     <div className="cg-content">
