@@ -7,11 +7,24 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("🌱 Seeding Feature 2 demo data...\n");
 
-  // Find test users by email (from the plan's test accounts)
-  const patient = await prisma.user.findUnique({ where: { email: "kkalra1@asu.edu" } });
-  const clinician = await prisma.user.findUnique({ where: { email: "autlexia@gmail.com" } });
-  const admin = await prisma.user.findUnique({ where: { email: "ripkaush@gmail.com" } });
-  const mpoa = await prisma.user.findUnique({ where: { email: "testingmpoa@gmail.com" } });
+  // Find test users by email - use env vars or find any users by role
+  const patientEmail = process.env.SEED_PATIENT_EMAIL;
+  const clinicianEmail = process.env.SEED_CLINICIAN_EMAIL;
+  const adminEmail = process.env.SEED_ADMIN_EMAIL;
+  const mpoaEmail = process.env.SEED_MPOA_EMAIL;
+
+  const patient = patientEmail 
+    ? await prisma.user.findUnique({ where: { email: patientEmail } })
+    : await prisma.user.findFirst({ where: { role: "PATIENT" } });
+  const clinician = clinicianEmail
+    ? await prisma.user.findUnique({ where: { email: clinicianEmail } })
+    : await prisma.user.findFirst({ where: { role: "CLINICIAN" } });
+  const admin = adminEmail
+    ? await prisma.user.findUnique({ where: { email: adminEmail } })
+    : await prisma.user.findFirst({ where: { role: "ADMIN" } });
+  const mpoa = mpoaEmail
+    ? await prisma.user.findUnique({ where: { email: mpoaEmail } })
+    : await prisma.user.findFirst({ where: { role: "CAREGIVER" } });
 
   if (!patient) {
     console.log("⚠️  Patient (kkalra1@asu.edu) not found — skipping patient-specific seeds.");

@@ -101,7 +101,8 @@ app.use("/api/caregiver/safety", caregiverSafetyRoutes);
 
 // Feature 2 routes
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/messages", messageUpgradeRoutes);
+// Message upgrades merged into existing messages routes to avoid collision
+app.use("/api/messages-v2", messageUpgradeRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 

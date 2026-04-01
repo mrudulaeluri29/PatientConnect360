@@ -392,9 +392,12 @@ router.post("/", async (req: Request, res: Response) => {
       select: visitSelect,
     });
 
-    // ── Feature 2: Notify requester that visit request was received ──
+    // ── Feature 2: Notify requester that visit request was received or approved ──
     if (createStatus === VisitStatus.REQUESTED) {
       onVisitRequestCreated(user.id, visit.id, clinician.username, scheduledDate);
+    } else if (createStatus === VisitStatus.CONFIRMED) {
+      // Admin-created confirmed visits should also trigger approval notification
+      onVisitApproved(patientId, user.id, visit.id, clinician.username, scheduledDate);
     }
 
     res.status(201).json({ visit });

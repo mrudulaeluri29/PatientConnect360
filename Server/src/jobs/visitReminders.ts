@@ -155,10 +155,20 @@ export async function sendPendingOutbound() {
           to: job.toAddress,
         });
       }
-      // EMAIL channel: placeholder — would use SendGrid / Twilio SendGrid
-      // For now just mark as sent
-      if (job.channel === "EMAIL") {
-        console.log(`[OUTBOUND] Would send email to ${job.toAddress}: ${job.templateKey}`);
+      // EMAIL channel: Use Twilio Verify for email sending (same as OTP)
+      if (job.channel === "EMAIL" && twilioClient && process.env.TWILIO_VERIFY_SERVICE_SID) {
+        const emailBody = buildEmailBody(job.payload as any, job.templateKey);
+        // Using Twilio Verify's email channel for consistency with existing auth flow
+        await twilioClient.verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID)
+          .verifications.create({
+            to: job.toAddress,
+            channel: "email",
+            channelConfiguration: {
+              substitutions: {
+                message: emailBody
+              }
+            }
+          });
       }
 
       await prisma.outboundNotification.update({
@@ -177,6 +187,25 @@ export async function sendPendingOutbound() {
 
 function buildSmsBody(payload: any, _templateKey: string): string {
   return `PC360 Reminder: You have an appointment with ${payload?.clinicianName || "your clinician"} in ${payload?.timeLabel || "soon"}. Please be prepared.`;
+}
+
+function buildEmailBody(payload: any, _templateKey: string): string {
+  const clinicianName = payload?.clinicianName || "your clinician";
+  const timeLabel = payload?.timeLabel || "soon";
+  const scheduledAt = payload?.scheduledAt ? new Date(payload.scheduledAt).toLocaleString() : "";
+  
+  return `
+Hello,
+
+This is a reminder that you have an upcoming appointment with ${clinicianName} in ${timeLabel}.
+
+${scheduledAt ? `Scheduled for: ${scheduledAt}` : ""}
+
+Please be prepared and ensure you're available at the scheduled time.
+
+Thank you,
+PatientConnect360 Team
+  `.trim();
 }
 
 // ─── Cancel pending reminders for a visit ────────────────────────────────────
