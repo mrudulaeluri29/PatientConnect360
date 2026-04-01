@@ -73,6 +73,14 @@ model User {
   usedInvitations          CaregiverInvitation[]   @relation("CaregiverInvitationsUsed")
   caregiverLinks           CaregiverPatientLink[]  @relation("CaregiverLinks")
   patientCaregiverLinks    CaregiverPatientLink[]  @relation("PatientCaregiverLinks")
+
+  // Feature 2: Notifications & preferences
+  notifications            Notification[]
+  reminderPreference       VisitReminderPreference?
+  conversationStars        ConversationStar[]
+  outboundNotifications    OutboundNotification[]
+  
+  // Audit logs
   auditLogs                AuditLog[]              @relation("AuditActor")
 }
 
@@ -250,6 +258,7 @@ model Conversation {
   
   participants ConversationParticipant[]
   messages     Message[]
+  stars        ConversationStar[]
 }
 
 // Links users to conversations (many-to-many)
@@ -543,4 +552,99 @@ model CaregiverPatientLink {
   @@unique([caregiverId, patientId])
   @@index([caregiverId])
   @@index([patientId])
+}
+
+// ─────────────────────────────────────────────
+// FEATURE 2: NOTIFICATIONS & COMMUNICATION
+// ─────────────────────────────────────────────
+
+enum NotificationType {
+  VISIT_REQUEST_RECEIVED
+  VISIT_APPROVED
+  VISIT_DENIED
+  VISIT_CANCELLED
+  VISIT_REMINDER_24H
+  VISIT_REMINDER_1H
+  CAREPLAN_UPDATED
+  MESSAGE_RECEIVED
+}
+
+enum ReminderChannel {
+  IN_APP_ONLY
+  EMAIL
+  SMS
+  EMAIL_AND_SMS
+}
+
+enum OutboundStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+// In-app notification for any user
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  meta      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([isRead])
+}
+
+// User preference for visit reminder delivery channel
+model VisitReminderPreference {
+  id       String          @id @default(cuid())
+  userId   String          @unique
+  channel  ReminderChannel @default(IN_APP_ONLY)
+  timezone String?
+  enabled  Boolean         @default(true)
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Queue for outbound SMS/email reminders
+model OutboundNotification {
+  id          String         @id @default(cuid())
+  userId      String
+  channel     String         // "SMS" or "EMAIL"
+  toAddress   String         // phone number or email
+  templateKey String
+  payload     Json?
+  status      OutboundStatus @default(PENDING)
+  sendAt      DateTime
+  sentAt      DateTime?
+  error       String?
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([status])
+  @@index([sendAt])
+  @@index([userId])
+}
+
+// Star/important flag on a conversation (per user)
+model ConversationStar {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  starredAt      DateTime     @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
 }

@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { useFeedback } from "../../contexts/FeedbackContext";
+import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
+import NotificationBell from "../../components/NotificationBell";
 import { api } from "../../lib/axios";
 import { useAgencyBranding } from "../../branding/AgencyBranding";
 import "./AdminDashboard.css";
@@ -17,22 +20,12 @@ import {
   reviewVisitRequest,
   type ApiVisit,
 } from "../../api/visits";
-import {
-  getAdminAnalytics,
-  getAdminStats,
-  getAgencySettings,
-  getAuditLogs,
-  updateAgencySettings,
-  type AdminAnalytics,
-  type AgencySettings,
-  type AuditLogRecord,
-} from "../../api/admin";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const { user, logout } = useAuth();
   const { settings } = useAgencyBranding();
-  
+
   const handleLogout = async () => {
     await logout();
     window.location.href = "/";
@@ -74,19 +67,17 @@ export default function AdminDashboard() {
             <button className={`nav-item ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>
               Settings
             </button>
-            <button className={`nav-item ${activeTab === "audit" ? "active" : ""}`} onClick={() => setActiveTab("audit")}>
-              Audit Log
-            </button>
           </nav>
         </div>
         <div className="admin-header-right">
+          <NotificationBell onMessageClick={(view) => setActiveTab(view)} />
           <div className="admin-user-info">
             <span className="admin-user-name">{user?.username || user?.email || "Admin User"}</span>
             <div className="admin-user-badges">
               <span className="badge badge-admin">Admin</span>
             </div>
           </div>
-          <button 
+          <button
             className="btn-logout"
             onClick={handleLogout}
           >
@@ -99,7 +90,326 @@ export default function AdminDashboard() {
       <main className="admin-main">
         {activeTab === "overview" && (
           <div className="admin-content">
-            <AdminOverview />
+            {/* At-a-Glance Metrics */}
+            <section className="metrics-section">
+              <h2 className="section-title">At-a-Glance Metrics</h2>
+              <div className="metrics-grid">
+                <div className="metric-card">
+                  <div className="metric-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                  </div>
+                  <div className="metric-content">
+                    <div className="metric-value">1,247</div>
+                    <div className="metric-label">Active Patients</div>
+                    <div className="metric-change positive">+12% from last month</div>
+                  </div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                      <line x1="12" y1="9" x2="12" y2="13"></line>
+                      <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                  </div>
+                  <div className="metric-content">
+                    <div className="metric-value">23</div>
+                    <div className="metric-label">Missed Visits (Today)</div>
+                    <div className="metric-change negative">+5 from yesterday</div>
+                  </div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                  </div>
+                  <div className="metric-content">
+                    <div className="metric-value">42</div>
+                    <div className="metric-label">High-Risk Patients</div>
+                    <div className="metric-change">Flagged by AI</div>
+                  </div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    </svg>
+                  </div>
+                  <div className="metric-content">
+                    <div className="metric-value">4.6/5.0</div>
+                    <div className="metric-label">Patient Satisfaction</div>
+                    <div className="metric-change positive">HCAHPS trending up</div>
+                  </div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                  <div className="metric-content">
+                    <div className="metric-value">94%</div>
+                    <div className="metric-label">Visit Compliance</div>
+                    <div className="metric-change positive">+2% this week</div>
+                  </div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                      <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                      <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                    </svg>
+                  </div>
+                  <div className="metric-content">
+                    <div className="metric-value">8</div>
+                    <div className="metric-label">Pending Vendor Orders</div>
+                    <div className="metric-change">Awaiting approval</div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Alerts & Notifications */}
+            <section className="alerts-section">
+              <div className="section-header">
+                <h2 className="section-title">Alerts & Notifications</h2>
+                <button className="btn-view-all">View All</button>
+              </div>
+              <div className="alerts-grid">
+                <div className="alert-card alert-urgent">
+                  <div className="alert-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                  </div>
+                  <div className="alert-content">
+                    <div className="alert-title">Missed Visit</div>
+                    <div className="alert-description">Patient John Doe - Visit scheduled 2 hours ago</div>
+                    <div className="alert-time">2 hours ago</div>
+                  </div>
+                  <button className="alert-action">Review</button>
+                </div>
+                <div className="alert-card alert-warning">
+                  <div className="alert-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                      <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                  </div>
+                  <div className="alert-content">
+                    <div className="alert-title">Documentation Overdue</div>
+                    <div className="alert-description">Dr. Smith - 3 visits pending documentation</div>
+                    <div className="alert-time">5 hours ago</div>
+                  </div>
+                  <button className="alert-action">Review</button>
+                </div>
+                <div className="alert-card alert-info">
+                  <div className="alert-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
+                  </div>
+                  <div className="alert-content">
+                    <div className="alert-title">Order Pending Approval</div>
+                    <div className="alert-description">Medical equipment order requires physician approval</div>
+                    <div className="alert-time">1 day ago</div>
+                  </div>
+                  <button className="alert-action">Approve</button>
+                </div>
+                <div className="alert-card alert-warning">
+                  <div className="alert-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                      <line x1="12" y1="9" x2="12" y2="13"></line>
+                      <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                  </div>
+                  <div className="alert-content">
+                    <div className="alert-title">Escalated Condition</div>
+                    <div className="alert-description">Patient Jane Smith - Condition requires attention</div>
+                    <div className="alert-time">2 days ago</div>
+                  </div>
+                  <button className="alert-action">Review</button>
+                </div>
+                <div className="alert-card alert-info">
+                  <div className="alert-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="6" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                  </div>
+                  <div className="alert-content">
+                    <div className="alert-title">Portal Inactivity</div>
+                    <div className="alert-description">15 patients inactive for 30+ days</div>
+                    <div className="alert-time">3 days ago</div>
+                  </div>
+                  <button className="alert-action">View List</button>
+                </div>
+              </div>
+            </section>
+
+            {/* Real-Time Oversight */}
+            <section className="oversight-section">
+              <h2 className="section-title">Real-Time Oversight</h2>
+              <div className="oversight-grid">
+                <div className="oversight-card">
+                  <div className="card-header">
+                    <h3 className="card-title">Live Clinician Visits</h3>
+                    <button className="btn-refresh">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: "inline-block", marginRight: "0.5rem", verticalAlign: "middle" }}>
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <polyline points="1 20 1 14 7 14"></polyline>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                      </svg>
+                      Refresh
+                    </button>
+                  </div>
+                  <div className="map-placeholder">
+                    <div className="map-content">
+                      <div className="map-marker" style={{ top: "30%", left: "40%" }}>
+                        <div className="marker-pin"></div>
+                        <div className="marker-label">Dr. Smith</div>
+                      </div>
+                      <div className="map-marker" style={{ top: "50%", left: "60%" }}>
+                        <div className="marker-pin"></div>
+                        <div className="marker-label">Nurse Johnson</div>
+                      </div>
+                      <div className="map-marker" style={{ top: "70%", left: "30%" }}>
+                        <div className="marker-pin"></div>
+                        <div className="marker-label">Dr. Williams</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="visit-list">
+                    <div className="visit-item">
+                      <span className="visit-clinician">Dr. Smith</span>
+                      <span className="visit-status active">In Progress</span>
+                      <span className="visit-location">Patient Home - 123 Main St</span>
+                    </div>
+                    <div className="visit-item">
+                      <span className="visit-clinician">Nurse Johnson</span>
+                      <span className="visit-status active">In Progress</span>
+                      <span className="visit-location">Patient Home - 456 Oak Ave</span>
+                    </div>
+                    <div className="visit-item">
+                      <span className="visit-clinician">Dr. Williams</span>
+                      <span className="visit-status active">In Progress</span>
+                      <span className="visit-location">Patient Home - 789 Pine Rd</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="oversight-card">
+                  <div className="card-header">
+                    <h3 className="card-title">Visit Adherence Timeline</h3>
+                    <select className="timeframe-select">
+                      <option>Today</option>
+                      <option>This Week</option>
+                      <option>This Month</option>
+                    </select>
+                  </div>
+                  <div className="timeline-chart">
+                    <div className="timeline-bar">
+                      <div className="timeline-segment completed" style={{ width: "85%" }}></div>
+                      <div className="timeline-segment pending" style={{ width: "10%" }}></div>
+                      <div className="timeline-segment missed" style={{ width: "5%" }}></div>
+                    </div>
+                    <div className="timeline-legend">
+                      <div className="legend-item">
+                        <span className="legend-color completed"></span>
+                        <span>Completed (85%)</span>
+                      </div>
+                      <div className="legend-item">
+                        <span className="legend-color pending"></span>
+                        <span>Pending (10%)</span>
+                      </div>
+                      <div className="legend-item">
+                        <span className="legend-color missed"></span>
+                        <span>Missed (5%)</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="communication-logs">
+                    <h4 className="logs-title">Recent Communication</h4>
+                    <div className="log-item">
+                      <span className="log-time">10:30 AM</span>
+                      <span className="log-message">Dr. Smith → Patient Family: Visit completed successfully</span>
+                    </div>
+                    <div className="log-item">
+                      <span className="log-time">9:15 AM</span>
+                      <span className="log-message">Nurse Johnson → Admin: Patient condition stable</span>
+                    </div>
+                    <div className="log-item">
+                      <span className="log-time">8:45 AM</span>
+                      <span className="log-message">Dr. Williams → Patient: Reminder for medication</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Quick Actions */}
+            <section className="actions-section">
+              <h2 className="section-title">Actions & Tools</h2>
+              <div className="actions-grid">
+                <button className="action-card">
+                  <div className="action-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                  </div>
+                  <div className="action-title">Reassign Clinician</div>
+                  <div className="action-description">Transfer patient to different clinician</div>
+                </button>
+                <button className="action-card">
+                  <div className="action-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                  </div>
+                  <div className="action-title">Bulk Message</div>
+                  <div className="action-description">Send message to families or clinicians</div>
+                </button>
+                <button className="action-card">
+                  <div className="action-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                  <div className="action-title">Approve Alerts</div>
+                  <div className="action-description">Review and approve flagged items</div>
+                </button>
+                <button className="action-card">
+                  <div className="action-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                  </div>
+                  <div className="action-title">Case Conference</div>
+                  <div className="action-description">Launch virtual case conference</div>
+                </button>
+              </div>
+            </section>
           </div>
         )}
 
@@ -140,401 +450,14 @@ export default function AdminDashboard() {
             <SystemSettings />
           </div>
         )}
-
-        {activeTab === "audit" && (
-          <div className="admin-content">
-            <AuditLogPanel />
-          </div>
-        )}
       </main>
-    </div>
-  );
-}
-
-type MetricCardProps = {
-  label: string;
-  value: string | number;
-  hint: string;
-};
-
-function MetricCard({ label, value, hint }: MetricCardProps) {
-  return (
-    <div className="metric-card metric-card-live">
-      <div className="metric-content">
-        <div className="metric-value">{value}</div>
-        <div className="metric-label">{label}</div>
-        <div className="metric-change">{hint}</div>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return <div className="avail-empty">{text}</div>;
-}
-
-function SimpleBarChart({
-  title,
-  data,
-  dataKey,
-  labelKey,
-}: {
-  title: string;
-  data: Record<string, string | number>[];
-  dataKey: string;
-  labelKey: string;
-}) {
-  const max = Math.max(...data.map((item) => Number(item[dataKey]) || 0), 1);
-
-  return (
-    <div className="report-card">
-      <h3 className="card-title">{title}</h3>
-      <div className="mini-chart">
-        {data.length === 0 ? (
-          <EmptyState text="No data in the selected window." />
-        ) : (
-          data.map((item) => {
-            const value = Number(item[dataKey]) || 0;
-            const label = String(item[labelKey]);
-            return (
-              <div className="mini-chart-row" key={label}>
-                <span className="mini-chart-label">{label}</span>
-                <div className="mini-chart-track">
-                  <div className="mini-chart-fill" style={{ width: `${(value / max) * 100}%` }} />
-                </div>
-                <span className="mini-chart-value">{value}</span>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AdminOverview() {
-  const [stats, setStats] = useState<{ summary: AdminAnalytics["summary"]; windowDays: number } | null>(null);
-  const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-    async function load() {
-      setLoading(true);
-      try {
-        const [statsData, analyticsData] = await Promise.all([getAdminStats(), getAdminAnalytics()]);
-        if (!mounted) return;
-        setStats(statsData);
-        setAnalytics(analyticsData);
-      } catch (error) {
-        if (!mounted) return;
-        console.error("Failed to load admin overview:", error);
-        setStats(null);
-        setAnalytics(null);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  if (loading) {
-    return <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading engagement metrics...</div>;
-  }
-
-  if (!stats || !analytics) {
-    return <EmptyState text="Unable to load admin KPIs right now." />;
-  }
-
-  return (
-    <div className="reports-analytics">
-      <div className="section-header">
-        <div>
-          <h2 className="section-title">Admin Engagement & Operations</h2>
-          <p className="section-subtitle">Live operational KPIs from the last {analytics.windowDays} days.</p>
-        </div>
-      </div>
-
-      <div className="metrics-grid">
-        <MetricCard label="Active Patients" value={stats.summary.activePatients} hint="Current patient accounts in the portal" />
-        <MetricCard label="Linked Caregivers" value={stats.summary.linkedCaregivers} hint="Active caregiver-to-patient relationships" />
-        <MetricCard label="Visits / Week" value={stats.summary.visitsPerWeek} hint="Average scheduled visits per week" />
-        <MetricCard label="Reschedule Rate" value={`${stats.summary.rescheduleRate}%`} hint="Share of visits with reschedule activity" />
-        <MetricCard label="Cancellation Rate" value={`${stats.summary.cancellationRate}%`} hint="Cancelled visits across the current window" />
-        <MetricCard label="Pending Ops" value={stats.summary.pendingAvailability + stats.summary.pendingVisitRequests} hint="Availability + appointment requests awaiting review" />
-      </div>
-
-      <div className="reports-grid admin-analytics-grid">
-        <SimpleBarChart title="Visits By Week" data={analytics.charts.visitsByWeek} dataKey="visits" labelKey="label" />
-        <SimpleBarChart title="Messages By Role" data={analytics.charts.messagesByRole} dataKey="count" labelKey="role" />
-        <SimpleBarChart title="Cancellation Reasons" data={analytics.charts.cancellationReasons} dataKey="count" labelKey="reason" />
-      </div>
-    </div>
-  );
-}
-
-function ReportsAnalytics() {
-  const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-    async function load() {
-      try {
-        const data = await getAdminAnalytics();
-        if (!mounted) return;
-        setAnalytics(data);
-      } catch (error) {
-        if (!mounted) return;
-        console.error("Failed to load analytics:", error);
-        setAnalytics(null);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  if (loading) {
-    return <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading reports...</div>;
-  }
-
-  if (!analytics) {
-    return <EmptyState text="Analytics are unavailable right now." />;
-  }
-
-  return (
-    <div className="reports-analytics">
-      <div className="section-header">
-        <div>
-          <h2 className="section-title">Reports & Analytics</h2>
-          <p className="section-subtitle">Operational reporting from the connected application database.</p>
-        </div>
-      </div>
-      <div className="reports-grid admin-analytics-grid">
-        <SimpleBarChart title="Weekly Visit Volume" data={analytics.charts.visitsByWeek} dataKey="visits" labelKey="label" />
-        <SimpleBarChart title="Role-Based Messaging" data={analytics.charts.messagesByRole} dataKey="count" labelKey="role" />
-        <SimpleBarChart title="Cancellation Reason Breakdown" data={analytics.charts.cancellationReasons} dataKey="count" labelKey="reason" />
-      </div>
-    </div>
-  );
-}
-
-function SystemSettings() {
-  const { refresh } = useAgencyBranding();
-  const [settings, setSettings] = useState<AgencySettings | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState("");
-
-  useEffect(() => {
-    let mounted = true;
-    async function load() {
-      try {
-        const data = await getAgencySettings(true);
-        if (mounted) setSettings(data);
-      } catch (error) {
-        console.error("Failed to load settings:", error);
-      }
-    }
-    load();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const handleChange = (field: keyof AgencySettings, value: string) => {
-    setSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
-  };
-
-  const handleSave = async () => {
-    if (!settings) return;
-    setSaving(true);
-    setNotice("");
-    try {
-      const updated = await updateAgencySettings(settings);
-      setSettings(updated);
-      await refresh();
-      setNotice("Branding and support details updated.");
-    } catch (error: any) {
-      setNotice(error?.response?.data?.error || "Failed to save settings.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!settings) {
-    return <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading agency settings...</div>;
-  }
-
-  return (
-    <div className="system-settings">
-      <div className="section-header">
-        <div>
-          <h2 className="section-title">Branding & Settings</h2>
-          <p className="section-subtitle">Configure the portal identity and patient support contact information.</p>
-        </div>
-      </div>
-      <div className="settings-grid">
-        <div className="settings-card">
-          <h3 className="card-title">Agency Branding</h3>
-          <div className="settings-content">
-            <div className="setting-item">
-              <label>Portal Name</label>
-              <input type="text" value={settings.portalName} onChange={(e) => handleChange("portalName", e.target.value)} />
-            </div>
-            <div className="setting-item">
-              <label>Logo URL</label>
-              <input type="text" value={settings.logoUrl || ""} onChange={(e) => handleChange("logoUrl", e.target.value)} placeholder="https://example.com/logo.png" />
-            </div>
-            <div className="setting-item">
-              <label>Primary Color</label>
-              <input type="text" value={settings.primaryColor} onChange={(e) => handleChange("primaryColor", e.target.value)} placeholder="#6E5B9A" />
-            </div>
-          </div>
-        </div>
-        <div className="settings-card">
-          <h3 className="card-title">Support Contact</h3>
-          <div className="settings-content">
-            <div className="setting-item">
-              <label>Support Name</label>
-              <input type="text" value={settings.supportName || ""} onChange={(e) => handleChange("supportName", e.target.value)} />
-            </div>
-            <div className="setting-item">
-              <label>Support Email</label>
-              <input type="email" value={settings.supportEmail || ""} onChange={(e) => handleChange("supportEmail", e.target.value)} />
-            </div>
-            <div className="setting-item">
-              <label>Support Phone</label>
-              <input type="text" value={settings.supportPhone || ""} onChange={(e) => handleChange("supportPhone", e.target.value)} />
-            </div>
-            <div className="setting-item">
-              <label>Support Hours</label>
-              <input type="text" value={settings.supportHours || ""} onChange={(e) => handleChange("supportHours", e.target.value)} placeholder="Mon-Fri, 8am-5pm" />
-            </div>
-          </div>
-        </div>
-      </div>
-      {notice ? <div className="settings-notice">{notice}</div> : null}
-      <button className="btn-save" onClick={handleSave} disabled={saving}>
-        {saving ? "Saving..." : "Save Changes"}
-      </button>
-    </div>
-  );
-}
-
-function AuditLogPanel() {
-  const [logs, setLogs] = useState<AuditLogRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [actionType, setActionType] = useState("");
-  const [actorRole, setActorRole] = useState("");
-
-  const loadLogs = async () => {
-    setLoading(true);
-    try {
-      const data = await getAuditLogs({
-        search: search || undefined,
-        actionType: actionType || undefined,
-        actorRole: actorRole || undefined,
-      });
-      setLogs(data);
-    } catch (error) {
-      console.error("Failed to load audit logs:", error);
-      setLogs([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadLogs();
-  }, [actionType, actorRole]);
-
-  return (
-    <div className="system-settings">
-      <div className="section-header">
-        <div>
-          <h2 className="section-title">Audit Log</h2>
-          <p className="section-subtitle">Operational trace for logins, appointments, medication changes, caregiver links, and settings updates.</p>
-        </div>
-      </div>
-      <div className="assign-form">
-        <div className="assign-form-row">
-          <div className="form-group">
-            <label>Search</label>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Actor, target, or description" />
-          </div>
-          <div className="form-group">
-            <label>Action</label>
-            <select value={actionType} onChange={(e) => setActionType(e.target.value)} className="filter-select" style={{ width: "100%" }}>
-              <option value="">All actions</option>
-              <option value="LOGIN">LOGIN</option>
-              <option value="APPOINTMENT_APPROVED">APPOINTMENT_APPROVED</option>
-              <option value="MED_CHANGED">MED_CHANGED</option>
-              <option value="CAREGIVER_LINK_UPDATED">CAREGIVER_LINK_UPDATED</option>
-              <option value="SETTINGS_UPDATED">SETTINGS_UPDATED</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Actor Role</label>
-            <select value={actorRole} onChange={(e) => setActorRole(e.target.value)} className="filter-select" style={{ width: "100%" }}>
-              <option value="">All roles</option>
-              <option value="ADMIN">ADMIN</option>
-              <option value="CLINICIAN">CLINICIAN</option>
-              <option value="PATIENT">PATIENT</option>
-              <option value="CAREGIVER">CAREGIVER</option>
-            </select>
-          </div>
-          <button className="btn-primary" style={{ alignSelf: "flex-end" }} onClick={loadLogs}>
-            Apply Filters
-          </button>
-        </div>
-      </div>
-
-      {loading ? (
-        <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading audit events...</div>
-      ) : logs.length === 0 ? (
-        <EmptyState text="No audit events matched those filters." />
-      ) : (
-        <div className="users-table" style={{ marginTop: "1.5rem" }}>
-          <table>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Actor</th>
-                <th>Role</th>
-                <th>Action</th>
-                <th>Target</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log) => (
-                <tr key={log.id}>
-                  <td>{new Date(log.createdAt).toLocaleString()}</td>
-                  <td>{log.actor?.username || log.actor?.email || log.actorId || "System"}</td>
-                  <td>{log.actorRole || "SYSTEM"}</td>
-                  <td>{log.actionType}</td>
-                  <td>{[log.targetType, log.targetId].filter(Boolean).join(" • ") || "—"}</td>
-                  <td>{log.description || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }
 
 // Assignment Manager Component
 function AssignmentManager() {
+  const { showToast, confirmDialog } = useFeedback();
   const [patients, setPatients] = useState<{ id: string; username: string; email: string }[]>([]);
   const [clinicians, setClinicians] = useState<{ id: string; username: string; email: string }[]>([]);
   const [assignments, setAssignments] = useState<{ id: string; patient: any; clinician: any; isActive: boolean }[]>([]);
@@ -573,8 +496,8 @@ function AssignmentManager() {
   const handleCreate = async () => {
     if (!selectedPatient || !selectedClinician) return;
     try {
-      await api.post("/api/admin/assignments", { 
-        patientId: selectedPatient, 
+      await api.post("/api/admin/assignments", {
+        patientId: selectedPatient,
         clinicianId: selectedClinician
       });
       // Refresh assignments list
@@ -583,17 +506,23 @@ function AssignmentManager() {
       setSelectedPatient("");
       setSelectedClinician("");
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to assign");
+      showToast(e.response?.data?.error || "Failed to assign", "error");
     }
   };
 
   const handleRemove = async (assignmentId: string) => {
-    if (!window.confirm("Remove this assignment?")) return;
+    const ok = await confirmDialog(
+      "Remove assignment?",
+      "This patient will no longer be assigned to this clinician.",
+      { danger: true, confirmLabel: "Remove" }
+    );
+    if (!ok) return;
     try {
       await api.delete(`/api/admin/assignments/${assignmentId}`);
       setAssignments(prev => prev.filter(a => a.id !== assignmentId));
+      showToast("Assignment removed.", "success");
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to remove assignment");
+      showToast(e.response?.data?.error || "Failed to remove assignment", "error");
     }
   };
 
@@ -603,7 +532,7 @@ function AssignmentManager() {
       // Update local state
       setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, isActive: !currentStatus } : a));
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to update assignment");
+      showToast(e.response?.data?.error || "Failed to update assignment", "error");
     }
   };
 
@@ -724,11 +653,12 @@ function AssignmentManager() {
 // Admin Messages Component
 function AdminMessages() {
   const { user } = useAuth();
+  const { showToast, confirmDialog } = useFeedback();
   const [activeView, setActiveView] = useState<"all-messages" | "broadcast">("all-messages");
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>("");
-  
+
   // Filtering states
   const [selectedFromType, setSelectedFromType] = useState<string>("all");
   const [selectedFromUser, setSelectedFromUser] = useState<string>("all");
@@ -782,12 +712,12 @@ function AdminMessages() {
         console.log('User is not admin or not logged in:', user);
         return [];
       }
-      
+
       console.log(`Fetching users for role: ${role}`);
       const response = await api.get('/api/admin/users/by-role', {
         params: { role: role.toLowerCase() }
       });
-      
+
       console.log(`Found ${response.data.users?.length || 0} ${role} users`);
       return response.data.users || [];
     } catch (error: any) {
@@ -803,26 +733,26 @@ function AdminMessages() {
   const handleFromTypeChange = async (roleType: string) => {
     setSelectedFromType(roleType);
     setSelectedFromUser('all');
-    
+
     // Reset To selection when From changes and check for incompatible combinations
     const shouldResetTo = () => {
       if (selectedToType === 'all') return false;
-      
+
       // Check if current To selection is incompatible with new From selection
       if (roleType === 'patient' && selectedToType === 'admin') return true;
       if (roleType === 'clinician' && selectedToType === 'admin') return true;
       if (roleType === 'caregiver' && selectedToType === 'admin') return true;
       if (roleType === 'admin' && selectedToType === 'admin') return true; // admin can't message admin
-      
+
       return false;
     };
-    
+
     if (shouldResetTo()) {
       setSelectedToType('all');
       setSelectedToUser('all');
       setToUsers([]);
     }
-    
+
     if (roleType !== 'all') {
       try {
         console.log(`[DEBUG] handleFromTypeChange: roleType = ${roleType}`);
@@ -843,26 +773,26 @@ function AdminMessages() {
   const handleToTypeChange = async (roleType: string) => {
     setSelectedToType(roleType);
     setSelectedToUser('all');
-    
+
     // Reset From selection when To changes and check for incompatible combinations
     const shouldResetFrom = () => {
       if (selectedFromType === 'all') return false;
-      
+
       // Check if current From selection is incompatible with new To selection
       if (roleType === 'patient' && !['clinician', 'caregiver', 'admin'].includes(selectedFromType)) return true;
       if (roleType === 'clinician' && !['patient', 'caregiver', 'admin'].includes(selectedFromType)) return true;
       if (roleType === 'caregiver' && !['patient', 'clinician', 'admin'].includes(selectedFromType)) return true;
       // admin cannot be selected as To, so no check needed
-      
+
       return false;
     };
-    
+
     if (shouldResetFrom()) {
       setSelectedFromType('all');
       setSelectedFromUser('all');
       setFromUsers([]);
     }
-    
+
     if (roleType !== 'all') {
       try {
         const roleUsers = await fetchUsersByRole(roleType);
@@ -889,13 +819,19 @@ function AdminMessages() {
 
 
   const handleDeleteMessage = async (messageId: string) => {
-    if (confirm("Are you sure you want to delete this message?")) {
-      try {
-        await api.delete(`/messages/${messageId}`);
-        fetchAllMessages(); // Refresh messages list
-      } catch (error) {
-        console.error("Failed to delete message:", error);
-      }
+    const ok = await confirmDialog(
+      "Delete message?",
+      "Are you sure you want to delete this message?",
+      { danger: true, confirmLabel: "Delete" }
+    );
+    if (!ok) return;
+    try {
+      await api.delete(`/messages/${messageId}`);
+      fetchAllMessages();
+      showToast("Message deleted.", "success");
+    } catch (error) {
+      console.error("Failed to delete message:", error);
+      showToast("Failed to delete message.", "error");
     }
   };
 
@@ -911,8 +847,8 @@ function AdminMessages() {
 
   // Broadcast functionality
   const handleBroadcastRecipientChange = (value: string) => {
-    setBroadcastRecipients(prev => 
-      prev.includes(value) 
+    setBroadcastRecipients(prev =>
+      prev.includes(value)
         ? prev.filter(r => r !== value)
         : [...prev, value]
     );
@@ -923,23 +859,23 @@ function AdminMessages() {
     console.log("Subject:", broadcastSubject);
     console.log("Message:", broadcastMessage);
     console.log("Recipients:", broadcastRecipients);
-    
+
     if (!broadcastSubject.trim() || !broadcastMessage.trim() || broadcastRecipients.length === 0) {
       console.log("❌ Validation failed");
-      alert("Please fill in all fields and select recipients");
+      showToast("Please fill in all fields and select recipients", "error");
       return;
     }
 
     setSendingBroadcast(true);
     try {
       console.log("📡 Starting broadcast to recipients:", broadcastRecipients);
-      
+
       // Send to each recipient type
       for (const recipientType of broadcastRecipients) {
         console.log("📋 Fetching users for role:", recipientType);
         const recipients = await fetchUsersByRole(recipientType);
         console.log("👥 Found recipients:", recipients);
-        
+
         for (const recipient of recipients) {
           console.log("📤 Sending message to:", recipient.username, recipient.id);
           const response = await api.post('/messages/send', {
@@ -950,18 +886,18 @@ function AdminMessages() {
           console.log("✅ Message sent, response:", response.data);
         }
       }
-      
+
       // Reset form
       setBroadcastSubject("");
       setBroadcastMessage("");
       setBroadcastRecipients([]);
-      
+
       console.log("🎉 Broadcast completed successfully!");
-      alert("Broadcast sent successfully!");
+      showToast("Broadcast sent successfully!", "success");
     } catch (error: any) {
       console.error("❌ Failed to send broadcast:", error);
       console.error("Error details:", error.response?.data || error.message);
-      alert("Failed to send broadcast");
+      showToast("Failed to send broadcast", "error");
     } finally {
       setSendingBroadcast(false);
     }
@@ -982,13 +918,13 @@ function AdminMessages() {
       <div className="section-header">
         <h2 className="section-title">System Messages</h2>
         <div className="message-tabs">
-          <button 
+          <button
             className={`tab-btn ${activeView === "all-messages" ? "active" : ""}`}
             onClick={() => setActiveView("all-messages")}
           >
             All Messages
           </button>
-          <button 
+          <button
             className={`tab-btn ${activeView === "broadcast" ? "active" : ""}`}
             onClick={() => setActiveView("broadcast")}
           >
@@ -1003,17 +939,17 @@ function AdminMessages() {
           {/* Search and Filters */}
           <div className="messages-toolbar">
             <div className="search-filters">
-              <input 
-                type="text" 
-                placeholder="Search messages..." 
+              <input
+                type="text"
+                placeholder="Search messages..."
                 className="search-input"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
-              
+
               <div className="filter-group">
                 <label className="filter-label">From:</label>
-                <select 
+                <select
                   className="filter-select"
                   value={selectedFromType}
                   onChange={(e) => handleFromTypeChange(e.target.value)}
@@ -1036,9 +972,9 @@ function AdminMessages() {
                     <option value="admin">Admins</option>
                   )}
                 </select>
-                
+
                 {selectedFromType !== 'all' && (
-                  <select 
+                  <select
                     className="filter-select"
                     value={selectedFromUser}
                     onChange={(e) => setSelectedFromUser(e.target.value)}
@@ -1055,7 +991,7 @@ function AdminMessages() {
 
               <div className="filter-group">
                 <label className="filter-label">To:</label>
-                <select 
+                <select
                   className="filter-select"
                   value={selectedToType}
                   onChange={(e) => handleToTypeChange(e.target.value)}
@@ -1075,9 +1011,9 @@ function AdminMessages() {
                   )}
                   {/* Admin cannot be selected as To recipient */}
                 </select>
-                
+
                 {selectedToType !== 'all' && (
-                  <select 
+                  <select
                     className="filter-select"
                     value={selectedToUser}
                     onChange={(e) => setSelectedToUser(e.target.value)}
@@ -1158,7 +1094,7 @@ function AdminMessages() {
                         </td>
                         <td>
                           <div className="action-buttons">
-                            <button 
+                            <button
                               className="btn-action view"
                               title="View Message"
                               onClick={() => handleViewMessage(message)}
@@ -1167,7 +1103,7 @@ function AdminMessages() {
                             </button>
 
                             {!message.isRead && (
-                              <button 
+                              <button
                                 className="btn-action mark-read"
                                 title="Mark as Read"
                                 onClick={() => handleMarkAsRead(message.id)}
@@ -1175,7 +1111,7 @@ function AdminMessages() {
                                 📬
                               </button>
                             )}
-                            <button 
+                            <button
                               className="btn-action delete"
                               title="Delete Message"
                               onClick={() => handleDeleteMessage(message.id)}
@@ -1202,21 +1138,21 @@ function AdminMessages() {
             <p className="broadcast-description">
               Send important announcements to multiple users at once. Select recipient groups and compose your message.
             </p>
-            
+
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Recipients</label>
                 <div className="recipient-options">
                   <label className="checkbox-label">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       checked={broadcastRecipients.includes('patient')}
                       onChange={() => handleBroadcastRecipientChange('patient')}
                     />
                     <span>All Patients</span>
                   </label>
                   <label className="checkbox-label">
-                    <input 
+                    <input
                       type="checkbox"
                       checked={broadcastRecipients.includes('clinician')}
                       onChange={() => handleBroadcastRecipientChange('clinician')}
@@ -1224,7 +1160,7 @@ function AdminMessages() {
                     <span>All Clinicians</span>
                   </label>
                   <label className="checkbox-label">
-                    <input 
+                    <input
                       type="checkbox"
                       checked={broadcastRecipients.includes('caregiver')}
                       onChange={() => handleBroadcastRecipientChange('caregiver')}
@@ -1236,31 +1172,31 @@ function AdminMessages() {
 
 
             </div>
-            
+
             <div className="form-group">
               <label className="form-label">Subject</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 className="form-input"
                 placeholder="Enter broadcast subject..."
                 value={broadcastSubject}
                 onChange={(e) => setBroadcastSubject(e.target.value)}
               />
             </div>
-            
+
             <div className="form-group">
               <label className="form-label">Message</label>
-              <textarea 
-                className="form-textarea" 
+              <textarea
+                className="form-textarea"
                 rows={8}
                 placeholder="Compose your broadcast message here..."
                 value={broadcastMessage}
                 onChange={(e) => setBroadcastMessage(e.target.value)}
               />
             </div>
-            
+
             <div className="form-actions">
-              <button 
+              <button
                 className="btn-secondary"
                 onClick={() => {
                   setBroadcastSubject("");
@@ -1270,7 +1206,7 @@ function AdminMessages() {
               >
                 Clear
               </button>
-              <button 
+              <button
                 className="btn-primary"
                 onClick={sendBroadcast}
                 disabled={sendingBroadcast || !broadcastSubject.trim() || !broadcastMessage.trim() || broadcastRecipients.length === 0}
@@ -1344,6 +1280,7 @@ function AdminMessages() {
 
 // User Management Component
 function UserManagement() {
+  const { showToast, confirmDialog } = useFeedback();
   const [users, setUsers] = useState<{ id: string; username: string; email: string; role: string; createdAt: string }[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -1380,19 +1317,25 @@ function UserManagement() {
   });
 
   const handleRemoveUser = async (userId: string) => {
-    if (!window.confirm("Are you sure you want to remove this user?")) return;
+    const ok = await confirmDialog(
+      "Remove user?",
+      "Are you sure you want to remove this user? This cannot be undone.",
+      { danger: true, confirmLabel: "Remove user" }
+    );
+    if (!ok) return;
     try {
       await api.delete(`/api/admin/users/${userId}`);
       setUsers((prev) => prev.filter((u) => u.id !== userId));
+      showToast("User removed.", "success");
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to remove user");
+      showToast(e.response?.data?.error || "Failed to remove user", "error");
     }
   };
 
   const handleSendInvite = () => {
     if (!inviteEmail) return;
     // TODO: Implement API call to send invite
-    alert(`Invitation sent to ${inviteEmail}`);
+    showToast(`Invitation sent to ${inviteEmail}`, "success");
     setInviteEmail("");
     setShowInviteModal(false);
   };
@@ -1493,8 +1436,141 @@ function UserManagement() {
 }
 
 // Reports & Analytics Component
+function ReportsAnalytics() {
+  return (
+    <div className="reports-analytics">
+      <h2 className="section-title">Reports & Analytics</h2>
+      <div className="reports-grid">
+        <div className="report-card">
+          <h3 className="card-title">AI Risk Predictions</h3>
+          <div className="report-content">
+            <div className="risk-item">
+              <span className="risk-label">Hospitalization Risk</span>
+              <span className="risk-value high">23 patients</span>
+            </div>
+            <div className="risk-item">
+              <span className="risk-label">Fall Risk</span>
+              <span className="risk-value medium">15 patients</span>
+            </div>
+            <div className="risk-item">
+              <span className="risk-label">Readmission Risk</span>
+              <span className="risk-value low">8 patients</span>
+            </div>
+          </div>
+          <button className="btn-view-report">View Full Report</button>
+        </div>
+        <div className="report-card">
+          <h3 className="card-title">Clinician Productivity</h3>
+          <div className="report-content">
+            <div className="productivity-item">
+              <span className="productivity-label">Avg Visits/Week</span>
+              <span className="productivity-value">42</span>
+            </div>
+            <div className="productivity-item">
+              <span className="productivity-label">Completion Rate</span>
+              <span className="productivity-value">94%</span>
+            </div>
+          </div>
+          <button className="btn-view-report">View Full Report</button>
+        </div>
+        <div className="report-card">
+          <h3 className="card-title">KPI Dashboard</h3>
+          <div className="report-content">
+            <div className="kpi-item">
+              <span className="kpi-label">Patient Satisfaction</span>
+              <span className="kpi-value">4.6/5.0</span>
+            </div>
+            <div className="kpi-item">
+              <span className="kpi-label">Visit Compliance</span>
+              <span className="kpi-value">94%</span>
+            </div>
+          </div>
+          <button className="btn-view-report">View Full Report</button>
+        </div>
+        <div className="report-card">
+          <h3 className="card-title">Vendor Performance</h3>
+          <div className="report-content">
+            <div className="vendor-item">
+              <span className="vendor-label">Avg Delivery Time</span>
+              <span className="vendor-value">2.3 days</span>
+            </div>
+            <div className="vendor-item">
+              <span className="vendor-label">Order Accuracy</span>
+              <span className="vendor-value">98%</span>
+            </div>
+          </div>
+          <button className="btn-view-report">View Full Report</button>
+        </div>
+        <div className="report-card">
+          <h3 className="card-title">Billing & Compliance</h3>
+          <div className="report-content">
+            <div className="billing-item">
+              <span className="billing-label">Ready for Export</span>
+              <span className="billing-value">1,247 records</span>
+            </div>
+            <div className="billing-item">
+              <span className="billing-label">Compliance Status</span>
+              <span className="billing-value compliant">Compliant</span>
+            </div>
+          </div>
+          <button className="btn-view-report">Export Data</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// System Settings Component
+function SystemSettings() {
+  return (
+    <div className="system-settings">
+      <h2 className="section-title">System Settings</h2>
+      <div className="settings-grid">
+        <div className="settings-card">
+          <h3 className="card-title">General Settings</h3>
+          <div className="settings-content">
+            <div className="setting-item">
+              <label>Platform Name</label>
+              <input type="text" defaultValue="MediHealth" />
+            </div>
+            <div className="setting-item">
+              <label>Time Zone</label>
+              <select defaultValue="America/Phoenix">
+                <option>America/Phoenix</option>
+                <option>America/New_York</option>
+                <option>America/Chicago</option>
+                <option>America/Los_Angeles</option>
+              </select>
+            </div>
+          </div>
+          <button className="btn-save">Save Changes</button>
+        </div>
+        <div className="settings-card">
+          <h3 className="card-title">Notification Settings</h3>
+          <div className="settings-content">
+            <div className="setting-item">
+              <label>
+                <input type="checkbox" defaultChecked />
+                Email notifications for alerts
+              </label>
+            </div>
+            <div className="setting-item">
+              <label>
+                <input type="checkbox" defaultChecked />
+                SMS notifications for urgent alerts
+              </label>
+            </div>
+          </div>
+          <button className="btn-save">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Appointments Review (Admin) ─────────────────────────────────────────────
 function AppointmentsReview() {
+  const { showToast } = useFeedback();
   const [loading, setLoading] = useState(true);
   const [newRequests, setNewRequests] = useState<ApiVisit[]>([]);
   const [rescheduleRequests, setRescheduleRequests] = useState<ApiVisit[]>([]);
@@ -1503,8 +1579,8 @@ function AppointmentsReview() {
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, string>>({});
 
-  const refresh = async () => {
-    setLoading(true);
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await getAdminVisitRequests();
       setNewRequests(data.newRequests || []);
@@ -1515,13 +1591,15 @@ function AppointmentsReview() {
       setRescheduleRequests([]);
       setCancellationUpdates([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
+
+  useRefetchOnIntervalAndFocus(() => void refresh(true), 25000);
 
   useEffect(() => {
-    refresh();
-  }, []);
+    void refresh(false);
+  }, [refresh]);
 
   const datetimeLocalToIso = (value?: string): string | undefined => {
     if (!value) return undefined;
@@ -1546,9 +1624,10 @@ function AppointmentsReview() {
         reviewNote: reviewNotes[visitId] || undefined,
         scheduledAt: overrideIso,
       });
-      await refresh();
+      showToast(action === "APPROVE" ? "Request updated." : "Request rejected.", "success");
+      await refresh(true);
     } catch (e: any) {
-      alert(e?.response?.data?.error || "Review action failed");
+      showToast(e?.response?.data?.error || "Review action failed", "error");
     } finally {
       setReviewingId(null);
     }
@@ -1598,16 +1677,18 @@ function AppointmentsReview() {
                     />
                     <div style={{ display: "flex", gap: "0.35rem" }}>
                       <button
+                        type="button"
                         className="btn-approve"
                         disabled={reviewingId === v.id}
-                        onClick={() => runReview(v.id, "APPROVE")}
+                        onClick={() => void runReview(v.id, "APPROVE")}
                       >
                         Approve/Schedule
                       </button>
                       <button
+                        type="button"
                         className="btn-reject"
                         disabled={reviewingId === v.id}
-                        onClick={() => runReview(v.id, "REJECT")}
+                        onClick={() => void runReview(v.id, "REJECT")}
                       >
                         Reject
                       </button>
@@ -1686,6 +1767,7 @@ function AppointmentsReview() {
 
 // ─── Availability Review (Admin) ─────────────────────────────────────────────
 function AvailabilityReview() {
+  const { showToast, confirmDialog } = useFeedback();
   const [records, setRecords] = useState<ApiAvailability[]>([]);
   const [allRecords, setAllRecords] = useState<ApiAvailability[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1736,22 +1818,29 @@ function AvailabilityReview() {
       }
       setReviewModalRecord(null);
       setReviewNote("");
+      showToast(`Availability ${status === "APPROVED" ? "approved" : "rejected"}.`, "success");
     } catch (err: any) {
-      alert(err.response?.data?.error || "Review failed");
+      showToast(err.response?.data?.error || "Review failed", "error");
     } finally {
       setReviewingId(null);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this availability record?")) return;
+    const ok = await confirmDialog(
+      "Delete availability?",
+      "This removes the clinician’s availability block for that day.",
+      { danger: true, confirmLabel: "Delete" }
+    );
+    if (!ok) return;
     setDeletingId(id);
     try {
       await deleteAvailability(id);
       setRecords((prev) => prev.filter((r) => r.id !== id));
       setAllRecords((prev) => prev.filter((r) => r.id !== id));
+      showToast("Availability deleted.", "success");
     } catch (err: any) {
-      alert(err.response?.data?.error || "Delete failed");
+      showToast(err.response?.data?.error || "Delete failed", "error");
     } finally {
       setDeletingId(null);
     }

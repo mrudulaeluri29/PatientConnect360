@@ -8,6 +8,7 @@ export default function Login() {
   const [emailOrUsername, setEmailOrUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const userData = await login(emailOrUsername, password);
+      const userData = await login(emailOrUsername, password, rememberMe);
       
       // Redirect based on user role
       if (userData.role === "ADMIN") {
@@ -134,7 +135,11 @@ export default function Login() {
 
               <div className="form-options">
                 <label className="checkbox-label">
-                  <input type="checkbox" />
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                  />
                   <span>Remember me</span>
                 </label>
                 <Link to="/forgot-password" className="forgot-password">
@@ -186,4 +191,3 @@ export default function Login() {
     </div>
   );
 }
-

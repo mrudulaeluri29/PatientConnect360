@@ -2,8 +2,20 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
 import { requireAdmin } from "../middleware/requireRole";
-import { AuditActionType, VisitRequestType, VisitStatus, VisitType } from "@prisma/client";
-import { logAuditEvent } from "../lib/audit";
+import { VisitRequestType, VisitStatus, VisitType } from "@prisma/client";
+import {
+  dayKeyInTimeZone,
+  getAvailabilityTimeZone,
+  wallClockMinutesInTimeZone,
+} from "../availabilityTime";
+// Feature 2 — notification hooks
+import {
+  onVisitRequestCreated,
+  onVisitApproved,
+  onVisitDenied,
+  onVisitCancelled,
+} from "../helpers/notificationHelpers";
+import { cancelPendingReminders } from "../jobs/visitReminders";
 
 const router = Router();
 
@@ -81,19 +93,13 @@ function minutesFromTimeString(value: string): number | null {
   return hh * 60 + mm;
 }
 
-function toDayKey(date: Date): string {
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 async function assertWithinApprovedAvailability(
   clinicianId: string,
   scheduledAt: Date,
   durationMinutes: number
 ): Promise<string | null> {
-  const dayKey = toDayKey(scheduledAt);
+  const tz = getAvailabilityTimeZone();
+  const dayKey = dayKeyInTimeZone(scheduledAt, tz);
   const slot = await prisma.clinicianAvailability.findFirst({
     where: {
       clinicianId,
@@ -116,7 +122,7 @@ async function assertWithinApprovedAvailability(
     return "Clinician availability slot is invalid.";
   }
 
-  const visitStart = scheduledAt.getUTCHours() * 60 + scheduledAt.getUTCMinutes();
+  const visitStart = wallClockMinutesInTimeZone(scheduledAt, tz);
   const visitEnd = visitStart + durationMinutes;
   if (visitStart < start || visitEnd > end) {
     return `Visit must be fully within approved availability (${slot.startTime}-${slot.endTime}).`;
@@ -327,7 +333,7 @@ router.post("/", async (req: Request, res: Response) => {
     // Confirm patient and clinician exist with correct roles
     const [patient, clinician] = await Promise.all([
       prisma.user.findUnique({ where: { id: patientId }, select: { id: true, role: true } }),
-      prisma.user.findUnique({ where: { id: clinicianId }, select: { id: true, role: true } }),
+      prisma.user.findUnique({ where: { id: clinicianId }, select: { id: true, role: true, username: true } }),
     ]);
 
     if (!patient || patient.role !== "PATIENT") {
@@ -386,20 +392,13 @@ router.post("/", async (req: Request, res: Response) => {
       select: visitSelect,
     });
 
-    await logAuditEvent({
-      actorId: user.id,
-      actorRole: user.role,
-      actionType: AuditActionType.APPOINTMENT_CREATED,
-      targetType: "Visit",
-      targetId: visit.id,
-      description: "Created a visit request",
-      metadata: {
-        patientId,
-        clinicianId,
-        status: visit.status,
-        scheduledAt: visit.scheduledAt,
-      },
-    });
+    // ── Feature 2: Notify requester that visit request was received or approved ──
+    if (createStatus === VisitStatus.REQUESTED) {
+      onVisitRequestCreated(user.id, visit.id, clinician.username, scheduledDate);
+    } else if (createStatus === VisitStatus.CONFIRMED) {
+      // Admin-created confirmed visits should also trigger approval notification
+      onVisitApproved(patientId, user.id, visit.id, clinician.username, scheduledDate);
+    }
 
     res.status(201).json({ visit });
   } catch (e) {
@@ -477,6 +476,9 @@ router.post("/:id/reschedule-request", async (req: Request, res: Response) => {
       select: visitSelect,
     });
 
+    // ── Feature 2: Notify requester that reschedule request was received ──
+    onVisitRequestCreated(user.id, requestVisit.id, original.clinician.username, nextDate);
+
     res.status(201).json({ visit: requestVisit });
   } catch (e) {
     console.error("POST /api/visits/:id/reschedule-request failed:", e);
@@ -515,19 +517,16 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
         },
         select: visitSelect,
       });
-      await logAuditEvent({
-        actorId: user.id,
-        actorRole: user.role,
-        actionType: AuditActionType.APPOINTMENT_REJECTED,
-        targetType: "Visit",
-        targetId: rejected.id,
-        description: "Rejected appointment request",
-        metadata: {
-          reviewNote: rejected.reviewNote,
-          previousStatus: existing.status,
-          requestType: existing.requestType,
-        },
-      });
+
+      // ── Feature 2: Notify patient/caregivers that visit was denied ──
+      onVisitDenied(
+        existing.patient.id,
+        existing.requestedById,
+        existing.id,
+        existing.clinician.username,
+        reviewNote ?? null
+      );
+
       return res.json({ visit: rejected });
     }
 
@@ -566,19 +565,18 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
           select: visitSelect,
         });
       });
-      await logAuditEvent({
-        actorId: user.id,
-        actorRole: user.role,
-        actionType: AuditActionType.APPOINTMENT_APPROVED,
-        targetType: "Visit",
-        targetId: updated.id,
-        description: "Approved reschedule request",
-        metadata: {
-          originalVisitId: existing.originalVisitId,
-          scheduledAt: updated.scheduledAt,
-          durationMinutes: updated.durationMinutes,
-        },
-      });
+
+      // ── Feature 2: Notify that reschedule was approved ──
+      onVisitApproved(
+        existing.patient.id,
+        existing.requestedById,
+        existing.id,
+        existing.clinician.username,
+        nextScheduledAt
+      );
+      // Cancel any pending reminders for the original visit
+      cancelPendingReminders(existing.originalVisitId!);
+
       return res.json({ visit: updated });
     }
 
@@ -594,19 +592,16 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
       },
       select: visitSelect,
     });
-    await logAuditEvent({
-      actorId: user.id,
-      actorRole: user.role,
-      actionType: AuditActionType.APPOINTMENT_APPROVED,
-      targetType: "Visit",
-      targetId: approved.id,
-      description: "Approved appointment request",
-      metadata: {
-        scheduledAt: approved.scheduledAt,
-        durationMinutes: approved.durationMinutes,
-        requestType: approved.requestType,
-      },
-    });
+
+    // ── Feature 2: Notify that visit was approved ──
+    onVisitApproved(
+      existing.patient.id,
+      existing.requestedById,
+      existing.id,
+      existing.clinician.username,
+      nextScheduledAt
+    );
+
     return res.json({ visit: approved });
   } catch (e) {
     console.error("POST /api/visits/:id/review failed:", e);
@@ -771,19 +766,21 @@ router.patch("/:id", async (req: Request, res: Response) => {
       select: visitSelect,
     });
 
-    if (visit.status === VisitStatus.CANCELLED) {
-      await logAuditEvent({
-        actorId: user.id,
-        actorRole: user.role,
-        actionType: AuditActionType.APPOINTMENT_CANCELLED,
-        targetType: "Visit",
-        targetId: visit.id,
-        description: "Cancelled a visit",
-        metadata: {
-          cancelReason: visit.cancelReason,
-          cancellationRequestedById: visit.cancellationRequestedById,
-        },
+    // ── Feature 2: Notify on cancellation ──
+    if (data.status === VisitStatus.CANCELLED) {
+      // Look up username for the cancelling user
+      const cancellingUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { username: true },
       });
+      onVisitCancelled(
+        existing.patientId,
+        existing.clinicianId,
+        existing.id,
+        data.cancelReason || null,
+        cancellingUser?.username || "A user"
+      );
+      cancelPendingReminders(existing.id);
     }
 
     res.json({ visit });
