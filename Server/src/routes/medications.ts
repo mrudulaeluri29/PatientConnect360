@@ -2,7 +2,8 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
 import { requireAdmin } from "../middleware/requireRole";
-import { MedicationStatus, MedicationRiskLevel } from "@prisma/client";
+import { AuditActionType, MedicationStatus, MedicationRiskLevel } from "@prisma/client";
+import { logAuditEvent } from "../lib/audit";
 
 const router = Router();
 
@@ -258,6 +259,20 @@ router.post("/", async (req: Request, res: Response) => {
       select: medicationSelect,
     });
 
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.MED_CREATED,
+      targetType: "Medication",
+      targetId: medication.id,
+      description: "Created medication",
+      metadata: {
+        patientId,
+        name: medication.name,
+        riskLevel: medication.riskLevel,
+      },
+    });
+
     res.status(201).json({ medication });
   } catch (e) {
     console.error("POST /api/medications failed:", e);
@@ -339,6 +354,20 @@ router.patch("/:id", async (req: Request, res: Response) => {
       select: medicationSelect,
     });
 
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.MED_CHANGED,
+      targetType: "Medication",
+      targetId: medication.id,
+      description: "Updated medication",
+      metadata: {
+        patientId: medication.patient.id,
+        clinicallyChanged,
+        fieldsChanged: Object.keys(data),
+      },
+    });
+
     res.json({ medication });
   } catch (e) {
     console.error("PATCH /api/medications/:id failed:", e);
@@ -350,13 +379,26 @@ router.patch("/:id", async (req: Request, res: Response) => {
 // Admin only. Prefer PATCH status=DISCONTINUED over hard delete.
 router.delete("/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
+    const user = getUser(req);
     const existing = await prisma.medication.findUnique({
       where: { id: req.params.id },
-      select: { id: true },
+      select: { id: true, patientId: true, name: true },
     });
     if (!existing) return res.status(404).json({ error: "Medication not found" });
 
     await prisma.medication.delete({ where: { id: req.params.id } });
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.MED_REMOVED,
+      targetType: "Medication",
+      targetId: existing.id,
+      description: "Deleted medication",
+      metadata: {
+        patientId: existing.patientId,
+        name: existing.name,
+      },
+    });
     res.json({ ok: true });
   } catch (e) {
     console.error("DELETE /api/medications/:id failed:", e);

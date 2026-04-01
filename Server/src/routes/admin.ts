@@ -5,8 +5,144 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../db";
 import { requireAdmin } from "../middleware/requireRole";
+import { AuditActionType, VisitStatus } from "@prisma/client";
+import { getAgencySettings } from "../lib/agencySettings";
+import { getActorFromRequest, logAuditEvent } from "../lib/audit";
 
 const router = Router();
+
+function startOfWeek(input: Date) {
+  const date = new Date(input);
+  const day = date.getUTCDay();
+  const diff = (day + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - diff);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
+
+function weekLabel(input: Date) {
+  return input.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+async function buildAdminAnalytics() {
+  const now = new Date();
+  const analyticsWindowStart = new Date(now);
+  analyticsWindowStart.setUTCDate(analyticsWindowStart.getUTCDate() - 90);
+
+  const weekBuckets = Array.from({ length: 6 }, (_, index) => {
+    const date = startOfWeek(new Date(now.getTime() - (5 - index) * 7 * 24 * 60 * 60 * 1000));
+    return {
+      key: date.toISOString(),
+      date,
+      label: weekLabel(date),
+      visits: 0,
+    };
+  });
+
+  const weekBucketMap = new Map(weekBuckets.map((bucket) => [bucket.key, bucket]));
+
+  const [
+    activePatients,
+    linkedCaregivers,
+    visits,
+    messages,
+    pendingAvailability,
+    pendingVisitRequests,
+  ] = await Promise.all([
+    prisma.user.count({ where: { role: "PATIENT" } }),
+    prisma.caregiverPatientLink.count({ where: { isActive: true } }),
+    prisma.visit.findMany({
+      where: { scheduledAt: { gte: analyticsWindowStart } },
+      select: {
+        id: true,
+        scheduledAt: true,
+        status: true,
+        requestType: true,
+        cancelReason: true,
+      },
+      orderBy: { scheduledAt: "asc" },
+    }),
+    prisma.message.findMany({
+      select: { id: true, createdAt: true, sender: { select: { role: true } } },
+      where: { createdAt: { gte: analyticsWindowStart } },
+    }),
+    prisma.clinicianAvailability.count({ where: { status: "PENDING" } }),
+    prisma.visit.count({
+      where: {
+        status: { in: [VisitStatus.REQUESTED, VisitStatus.RESCHEDULE_REQUESTED] },
+      },
+    }),
+  ]);
+
+  const cancellationReasonCounts = new Map<string, number>();
+  const messageRoleCounts = new Map<string, number>([
+    ["patientCaregiver", 0],
+    ["clinician", 0],
+    ["admin", 0],
+  ]);
+
+  let rescheduledVisits = 0;
+  let cancelledVisits = 0;
+
+  for (const visit of visits) {
+    const bucketKey = startOfWeek(new Date(visit.scheduledAt)).toISOString();
+    const bucket = weekBucketMap.get(bucketKey);
+    if (bucket) bucket.visits += 1;
+
+    if (visit.requestType === "RESCHEDULE" || visit.status === VisitStatus.RESCHEDULE_REQUESTED || visit.status === VisitStatus.RESCHEDULED) {
+      rescheduledVisits += 1;
+    }
+    if (visit.status === VisitStatus.CANCELLED) {
+      cancelledVisits += 1;
+      const key = (visit.cancelReason || "Unspecified").trim() || "Unspecified";
+      cancellationReasonCounts.set(key, (cancellationReasonCounts.get(key) || 0) + 1);
+    }
+  }
+
+  for (const message of messages) {
+    if (message.sender.role === "CLINICIAN") {
+      messageRoleCounts.set("clinician", (messageRoleCounts.get("clinician") || 0) + 1);
+    } else if (message.sender.role === "ADMIN") {
+      messageRoleCounts.set("admin", (messageRoleCounts.get("admin") || 0) + 1);
+    } else {
+      messageRoleCounts.set("patientCaregiver", (messageRoleCounts.get("patientCaregiver") || 0) + 1);
+    }
+  }
+
+  const totalVisits = visits.length || 1;
+  const totalWeeks = weekBuckets.length || 1;
+  const visitsPerWeek = Math.round((visits.length / totalWeeks) * 10) / 10;
+  const rescheduleRate = Math.round((rescheduledVisits / totalVisits) * 1000) / 10;
+  const cancellationRate = Math.round((cancelledVisits / totalVisits) * 1000) / 10;
+
+  return {
+    summary: {
+      activePatients,
+      linkedCaregivers,
+      visitsPerWeek,
+      rescheduleRate,
+      cancellationRate,
+      pendingAvailability,
+      pendingVisitRequests,
+      messagesLast90Days: messages.length,
+    },
+    charts: {
+      visitsByWeek: weekBuckets.map((bucket) => ({
+        label: bucket.label,
+        visits: bucket.visits,
+      })),
+      cancellationReasons: Array.from(cancellationReasonCounts.entries())
+        .map(([reason, count]) => ({ reason, count }))
+        .sort((a, b) => b.count - a.count),
+      messagesByRole: [
+        { role: "Patients & Caregivers", count: messageRoleCounts.get("patientCaregiver") || 0 },
+        { role: "Clinicians", count: messageRoleCounts.get("clinician") || 0 },
+        { role: "Admins", count: messageRoleCounts.get("admin") || 0 },
+      ],
+    },
+    windowDays: 90,
+  };
+}
 
 // TODO: Import admin middleware
 // import { requireRole } from "../middleware/requireRole";
@@ -81,6 +217,17 @@ router.post("/assignments", requireAdmin, async (req: Request, res: Response) =>
   ? await (prisma as any).patientAssignment.update({ where: { id: existing.id }, data: { isActive: activeStatus } })
   : await (prisma as any).patientAssignment.create({ data: { patientId, clinicianId, isActive: activeStatus } });
 
+    const actor = getActorFromRequest(req);
+    await logAuditEvent({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actionType: AuditActionType.ASSIGNMENT_UPDATED,
+      targetType: "PatientAssignment",
+      targetId: assignment.id,
+      description: existing ? "Updated patient-clinician assignment" : "Created patient-clinician assignment",
+      metadata: { patientId, clinicianId, isActive: activeStatus },
+    });
+
     res.json({ assignment });
   } catch (e) {
     console.error("Admin create assignment failed:", e);
@@ -100,6 +247,17 @@ router.patch("/assignments/:id", requireAdmin, async (req: Request, res: Respons
       where: { id },
       data: { isActive },
     });
+
+    const actor = getActorFromRequest(req);
+    await logAuditEvent({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actionType: AuditActionType.ASSIGNMENT_UPDATED,
+      targetType: "PatientAssignment",
+      targetId: assignment.id,
+      description: "Toggled patient-clinician assignment status",
+      metadata: { isActive },
+    });
     res.json({ assignment });
   } catch (e) {
     console.error("Admin update assignment failed:", e);
@@ -111,7 +269,17 @@ router.patch("/assignments/:id", requireAdmin, async (req: Request, res: Respons
 router.delete("/assignments/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-  await (prisma as any).patientAssignment.delete({ where: { id } });
+    const deleted = await (prisma as any).patientAssignment.delete({ where: { id } });
+    const actor = getActorFromRequest(req);
+    await logAuditEvent({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actionType: AuditActionType.ASSIGNMENT_UPDATED,
+      targetType: "PatientAssignment",
+      targetId: deleted.id,
+      description: "Removed patient-clinician assignment",
+      metadata: { patientId: deleted.patientId, clinicianId: deleted.clinicianId },
+    });
     res.json({ ok: true });
   } catch (e) {
     console.error("Admin delete assignment failed:", e);
@@ -233,16 +401,158 @@ router.delete("/users/:id", requireAdmin, async (_req: Request, res: Response) =
 // GET /api/admin/stats
 // Get system statistics (admin only)
 router.get("/stats", requireAdmin, async (_req: Request, res: Response) => {
-  // TODO: Implement system statistics
-  // TODO: Return user counts, message counts, system health, etc.
-  res.json({ message: "Get system stats - Implementation coming soon" });
+  try {
+    const analytics = await buildAdminAnalytics();
+    res.json({ summary: analytics.summary, windowDays: analytics.windowDays });
+  } catch (e) {
+    console.error("Admin get stats failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 // GET /api/admin/analytics
 // Get analytics data (admin only)
 router.get("/analytics", requireAdmin, async (_req: Request, res: Response) => {
-  // TODO: Implement analytics endpoint
-  res.json({ message: "Get analytics - Implementation coming soon" });
+  try {
+    const analytics = await buildAdminAnalytics();
+    res.json(analytics);
+  } catch (e) {
+    console.error("Admin get analytics failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/admin/settings/public
+router.get("/settings/public", async (_req: Request, res: Response) => {
+  try {
+    const settings = await getAgencySettings();
+    res.json({ settings });
+  } catch (e) {
+    console.error("Public settings fetch failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/admin/settings
+router.get("/settings", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const settings = await getAgencySettings();
+    res.json({ settings });
+  } catch (e) {
+    console.error("Admin get settings failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PUT /api/admin/settings
+router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const actor = getActorFromRequest(req);
+    const {
+      portalName,
+      logoUrl,
+      primaryColor,
+      supportEmail,
+      supportPhone,
+      supportName,
+      supportHours,
+    } = req.body || {};
+
+    const settings = await prisma.agencySettings.upsert({
+      where: { id: "default" },
+      update: {
+        portalName: String(portalName || "MediHealth").trim() || "MediHealth",
+        logoUrl: logoUrl ? String(logoUrl).trim() : null,
+        primaryColor: String(primaryColor || "#6E5B9A").trim() || "#6E5B9A",
+        supportEmail: supportEmail ? String(supportEmail).trim() : null,
+        supportPhone: supportPhone ? String(supportPhone).trim() : null,
+        supportName: supportName ? String(supportName).trim() : null,
+        supportHours: supportHours ? String(supportHours).trim() : null,
+      },
+      create: {
+        id: "default",
+        portalName: String(portalName || "MediHealth").trim() || "MediHealth",
+        logoUrl: logoUrl ? String(logoUrl).trim() : null,
+        primaryColor: String(primaryColor || "#6E5B9A").trim() || "#6E5B9A",
+        supportEmail: supportEmail ? String(supportEmail).trim() : null,
+        supportPhone: supportPhone ? String(supportPhone).trim() : null,
+        supportName: supportName ? String(supportName).trim() : null,
+        supportHours: supportHours ? String(supportHours).trim() : null,
+      },
+    });
+
+    await logAuditEvent({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actionType: AuditActionType.SETTINGS_UPDATED,
+      targetType: "AgencySettings",
+      targetId: settings.id,
+      description: "Updated agency branding and support settings",
+      metadata: {
+        portalName: settings.portalName,
+        primaryColor: settings.primaryColor,
+        supportEmail: settings.supportEmail,
+        supportPhone: settings.supportPhone,
+      },
+    });
+
+    res.json({ settings });
+  } catch (e) {
+    console.error("Admin update settings failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/admin/audit-logs
+router.get("/audit-logs", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { actionType, actorRole, search, limit } = req.query;
+    const take = Math.min(Math.max(Number(limit) || 100, 1), 250);
+
+    const where: any = {};
+    if (actionType && typeof actionType === "string") {
+      where.actionType = actionType.toUpperCase();
+    }
+    if (actorRole && typeof actorRole === "string") {
+      where.actorRole = actorRole.toUpperCase();
+    }
+    if (search && typeof search === "string" && search.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { description: { contains: term, mode: "insensitive" } },
+        { targetType: { contains: term, mode: "insensitive" } },
+        { targetId: { contains: term, mode: "insensitive" } },
+        {
+          actor: {
+            OR: [
+              { username: { contains: term, mode: "insensitive" } },
+              { email: { contains: term, mode: "insensitive" } },
+            ],
+          },
+        },
+      ];
+    }
+
+    const logs = await prisma.auditLog.findMany({
+      where,
+      include: {
+        actor: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+
+    res.json({ logs });
+  } catch (e) {
+    console.error("Admin get audit logs failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 
@@ -363,4 +673,3 @@ router.get("/messages", requireAdmin, async (req: Request, res: Response) => {
 });
 
 export default router;
-

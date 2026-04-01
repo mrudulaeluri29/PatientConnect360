@@ -73,6 +73,54 @@ model User {
   usedInvitations          CaregiverInvitation[]   @relation("CaregiverInvitationsUsed")
   caregiverLinks           CaregiverPatientLink[]  @relation("CaregiverLinks")
   patientCaregiverLinks    CaregiverPatientLink[]  @relation("PatientCaregiverLinks")
+  auditLogs                AuditLog[]              @relation("AuditActor")
+}
+
+enum AuditActionType {
+  LOGIN
+  APPOINTMENT_APPROVED
+  APPOINTMENT_REJECTED
+  APPOINTMENT_CREATED
+  APPOINTMENT_CANCELLED
+  MED_CREATED
+  MED_CHANGED
+  MED_REMOVED
+  CAREGIVER_LINK_UPDATED
+  ASSIGNMENT_UPDATED
+  AVAILABILITY_REVIEWED
+  SETTINGS_UPDATED
+}
+
+model AgencySettings {
+  id             String   @id @default("default")
+  portalName     String   @default("MediHealth")
+  logoUrl        String?
+  primaryColor   String   @default("#6E5B9A")
+  supportEmail   String?
+  supportPhone   String?
+  supportName    String?
+  supportHours   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String          @id @default(cuid())
+  actorId     String?
+  actorRole   Role?
+  actionType  AuditActionType
+  targetType  String?
+  targetId    String?
+  description String?
+  metadata    Json?
+  createdAt   DateTime        @default(now())
+
+  actor       User?           @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([actionType])
+  @@index([createdAt])
+  @@index([targetType, targetId])
 }
 
 // Patient-specific profile information

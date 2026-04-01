@@ -2,12 +2,8 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
 import { requireAdmin } from "../middleware/requireRole";
-import { VisitRequestType, VisitStatus, VisitType } from "@prisma/client";
-import {
-  dayKeyInTimeZone,
-  getAvailabilityTimeZone,
-  wallClockMinutesInTimeZone,
-} from "../availabilityTime";
+import { AuditActionType, VisitRequestType, VisitStatus, VisitType } from "@prisma/client";
+import { logAuditEvent } from "../lib/audit";
 
 const router = Router();
 
@@ -85,13 +81,19 @@ function minutesFromTimeString(value: string): number | null {
   return hh * 60 + mm;
 }
 
+function toDayKey(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 async function assertWithinApprovedAvailability(
   clinicianId: string,
   scheduledAt: Date,
   durationMinutes: number
 ): Promise<string | null> {
-  const tz = getAvailabilityTimeZone();
-  const dayKey = dayKeyInTimeZone(scheduledAt, tz);
+  const dayKey = toDayKey(scheduledAt);
   const slot = await prisma.clinicianAvailability.findFirst({
     where: {
       clinicianId,
@@ -114,7 +116,7 @@ async function assertWithinApprovedAvailability(
     return "Clinician availability slot is invalid.";
   }
 
-  const visitStart = wallClockMinutesInTimeZone(scheduledAt, tz);
+  const visitStart = scheduledAt.getUTCHours() * 60 + scheduledAt.getUTCMinutes();
   const visitEnd = visitStart + durationMinutes;
   if (visitStart < start || visitEnd > end) {
     return `Visit must be fully within approved availability (${slot.startTime}-${slot.endTime}).`;
@@ -384,6 +386,21 @@ router.post("/", async (req: Request, res: Response) => {
       select: visitSelect,
     });
 
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.APPOINTMENT_CREATED,
+      targetType: "Visit",
+      targetId: visit.id,
+      description: "Created a visit request",
+      metadata: {
+        patientId,
+        clinicianId,
+        status: visit.status,
+        scheduledAt: visit.scheduledAt,
+      },
+    });
+
     res.status(201).json({ visit });
   } catch (e) {
     console.error("POST /api/visits failed:", e);
@@ -498,6 +515,19 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
         },
         select: visitSelect,
       });
+      await logAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        actionType: AuditActionType.APPOINTMENT_REJECTED,
+        targetType: "Visit",
+        targetId: rejected.id,
+        description: "Rejected appointment request",
+        metadata: {
+          reviewNote: rejected.reviewNote,
+          previousStatus: existing.status,
+          requestType: existing.requestType,
+        },
+      });
       return res.json({ visit: rejected });
     }
 
@@ -536,6 +566,19 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
           select: visitSelect,
         });
       });
+      await logAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        actionType: AuditActionType.APPOINTMENT_APPROVED,
+        targetType: "Visit",
+        targetId: updated.id,
+        description: "Approved reschedule request",
+        metadata: {
+          originalVisitId: existing.originalVisitId,
+          scheduledAt: updated.scheduledAt,
+          durationMinutes: updated.durationMinutes,
+        },
+      });
       return res.json({ visit: updated });
     }
 
@@ -550,6 +593,19 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
         reviewedAt: new Date(),
       },
       select: visitSelect,
+    });
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.APPOINTMENT_APPROVED,
+      targetType: "Visit",
+      targetId: approved.id,
+      description: "Approved appointment request",
+      metadata: {
+        scheduledAt: approved.scheduledAt,
+        durationMinutes: approved.durationMinutes,
+        requestType: approved.requestType,
+      },
     });
     return res.json({ visit: approved });
   } catch (e) {
@@ -714,6 +770,21 @@ router.patch("/:id", async (req: Request, res: Response) => {
       data,
       select: visitSelect,
     });
+
+    if (visit.status === VisitStatus.CANCELLED) {
+      await logAuditEvent({
+        actorId: user.id,
+        actorRole: user.role,
+        actionType: AuditActionType.APPOINTMENT_CANCELLED,
+        targetType: "Visit",
+        targetId: visit.id,
+        description: "Cancelled a visit",
+        metadata: {
+          cancelReason: visit.cancelReason,
+          cancellationRequestedById: visit.cancellationRequestedById,
+        },
+      });
+    }
 
     res.json({ visit });
   } catch (e) {

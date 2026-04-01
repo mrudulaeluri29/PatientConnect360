@@ -2443,3 +2443,65 @@
   }
 }
 
+.section-subtitle {
+  color: #6b7280;
+  margin-top: 0.35rem;
+}
+
+.metric-card-live {
+  min-height: 150px;
+}
+
+.metric-card-live .metric-change {
+  color: #6b7280;
+}
+
+.admin-analytics-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.mini-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.mini-chart-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 2fr auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.mini-chart-label {
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+.mini-chart-track {
+  height: 12px;
+  border-radius: 999px;
+  background: #ede9fe;
+  overflow: hidden;
+}
+
+.mini-chart-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand-primary);
+}
+
+.mini-chart-value {
+  font-size: 0.85rem;
+  color: #111827;
+  font-weight: 700;
+}
+
+.settings-notice {
+  margin: 1rem 0;
+  padding: 0.8rem 1rem;
+  border-radius: 10px;
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
