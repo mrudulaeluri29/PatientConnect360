@@ -24,6 +24,10 @@ const caregiverProgress_1 = __importDefault(require("./routes/caregiverProgress"
 const caregiverAlerts_1 = __importDefault(require("./routes/caregiverAlerts"));
 const caregiverAccess_1 = __importDefault(require("./routes/caregiverAccess"));
 const caregiverSafety_1 = __importDefault(require("./routes/caregiverSafety"));
+// Feature 2 imports
+const notifications_1 = __importDefault(require("./routes/notifications"));
+const messageUpgrades_1 = __importDefault(require("./routes/messageUpgrades"));
+const visitReminders_1 = require("./jobs/visitReminders");
 // Import our Prisma database client
 const db_1 = require("./db");
 // No mailer in use since SendGrid was removed
@@ -90,8 +94,14 @@ app.use("/api/caregiver/progress", caregiverProgress_1.default);
 app.use("/api/caregiver/alerts", caregiverAlerts_1.default);
 app.use("/api/caregiver/access", caregiverAccess_1.default);
 app.use("/api/caregiver/safety", caregiverSafety_1.default);
+// Feature 2 routes
+app.use("/api/notifications", notifications_1.default);
+// Message upgrades merged into existing messages routes to avoid collision
+app.use("/api/messages-v2", messageUpgrades_1.default);
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 // Start server immediately (no email dependency)
 app.listen(PORT, () => {
     console.log(`API running at http://localhost:${PORT}`);
+    // Feature 2: Start the visit reminder background job
+    (0, visitReminders_1.startReminderScheduler)();
 });

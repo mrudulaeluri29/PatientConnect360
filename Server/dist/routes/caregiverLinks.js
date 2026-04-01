@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../db");
 const requireAuth_1 = require("../middleware/requireAuth");
+const client_1 = require("@prisma/client");
+const audit_1 = require("../lib/audit");
 const router = (0, express_1.Router)();
 router.use(requireAuth_1.requireAuth);
 function getUser(req) {
@@ -118,6 +120,21 @@ router.patch("/:id", async (req, res) => {
             data,
             select: linkSelect,
         });
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.id,
+            actorRole: user.role,
+            actionType: client_1.AuditActionType.CAREGIVER_LINK_UPDATED,
+            targetType: "CaregiverPatientLink",
+            targetId: updated.id,
+            description: "Updated caregiver link",
+            metadata: {
+                isPrimary: updated.isPrimary,
+                isActive: updated.isActive,
+                relationship: updated.relationship,
+                patientId: updated.patient.id,
+                caregiverId: updated.caregiver.id,
+            },
+        });
         res.json({ link: updated });
     }
     catch (e) {
@@ -146,6 +163,18 @@ router.delete("/:id", async (req, res) => {
             where: { id: req.params.id },
             data: { isActive: false },
             select: linkSelect,
+        });
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.id,
+            actorRole: user.role,
+            actionType: client_1.AuditActionType.CAREGIVER_LINK_UPDATED,
+            targetType: "CaregiverPatientLink",
+            targetId: updated.id,
+            description: "Deactivated caregiver link",
+            metadata: {
+                patientId: updated.patient.id,
+                caregiverId: updated.caregiver.id,
+            },
         });
         res.json({ link: updated });
     }

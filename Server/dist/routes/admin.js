@@ -6,7 +6,126 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../db");
 const requireRole_1 = require("../middleware/requireRole");
+const client_1 = require("@prisma/client");
+const agencySettings_1 = require("../lib/agencySettings");
+const audit_1 = require("../lib/audit");
 const router = (0, express_1.Router)();
+function startOfWeek(input) {
+    const date = new Date(input);
+    const day = date.getUTCDay();
+    const diff = (day + 6) % 7;
+    date.setUTCDate(date.getUTCDate() - diff);
+    date.setUTCHours(0, 0, 0, 0);
+    return date;
+}
+function weekLabel(input) {
+    return input.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+async function buildAdminAnalytics() {
+    const now = new Date();
+    const analyticsWindowStart = new Date(now);
+    analyticsWindowStart.setUTCDate(analyticsWindowStart.getUTCDate() - 90);
+    const weekBuckets = Array.from({ length: 6 }, (_, index) => {
+        const date = startOfWeek(new Date(now.getTime() - (5 - index) * 7 * 24 * 60 * 60 * 1000));
+        return {
+            key: date.toISOString(),
+            date,
+            label: weekLabel(date),
+            visits: 0,
+        };
+    });
+    const weekBucketMap = new Map(weekBuckets.map((bucket) => [bucket.key, bucket]));
+    const [activePatients, linkedCaregivers, visits, messages, pendingAvailability, pendingVisitRequests,] = await Promise.all([
+        db_1.prisma.user.count({ where: { role: "PATIENT" } }),
+        db_1.prisma.caregiverPatientLink.count({ where: { isActive: true } }),
+        db_1.prisma.visit.findMany({
+            where: { scheduledAt: { gte: analyticsWindowStart } },
+            select: {
+                id: true,
+                scheduledAt: true,
+                status: true,
+                requestType: true,
+                cancelReason: true,
+            },
+            orderBy: { scheduledAt: "asc" },
+        }),
+        db_1.prisma.message.findMany({
+            select: { id: true, createdAt: true, sender: { select: { role: true } } },
+            where: { createdAt: { gte: analyticsWindowStart } },
+        }),
+        db_1.prisma.clinicianAvailability.count({ where: { status: "PENDING" } }),
+        db_1.prisma.visit.count({
+            where: {
+                status: { in: [client_1.VisitStatus.REQUESTED, client_1.VisitStatus.RESCHEDULE_REQUESTED] },
+            },
+        }),
+    ]);
+    const cancellationReasonCounts = new Map();
+    const messageRoleCounts = new Map([
+        ["patientCaregiver", 0],
+        ["clinician", 0],
+        ["admin", 0],
+    ]);
+    let rescheduledVisits = 0;
+    let cancelledVisits = 0;
+    for (const visit of visits) {
+        const bucketKey = startOfWeek(new Date(visit.scheduledAt)).toISOString();
+        const bucket = weekBucketMap.get(bucketKey);
+        if (bucket)
+            bucket.visits += 1;
+        if (visit.requestType === "RESCHEDULE" || visit.status === client_1.VisitStatus.RESCHEDULE_REQUESTED || visit.status === client_1.VisitStatus.RESCHEDULED) {
+            rescheduledVisits += 1;
+        }
+        if (visit.status === client_1.VisitStatus.CANCELLED) {
+            cancelledVisits += 1;
+            const key = (visit.cancelReason || "Unspecified").trim() || "Unspecified";
+            cancellationReasonCounts.set(key, (cancellationReasonCounts.get(key) || 0) + 1);
+        }
+    }
+    for (const message of messages) {
+        if (message.sender.role === "CLINICIAN") {
+            messageRoleCounts.set("clinician", (messageRoleCounts.get("clinician") || 0) + 1);
+        }
+        else if (message.sender.role === "ADMIN") {
+            messageRoleCounts.set("admin", (messageRoleCounts.get("admin") || 0) + 1);
+        }
+        else {
+            messageRoleCounts.set("patientCaregiver", (messageRoleCounts.get("patientCaregiver") || 0) + 1);
+        }
+    }
+    const totalVisits = visits.length || 1;
+    const totalWeeks = weekBuckets.length || 1;
+    const visitsPerWeek = Math.round((visits.length / totalWeeks) * 10) / 10;
+    const rescheduleRate = Math.round((rescheduledVisits / totalVisits) * 1000) / 10;
+    const cancellationRate = Math.round((cancelledVisits / totalVisits) * 1000) / 10;
+    return {
+        summary: {
+            activePatients,
+            linkedCaregivers,
+            visitsPerWeek,
+            rescheduleRate,
+            cancellationRate,
+            pendingAvailability,
+            pendingVisitRequests,
+            messagesLast90Days: messages.length,
+        },
+        charts: {
+            visitsByWeek: weekBuckets.map((bucket) => ({
+                label: bucket.label,
+                visits: bucket.visits,
+            })),
+            cancellationReasons: Array.from(cancellationReasonCounts.entries())
+                .map(([reason, count]) => ({ reason, count }))
+                .sort((a, b) => b.count - a.count),
+            messagesByRole: [
+                { role: "Patients & Caregivers", count: messageRoleCounts.get("patientCaregiver") || 0 },
+                { role: "Clinicians", count: messageRoleCounts.get("clinician") || 0 },
+                { role: "Admins", count: messageRoleCounts.get("admin") || 0 },
+            ],
+        },
+        windowDays: 90,
+    };
+}
 // TODO: Import admin middleware
 // import { requireRole } from "../middleware/requireRole";
 // TODO: Import admin controllers
@@ -77,6 +196,16 @@ router.post("/assignments", requireRole_1.requireAdmin, async (req, res) => {
         const assignment = existing
             ? await db_1.prisma.patientAssignment.update({ where: { id: existing.id }, data: { isActive: activeStatus } })
             : await db_1.prisma.patientAssignment.create({ data: { patientId, clinicianId, isActive: activeStatus } });
+        const actor = (0, audit_1.getActorFromRequest)(req);
+        await (0, audit_1.logAuditEvent)({
+            actorId: actor.id,
+            actorRole: actor.role,
+            actionType: client_1.AuditActionType.ASSIGNMENT_UPDATED,
+            targetType: "PatientAssignment",
+            targetId: assignment.id,
+            description: existing ? "Updated patient-clinician assignment" : "Created patient-clinician assignment",
+            metadata: { patientId, clinicianId, isActive: activeStatus },
+        });
         res.json({ assignment });
     }
     catch (e) {
@@ -96,6 +225,16 @@ router.patch("/assignments/:id", requireRole_1.requireAdmin, async (req, res) =>
             where: { id },
             data: { isActive },
         });
+        const actor = (0, audit_1.getActorFromRequest)(req);
+        await (0, audit_1.logAuditEvent)({
+            actorId: actor.id,
+            actorRole: actor.role,
+            actionType: client_1.AuditActionType.ASSIGNMENT_UPDATED,
+            targetType: "PatientAssignment",
+            targetId: assignment.id,
+            description: "Toggled patient-clinician assignment status",
+            metadata: { isActive },
+        });
         res.json({ assignment });
     }
     catch (e) {
@@ -107,7 +246,17 @@ router.patch("/assignments/:id", requireRole_1.requireAdmin, async (req, res) =>
 router.delete("/assignments/:id", requireRole_1.requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        await db_1.prisma.patientAssignment.delete({ where: { id } });
+        const deleted = await db_1.prisma.patientAssignment.delete({ where: { id } });
+        const actor = (0, audit_1.getActorFromRequest)(req);
+        await (0, audit_1.logAuditEvent)({
+            actorId: actor.id,
+            actorRole: actor.role,
+            actionType: client_1.AuditActionType.ASSIGNMENT_UPDATED,
+            targetType: "PatientAssignment",
+            targetId: deleted.id,
+            description: "Removed patient-clinician assignment",
+            metadata: { patientId: deleted.patientId, clinicianId: deleted.clinicianId },
+        });
         res.json({ ok: true });
     }
     catch (e) {
@@ -218,15 +367,145 @@ router.delete("/users/:id", requireRole_1.requireAdmin, async (_req, res) => {
 // GET /api/admin/stats
 // Get system statistics (admin only)
 router.get("/stats", requireRole_1.requireAdmin, async (_req, res) => {
-    // TODO: Implement system statistics
-    // TODO: Return user counts, message counts, system health, etc.
-    res.json({ message: "Get system stats - Implementation coming soon" });
+    try {
+        const analytics = await buildAdminAnalytics();
+        res.json({ summary: analytics.summary, windowDays: analytics.windowDays });
+    }
+    catch (e) {
+        console.error("Admin get stats failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
 });
 // GET /api/admin/analytics
 // Get analytics data (admin only)
 router.get("/analytics", requireRole_1.requireAdmin, async (_req, res) => {
-    // TODO: Implement analytics endpoint
-    res.json({ message: "Get analytics - Implementation coming soon" });
+    try {
+        const analytics = await buildAdminAnalytics();
+        res.json(analytics);
+    }
+    catch (e) {
+        console.error("Admin get analytics failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// GET /api/admin/settings/public
+router.get("/settings/public", async (_req, res) => {
+    try {
+        const settings = await (0, agencySettings_1.getAgencySettings)();
+        res.json({ settings });
+    }
+    catch (e) {
+        console.error("Public settings fetch failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// GET /api/admin/settings
+router.get("/settings", requireRole_1.requireAdmin, async (_req, res) => {
+    try {
+        const settings = await (0, agencySettings_1.getAgencySettings)();
+        res.json({ settings });
+    }
+    catch (e) {
+        console.error("Admin get settings failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// PUT /api/admin/settings
+router.put("/settings", requireRole_1.requireAdmin, async (req, res) => {
+    try {
+        const actor = (0, audit_1.getActorFromRequest)(req);
+        const { portalName, logoUrl, primaryColor, supportEmail, supportPhone, supportName, supportHours, } = req.body || {};
+        const settings = await db_1.prisma.agencySettings.upsert({
+            where: { id: "default" },
+            update: {
+                portalName: String(portalName || "MediHealth").trim() || "MediHealth",
+                logoUrl: logoUrl ? String(logoUrl).trim() : null,
+                primaryColor: String(primaryColor || "#6E5B9A").trim() || "#6E5B9A",
+                supportEmail: supportEmail ? String(supportEmail).trim() : null,
+                supportPhone: supportPhone ? String(supportPhone).trim() : null,
+                supportName: supportName ? String(supportName).trim() : null,
+                supportHours: supportHours ? String(supportHours).trim() : null,
+            },
+            create: {
+                id: "default",
+                portalName: String(portalName || "MediHealth").trim() || "MediHealth",
+                logoUrl: logoUrl ? String(logoUrl).trim() : null,
+                primaryColor: String(primaryColor || "#6E5B9A").trim() || "#6E5B9A",
+                supportEmail: supportEmail ? String(supportEmail).trim() : null,
+                supportPhone: supportPhone ? String(supportPhone).trim() : null,
+                supportName: supportName ? String(supportName).trim() : null,
+                supportHours: supportHours ? String(supportHours).trim() : null,
+            },
+        });
+        await (0, audit_1.logAuditEvent)({
+            actorId: actor.id,
+            actorRole: actor.role,
+            actionType: client_1.AuditActionType.SETTINGS_UPDATED,
+            targetType: "AgencySettings",
+            targetId: settings.id,
+            description: "Updated agency branding and support settings",
+            metadata: {
+                portalName: settings.portalName,
+                primaryColor: settings.primaryColor,
+                supportEmail: settings.supportEmail,
+                supportPhone: settings.supportPhone,
+            },
+        });
+        res.json({ settings });
+    }
+    catch (e) {
+        console.error("Admin update settings failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// GET /api/admin/audit-logs
+router.get("/audit-logs", requireRole_1.requireAdmin, async (req, res) => {
+    try {
+        const { actionType, actorRole, search, limit } = req.query;
+        const take = Math.min(Math.max(Number(limit) || 100, 1), 250);
+        const where = {};
+        if (actionType && typeof actionType === "string") {
+            where.actionType = actionType.toUpperCase();
+        }
+        if (actorRole && typeof actorRole === "string") {
+            where.actorRole = actorRole.toUpperCase();
+        }
+        if (search && typeof search === "string" && search.trim()) {
+            const term = search.trim();
+            where.OR = [
+                { description: { contains: term, mode: "insensitive" } },
+                { targetType: { contains: term, mode: "insensitive" } },
+                { targetId: { contains: term, mode: "insensitive" } },
+                {
+                    actor: {
+                        OR: [
+                            { username: { contains: term, mode: "insensitive" } },
+                            { email: { contains: term, mode: "insensitive" } },
+                        ],
+                    },
+                },
+            ];
+        }
+        const logs = await db_1.prisma.auditLog.findMany({
+            where,
+            include: {
+                actor: {
+                    select: {
+                        id: true,
+                        username: true,
+                        email: true,
+                    },
+                },
+            },
+            orderBy: { createdAt: "desc" },
+            take,
+        });
+        res.json({ logs });
+    }
+    catch (e) {
+        console.error("Admin get audit logs failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
 });
 // GET /api/admin/messages
 // Get all messages with filtering (admin only)

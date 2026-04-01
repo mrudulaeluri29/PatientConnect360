@@ -9,14 +9,19 @@ const express_1 = require("express");
 const db_1 = require("./db");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const client_1 = require("@prisma/client");
 const twilio_1 = require("./twilio");
+const audit_1 = require("./lib/audit");
 //express router 
 const router = (0, express_1.Router)();
 const COOKIE_NAME = "auth";
 // Create a JWT and set it in an httpOnly cookie
-function setAuthCookie(res, userId, role) {
+// Feature 2 (B7): rememberMe flag extends expiry from 7d to 30d
+function setAuthCookie(res, userId, role, rememberMe = false) {
+    const expiresIn = rememberMe ? "30d" : "7d";
+    const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
     const token = jsonwebtoken_1.default.sign({ uid: userId, role }, process.env.JWT_SECRET || "dev_secret", {
-        expiresIn: "7d",
+        expiresIn,
     });
     const isProduction = process.env.NODE_ENV === "production";
     // Cross-site auth cookie support for frontend on a different domain.
@@ -25,7 +30,7 @@ function setAuthCookie(res, userId, role) {
         httpOnly: true,
         sameSite: cookieSameSite,
         secure: isProduction,
-        maxAge: 7 * 24 * 60 * 60 * 1000
+        maxAge,
     });
 }
 // POST /api/auth/register
@@ -359,7 +364,7 @@ router.post("/verify-otp", async (req, res) => {
     }
 });
 // POST /api/auth/login
-// Body: { emailOrUsername, password }
+// Body: { emailOrUsername, password, rememberMe? }
 // helper that creates a default admin account if none exist.
 // credentials are pulled from env vars (used by the createAdmin script),
 // or fall back to an obvious development account.  This function returns
@@ -394,7 +399,7 @@ async function ensureAdminExists() {
 }
 router.post("/login", async (req, res) => {
     try {
-        const { emailOrUsername, password } = req.body || {};
+        const { emailOrUsername, password, rememberMe } = req.body || {};
         if (!emailOrUsername || !password) {
             return res.status(400).json({ error: "emailOrUsername and password are required" });
         }
@@ -445,11 +450,19 @@ router.post("/login", async (req, res) => {
                     lastFailedAt: null
                 }
             });
+            // Log audit event for successful login
+            await (0, audit_1.logAuditEvent)({
+                actorId: user.id,
+                actorRole: user.role,
+                actionType: client_1.AuditActionType.LOGIN,
+                description: `User ${user.username} logged in successfully`,
+            });
         }
         catch (e) {
             console.error("Failed to update login metadata:", e);
         }
-        setAuthCookie(res, user.id, user.role);
+        // Feature 2 (B7): pass rememberMe flag to extend cookie/JWT expiry
+        setAuthCookie(res, user.id, user.role, Boolean(rememberMe));
         res.json({ user: { id: user.id, email: user.email, username: user.username, role: user.role } });
     }
     catch (e) {

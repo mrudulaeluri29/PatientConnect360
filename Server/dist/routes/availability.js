@@ -5,6 +5,7 @@ const db_1 = require("../db");
 const requireAuth_1 = require("../middleware/requireAuth");
 const requireRole_1 = require("../middleware/requireRole");
 const client_1 = require("@prisma/client");
+const audit_1 = require("../lib/audit");
 const router = (0, express_1.Router)();
 router.use(requireAuth_1.requireAuth);
 // ─── Shared select shape ────────────────────────────────────────────────────
@@ -316,6 +317,19 @@ router.patch("/:id/review", requireRole_1.requireAdmin, async (req, res) => {
                 reviewedAt: new Date(),
             },
             select: availabilitySelect,
+        });
+        await (0, audit_1.logAuditEvent)({
+            actorId: admin.id,
+            actorRole: admin.role,
+            actionType: client_1.AuditActionType.AVAILABILITY_REVIEWED,
+            targetType: "ClinicianAvailability",
+            targetId: availability.id,
+            description: "Reviewed clinician availability",
+            metadata: {
+                status: availability.status,
+                reviewNote: availability.reviewNote,
+                clinicianId: availability.clinician.id,
+            },
         });
         res.json({ availability });
     }
