@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
+import { useAgencyBranding } from "../branding/AgencyBranding";
 import "./Homepage.css";
 
 export default function Homepage() {
   const [activeSection, setActiveSection] = useState("");
+  const { settings } = useAgencyBranding();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -52,7 +54,10 @@ export default function Homepage() {
       <nav className="homepage-nav">
         <div className="nav-container">
           <div className="nav-logo">
-            <span className="logo-text">MediHealth</span>
+            {settings.logoUrl ? (
+              <img src={settings.logoUrl} alt={settings.portalName} style={{ width: 40, height: 40, objectFit: "contain", borderRadius: 10 }} />
+            ) : null}
+            <span className="logo-text">{settings.portalName}</span>
           </div>
           <div className="nav-links">
             <a 
@@ -78,8 +83,8 @@ export default function Homepage() {
             </a>
           </div>
           <div className="nav-actions">
-            <Link to="/login" className="btn-login">Login</Link>
-            <Link to="/register" className="btn-signup">Sign Up</Link>
+            <Link to="/login" className="btn-login" style={{ color: settings.primaryColor, borderColor: settings.primaryColor }}>Login</Link>
+            <Link to="/register" className="btn-signup" style={{ backgroundColor: settings.primaryColor }}>Sign Up</Link>
           </div>
         </div>
       </nav>
@@ -92,9 +97,9 @@ export default function Homepage() {
         </div>
         <div className="hero-content">
           <h1 className="hero-title">
-            <span className="title-line-1">YOUR HEALTH,</span>
-            <span className="title-line-2">CONNECTED</span>
-            <span className="title-line-3">YOUR CARE, SIMPLIFIED</span>
+              <span className="title-line-1">YOUR HEALTH,</span>
+              <span className="title-line-2">CONNECTED</span>
+              <span className="title-line-3">YOUR CARE, SIMPLIFIED</span>
           </h1>
           <p className="hero-subtitle">
             Seamlessly connect with your healthcare team, manage appointments, 
@@ -176,7 +181,7 @@ export default function Homepage() {
             <div className="about-text">
               <h2>Built for modern healthcare</h2>
               <p>
-                MediHealth is designed to bridge the gap between patients 
+                {settings.portalName} is designed to bridge the gap between patients 
                 and their healthcare providers. Whether you're a patient managing 
                 your health, a caregiver supporting a loved one, a clinician 
                 providing care, or an administrator overseeing operations—we've 
@@ -205,7 +210,10 @@ export default function Homepage() {
       <section id="support" className="support-section">
         <div className="support-container">
           <h2>Need Help?</h2>
-          <p>Our support team is here to assist you</p>
+          <p>{settings.supportName || "Our support team"} is here to assist you</p>
+          <p>
+            {[settings.supportEmail, settings.supportPhone, settings.supportHours].filter(Boolean).join(" • ") || "Contact information will appear here once configured."}
+          </p>
         </div>
       </section>
 
@@ -213,8 +221,8 @@ export default function Homepage() {
       <section className="cta-section">
         <div className="cta-container">
           <h2>Ready to take control of your health?</h2>
-          <p>Join thousands of patients and healthcare providers using MediHealth</p>
-          <Link to="/register" className="btn-primary large">
+          <p>Join thousands of patients and healthcare providers using {settings.portalName}</p>
+          <Link to="/register" className="btn-primary large" style={{ backgroundColor: settings.primaryColor }}>
             Get Started Today
           </Link>
         </div>
@@ -224,7 +232,7 @@ export default function Homepage() {
       <footer className="homepage-footer">
         <div className="footer-container">
           <div className="footer-logo">
-            <span className="logo-text">MediHealth</span>
+            <span className="logo-text">{settings.portalName}</span>
           </div>
           <div className="footer-links">
             <div className="footer-column">
@@ -248,7 +256,7 @@ export default function Homepage() {
           </div>
         </div>
         <div className="footer-bottom">
-          <p>&copy; 2024 MediHealth. All rights reserved.</p>
+          <p>&copy; 2024 {settings.portalName}. All rights reserved.</p>
         </div>
       </footer>
     </div>

@@ -1,6 +1,8 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
+import { AuditActionType } from "@prisma/client";
+import { logAuditEvent } from "../lib/audit";
 
 const router = Router();
 
@@ -129,6 +131,22 @@ router.patch("/:id", async (req: Request, res: Response) => {
       select: linkSelect,
     });
 
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.CAREGIVER_LINK_UPDATED,
+      targetType: "CaregiverPatientLink",
+      targetId: updated.id,
+      description: "Updated caregiver link",
+      metadata: {
+        isPrimary: updated.isPrimary,
+        isActive: updated.isActive,
+        relationship: updated.relationship,
+        patientId: updated.patient.id,
+        caregiverId: updated.caregiver.id,
+      },
+    });
+
     res.json({ link: updated });
   } catch (e) {
     console.error("update caregiver link error:", e);
@@ -161,6 +179,19 @@ router.delete("/:id", async (req: Request, res: Response) => {
       where: { id: req.params.id },
       data: { isActive: false },
       select: linkSelect,
+    });
+
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.CAREGIVER_LINK_UPDATED,
+      targetType: "CaregiverPatientLink",
+      targetId: updated.id,
+      description: "Deactivated caregiver link",
+      metadata: {
+        patientId: updated.patient.id,
+        caregiverId: updated.caregiver.id,
+      },
     });
 
     res.json({ link: updated });

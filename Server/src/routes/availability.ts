@@ -2,7 +2,8 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
 import { requireAdmin } from "../middleware/requireRole";
-import { AvailabilityStatus } from "@prisma/client";
+import { AuditActionType, AvailabilityStatus } from "@prisma/client";
+import { logAuditEvent } from "../lib/audit";
 
 const router = Router();
 
@@ -344,6 +345,20 @@ router.patch("/:id/review", requireAdmin, async (req: Request, res: Response) =>
         reviewedAt: new Date(),
       },
       select: availabilitySelect,
+    });
+
+    await logAuditEvent({
+      actorId: admin.id,
+      actorRole: admin.role,
+      actionType: AuditActionType.AVAILABILITY_REVIEWED,
+      targetType: "ClinicianAvailability",
+      targetId: availability.id,
+      description: "Reviewed clinician availability",
+      metadata: {
+        status: availability.status,
+        reviewNote: availability.reviewNote,
+        clinicianId: availability.clinician.id,
+      },
     });
 
     res.json({ availability });

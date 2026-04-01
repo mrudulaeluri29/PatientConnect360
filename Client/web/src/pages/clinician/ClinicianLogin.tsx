@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../../auth/AuthContext";
+import { useAgencyBranding } from "../../branding/AgencyBranding";
 import "../Login.css";
 
 export default function ClinicianLogin() {
@@ -11,6 +12,7 @@ export default function ClinicianLogin() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { settings } = useAgencyBranding();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,10 +42,13 @@ export default function ClinicianLogin() {
     <div className="login-page">
       <div className="login-container">
         <div className="login-left">
-          <div className="login-branding">
-            <div className="brand-logo">
-              <span className="logo-text">MediHealth</span>
-            </div>
+            <div className="login-branding">
+              <div className="brand-logo">
+                {settings.logoUrl ? (
+                  <img src={settings.logoUrl} alt={settings.portalName} style={{ width: 42, height: 42, objectFit: "contain", borderRadius: 10 }} />
+                ) : null}
+                <span className="logo-text">{settings.portalName}</span>
+              </div>
             <h1 className="login-title">Clinician Portal</h1>
             <p className="login-subtitle">
               Access your clinician dashboard to manage patient visits, communications, and care plans
@@ -139,6 +144,7 @@ export default function ClinicianLogin() {
                 type="submit"
                 className="btn-login-submit"
                 disabled={loading}
+                style={{ backgroundColor: settings.primaryColor }}
               >
                 {loading ? "Signing in..." : "Sign In as Clinician"}
               </button>
@@ -153,7 +159,7 @@ export default function ClinicianLogin() {
             </Link>
 
             <div className="role-info" style={{ marginTop: "1.5rem" }}>
-              <Link to="/" style={{ color: "#6E5B9A", textDecoration: "none", fontWeight: "500" }}>
+              <Link to="/" style={{ color: settings.primaryColor, textDecoration: "none", fontWeight: "500" }}>
                 ← Back to Homepage
               </Link>
             </div>

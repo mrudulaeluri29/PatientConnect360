@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
+import { useAgencyBranding } from "../branding/AgencyBranding";
 import "./Login.css";
 
 export default function Login() {
@@ -11,6 +12,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { settings } = useAgencyBranding();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,10 +44,13 @@ export default function Login() {
     <div className="login-page">
       <div className="login-container">
         <div className="login-left">
-          <div className="login-branding">
-            <div className="brand-logo">
-              <span className="logo-text">MediHealth</span>
-            </div>
+            <div className="login-branding">
+              <div className="brand-logo">
+                {settings.logoUrl ? (
+                  <img src={settings.logoUrl} alt={settings.portalName} style={{ width: 42, height: 42, objectFit: "contain", borderRadius: 10 }} />
+                ) : null}
+                <span className="logo-text">{settings.portalName}</span>
+              </div>
             <h1 className="login-title">Welcome Back</h1>
             <p className="login-subtitle">
               Sign in to access your health portal and connect with your care team
@@ -141,6 +146,7 @@ export default function Login() {
                 type="submit"
                 className="btn-login-submit"
                 disabled={loading}
+                style={{ backgroundColor: settings.primaryColor }}
               >
                 {loading ? "Signing in..." : "Sign In"}
               </button>
@@ -154,23 +160,23 @@ export default function Login() {
               <Link to="/register" className="btn-signup-link">
                 Sign Up as Patient
               </Link>
-              <Link to="/register/clinician" className="btn-signup-link" style={{ background: "transparent", border: "2px solid #B29CE4", color: "#6E5B9A" }}>
+              <Link to="/register/clinician" className="btn-signup-link" style={{ background: "transparent", border: `2px solid ${settings.primaryColor}`, color: settings.primaryColor }}>
                 Sign Up as Clinician
               </Link>
-              <Link to="/register/caregiver" className="btn-signup-link" style={{ background: "transparent", border: "2px solid #B29CE4", color: "#6E5B9A" }}>
+              <Link to="/register/caregiver" className="btn-signup-link" style={{ background: "transparent", border: `2px solid ${settings.primaryColor}`, color: settings.primaryColor }}>
                 Sign Up as Caregiver
               </Link>
             </div>
 
             <div className="role-info">
-              <p className="role-info-title">Admin Access:</p>
-              <Link to="/admin/login" style={{ color: "#6E5B9A", textDecoration: "none", fontWeight: "500" }}>
+              <p className="role-info-title">{settings.supportName || "Admin"} Access:</p>
+              <Link to="/admin/login" style={{ color: settings.primaryColor, textDecoration: "none", fontWeight: "500" }}>
                 Admin Login
               </Link>
             </div>
             <div className="role-info" style={{ marginTop: "1rem" }}>
               <p className="role-info-title">Clinician Access:</p>
-              <Link to="/clinician/login" style={{ color: "#6E5B9A", textDecoration: "none", fontWeight: "500" }}>
+              <Link to="/clinician/login" style={{ color: settings.primaryColor, textDecoration: "none", fontWeight: "500" }}>
                 Clinician Login
               </Link>
             </div>

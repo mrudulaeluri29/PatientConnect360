@@ -5,7 +5,9 @@ import { Router, Request, Response } from "express";
 import { prisma } from "./db";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { AuditActionType } from "@prisma/client";
 import { twilioClient, twilioServiceSid } from "./twilio";
+import { logAuditEvent } from "./lib/audit";
 
 //express router 
 const router = Router();
@@ -484,6 +486,15 @@ router.post("/login", async (req: Request, res: Response) => {
     }
 
     setAuthCookie(res, user.id, user.role);
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.LOGIN,
+      targetType: "User",
+      targetId: user.id,
+      description: "User logged into the portal",
+      metadata: { emailOrUsername },
+    });
     res.json({ user: { id: user.id, email: user.email, username: user.username, role: user.role } });
   } catch (e) {
     console.error(e);
