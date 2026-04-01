@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
 import { requireAdmin } from "../middleware/requireRole";
-import { VisitRequestType, VisitStatus, VisitType } from "@prisma/client";
+import { VisitRequestType, VisitStatus, VisitType, AuditActionType } from "@prisma/client";
 import {
   dayKeyInTimeZone,
   getAvailabilityTimeZone,
@@ -16,6 +16,8 @@ import {
   onVisitCancelled,
 } from "../helpers/notificationHelpers";
 import { cancelPendingReminders } from "../jobs/visitReminders";
+// Feature 5 — audit logging
+import { logAuditEvent } from "../lib/audit";
 
 const router = Router();
 
@@ -400,6 +402,16 @@ router.post("/", async (req: Request, res: Response) => {
       onVisitApproved(patientId, user.id, visit.id, clinician.username, scheduledDate);
     }
 
+    // ── Feature 5: Audit log for appointment creation ──
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role as any,
+      actionType: AuditActionType.APPOINTMENT_CREATED,
+      targetType: "Visit",
+      targetId: visit.id,
+      description: `${user.role} created ${createStatus} appointment for patient ${patientId} with clinician ${clinician.username}`,
+    });
+
     res.status(201).json({ visit });
   } catch (e) {
     console.error("POST /api/visits failed:", e);
@@ -527,6 +539,17 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
         reviewNote ?? null
       );
 
+      // ── Feature 5: Audit log for appointment rejection ──
+      await logAuditEvent({
+        actorId: user.id,
+        actorRole: user.role as any,
+        actionType: AuditActionType.APPOINTMENT_REJECTED,
+        targetType: "Visit",
+        targetId: existing.id,
+        description: `Admin rejected appointment request for patient ${existing.patient.id}`,
+        metadata: { reviewNote: reviewNote ?? null },
+      });
+
       return res.json({ visit: rejected });
     }
 
@@ -601,6 +624,17 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
       existing.clinician.username,
       nextScheduledAt
     );
+
+    // ── Feature 5: Audit log for appointment approval ──
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role as any,
+      actionType: AuditActionType.APPOINTMENT_APPROVED,
+      targetType: "Visit",
+      targetId: existing.id,
+      description: `Admin approved appointment for patient ${existing.patient.id}`,
+      metadata: { scheduledAt: nextScheduledAt.toISOString() },
+    });
 
     return res.json({ visit: approved });
   } catch (e) {
@@ -781,6 +815,17 @@ router.patch("/:id", async (req: Request, res: Response) => {
         cancellingUser?.username || "A user"
       );
       cancelPendingReminders(existing.id);
+
+      // ── Feature 5: Audit log for appointment cancellation ──
+      await logAuditEvent({
+        actorId: user.id,
+        actorRole: user.role as any,
+        actionType: AuditActionType.APPOINTMENT_CANCELLED,
+        targetType: "Visit",
+        targetId: existing.id,
+        description: `${user.role} cancelled appointment`,
+        metadata: { cancelReason: data.cancelReason || null },
+      });
     }
 
     res.json({ visit });

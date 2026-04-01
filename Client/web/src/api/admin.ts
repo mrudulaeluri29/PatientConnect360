@@ -49,6 +49,16 @@ export type AuditLogRecord = {
   } | null;
 };
 
+export type DailyAnalyticsData = {
+  date: string;
+  loginBasedDAU: number;
+  activityBasedDAU: number;
+  appointmentsApproved: number;
+  appointmentsFulfilled: number;
+  appointmentsCancelled: number;
+  appointmentsRescheduled: number;
+};
+
 export async function getAdminStats() {
   const res = await api.get("/api/admin/stats");
   return res.data as { summary: AdminSummary; windowDays: number };
@@ -78,4 +88,12 @@ export async function getAuditLogs(params?: {
 }) {
   const res = await api.get("/api/admin/audit-logs", { params });
   return res.data.logs as AuditLogRecord[];
+}
+
+export async function getDailyAnalytics(from?: string, to?: string) {
+  const params: any = {};
+  if (from) params.from = from;
+  if (to) params.to = to;
+  const res = await api.get("/api/admin/daily-analytics", { params });
+  return res.data as { dailyAnalytics: DailyAnalyticsData[]; from: string; to: string };
 }

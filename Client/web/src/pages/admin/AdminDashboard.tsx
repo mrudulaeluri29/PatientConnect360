@@ -3,6 +3,7 @@ import { useAuth } from "../../auth/AuthContext";
 import NotificationBell from "../../components/NotificationBell";
 import { api } from "../../lib/axios";
 import { useAgencyBranding } from "../../branding/AgencyBranding";
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import "./AdminDashboard.css";
 import {
   getAllAvailability,
@@ -24,9 +25,11 @@ import {
   getAgencySettings,
   getAuditLogs,
   updateAgencySettings,
+  getDailyAnalytics,
   type AdminAnalytics,
   type AgencySettings,
   type AuditLogRecord,
+  type DailyAnalyticsData,
 } from "../../api/admin";
 
 export default function AdminDashboard() {
@@ -217,6 +220,7 @@ function SimpleBarChart({
 function AdminOverview() {
   const [stats, setStats] = useState<{ summary: AdminAnalytics["summary"]; windowDays: number } | null>(null);
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
+  const [dailyAnalytics, setDailyAnalytics] = useState<DailyAnalyticsData[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -224,15 +228,21 @@ function AdminOverview() {
     async function load() {
       setLoading(true);
       try {
-        const [statsData, analyticsData] = await Promise.all([getAdminStats(), getAdminAnalytics()]);
+        const [statsData, analyticsData, dailyData] = await Promise.all([
+          getAdminStats(),
+          getAdminAnalytics(),
+          getDailyAnalytics(), // Last 30 days by default
+        ]);
         if (!mounted) return;
         setStats(statsData);
         setAnalytics(analyticsData);
+        setDailyAnalytics(dailyData.dailyAnalytics);
       } catch (error) {
         if (!mounted) return;
         console.error("Failed to load admin overview:", error);
         setStats(null);
         setAnalytics(null);
+        setDailyAnalytics(null);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -274,6 +284,57 @@ function AdminOverview() {
         <SimpleBarChart title="Messages By Role" data={analytics.charts.messagesByRole} dataKey="count" labelKey="role" />
         <SimpleBarChart title="Cancellation Reasons" data={analytics.charts.cancellationReasons} dataKey="count" labelKey="reason" />
       </div>
+
+      {/* Feature 5: DAU and Daily Appointment Charts */}
+      {dailyAnalytics && dailyAnalytics.length > 0 && (
+        <>
+          <div className="section-header" style={{ marginTop: "2rem" }}>
+            <h3 className="section-title">Daily Active Users (Last 30 Days)</h3>
+          </div>
+          <div className="report-card" style={{ padding: "1.5rem" }}>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={dailyAnalytics}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="date" 
+                  tickFormatter={(date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                />
+                <YAxis />
+                <Tooltip 
+                  labelFormatter={(date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                />
+                <Legend />
+                <Line type="monotone" dataKey="loginBasedDAU" stroke="#8884d8" name="Login-based DAU" strokeWidth={2} />
+                <Line type="monotone" dataKey="activityBasedDAU" stroke="#82ca9d" name="Activity-based DAU" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="section-header" style={{ marginTop: "2rem" }}>
+            <h3 className="section-title">Daily Appointment Outcomes (Last 30 Days)</h3>
+          </div>
+          <div className="report-card" style={{ padding: "1.5rem" }}>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={dailyAnalytics}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="date" 
+                  tickFormatter={(date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                />
+                <YAxis />
+                <Tooltip 
+                  labelFormatter={(date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                />
+                <Legend />
+                <Bar dataKey="appointmentsApproved" stackId="a" fill="#4ade80" name="Approved" />
+                <Bar dataKey="appointmentsFulfilled" stackId="a" fill="#3b82f6" name="Fulfilled" />
+                <Bar dataKey="appointmentsCancelled" stackId="a" fill="#ef4444" name="Cancelled" />
+                <Bar dataKey="appointmentsRescheduled" stackId="a" fill="#f59e0b" name="Rescheduled" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
     </div>
   );
 }
