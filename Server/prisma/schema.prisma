@@ -82,6 +82,10 @@ model User {
   
   // Audit logs
   auditLogs                AuditLog[]              @relation("AuditActor")
+  
+  // Feature 3: Family feedback
+  patientFeedback          FamilyFeedback[]        @relation("PatientFeedback")
+  submittedFeedback        FamilyFeedback[]        @relation("SubmittedFeedback")
 }
 
 enum AuditActionType {
@@ -569,6 +573,15 @@ enum NotificationType {
   MESSAGE_RECEIVED
 }
 
+// ─────────────────────────────────────────────
+// FEATURE 3: FAMILY / MPOA FEEDBACK
+// ─────────────────────────────────────────────
+
+enum FamilyFeedbackEventType {
+  VISIT_COMPLETED
+  MEDICATION_CHANGED
+}
+
 enum ReminderChannel {
   IN_APP_ONLY
   EMAIL
@@ -647,4 +660,29 @@ model ConversationStar {
 
   @@unique([conversationId, userId])
   @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// FEATURE 3: FAMILY / MPOA FEEDBACK
+// ─────────────────────────────────────────────
+
+// Anonymous feedback from family/MPOA after key events
+model FamilyFeedback {
+  id                   String                   @id @default(cuid())
+  patientId            String
+  submittedByUserId    String                   // Caregiver/MPOA user ID (stored for audit, not shown to clinicians)
+  eventType            FamilyFeedbackEventType
+  relatedId            String?                  // visitId or medicationId
+  ratingHelpfulness    Int?                     // 1-5 scale
+  ratingCommunication  Int?                     // 1-5 scale
+  comment              String?                  @db.Text
+  createdAt            DateTime                 @default(now())
+
+  patient              User                     @relation("PatientFeedback", fields: [patientId], references: [id], onDelete: Cascade)
+  submittedBy          User                     @relation("SubmittedFeedback", fields: [submittedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([submittedByUserId])
 }

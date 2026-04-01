@@ -126,6 +126,123 @@ async function buildAdminAnalytics() {
         windowDays: 90,
     };
 }
+// ── Feature 5: Build DAU and Daily Appointment Analytics ──
+async function buildDailyAnalytics(fromDate, toDate) {
+    // Generate date buckets for the range
+    const dayBuckets = [];
+    const currentDate = new Date(fromDate);
+    while (currentDate <= toDate) {
+        dayBuckets.push({
+            date: currentDate.toISOString().split('T')[0],
+            loginBasedDAU: 0,
+            activityBasedDAU: 0,
+            appointmentsApproved: 0,
+            appointmentsFulfilled: 0,
+            appointmentsCancelled: 0,
+            appointmentsRescheduled: 0,
+        });
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+    }
+    // Login-based DAU: count distinct users with lastLogin on each day
+    const usersWithLogins = await db_1.prisma.user.findMany({
+        where: {
+            lastLogin: {
+                gte: fromDate,
+                lte: toDate,
+            },
+        },
+        select: {
+            id: true,
+            lastLogin: true,
+        },
+    });
+    for (const user of usersWithLogins) {
+        if (user.lastLogin) {
+            const dateKey = user.lastLogin.toISOString().split('T')[0];
+            const bucket = dayBuckets.find(b => b.date === dateKey);
+            if (bucket)
+                bucket.loginBasedDAU += 1;
+        }
+    }
+    // Activity-based DAU: count distinct users with audit log activity on each day
+    const auditLogs = await db_1.prisma.auditLog.findMany({
+        where: {
+            createdAt: {
+                gte: fromDate,
+                lte: toDate,
+            },
+            actorId: { not: null },
+        },
+        select: {
+            actorId: true,
+            createdAt: true,
+        },
+    });
+    const activityByDay = new Map();
+    for (const log of auditLogs) {
+        if (log.actorId) {
+            const dateKey = log.createdAt.toISOString().split('T')[0];
+            if (!activityByDay.has(dateKey)) {
+                activityByDay.set(dateKey, new Set());
+            }
+            activityByDay.get(dateKey).add(log.actorId);
+        }
+    }
+    for (const [dateKey, userIds] of activityByDay.entries()) {
+        const bucket = dayBuckets.find(b => b.date === dateKey);
+        if (bucket)
+            bucket.activityBasedDAU = userIds.size;
+    }
+    // Daily appointment outcomes
+    const visits = await db_1.prisma.visit.findMany({
+        where: {
+            OR: [
+                { reviewedAt: { gte: fromDate, lte: toDate } },
+                { completedAt: { gte: fromDate, lte: toDate } },
+                { cancelledAt: { gte: fromDate, lte: toDate } },
+            ],
+        },
+        select: {
+            id: true,
+            status: true,
+            reviewedAt: true,
+            completedAt: true,
+            cancelledAt: true,
+            requestType: true,
+        },
+    });
+    for (const visit of visits) {
+        // Approved/Confirmed on this day
+        if (visit.reviewedAt && visit.status === client_1.VisitStatus.CONFIRMED) {
+            const dateKey = visit.reviewedAt.toISOString().split('T')[0];
+            const bucket = dayBuckets.find(b => b.date === dateKey);
+            if (bucket)
+                bucket.appointmentsApproved += 1;
+        }
+        // Fulfilled/Completed on this day
+        if (visit.completedAt && visit.status === client_1.VisitStatus.COMPLETED) {
+            const dateKey = visit.completedAt.toISOString().split('T')[0];
+            const bucket = dayBuckets.find(b => b.date === dateKey);
+            if (bucket)
+                bucket.appointmentsFulfilled += 1;
+        }
+        // Cancelled on this day
+        if (visit.cancelledAt && visit.status === client_1.VisitStatus.CANCELLED) {
+            const dateKey = visit.cancelledAt.toISOString().split('T')[0];
+            const bucket = dayBuckets.find(b => b.date === dateKey);
+            if (bucket)
+                bucket.appointmentsCancelled += 1;
+        }
+        // Rescheduled on this day
+        if (visit.reviewedAt && visit.status === client_1.VisitStatus.RESCHEDULED) {
+            const dateKey = visit.reviewedAt.toISOString().split('T')[0];
+            const bucket = dayBuckets.find(b => b.date === dateKey);
+            if (bucket)
+                bucket.appointmentsRescheduled += 1;
+        }
+    }
+    return dayBuckets;
+}
 // TODO: Import admin middleware
 // import { requireRole } from "../middleware/requireRole";
 // TODO: Import admin controllers
@@ -385,6 +502,26 @@ router.get("/analytics", requireRole_1.requireAdmin, async (_req, res) => {
     }
     catch (e) {
         console.error("Admin get analytics failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// GET /api/admin/daily-analytics
+// Get DAU and daily appointment analytics (admin only)
+// Query params: from (YYYY-MM-DD), to (YYYY-MM-DD)
+router.get("/daily-analytics", requireRole_1.requireAdmin, async (req, res) => {
+    try {
+        const { from, to } = req.query;
+        // Default to last 30 days if not specified
+        const toDate = to ? new Date(to) : new Date();
+        const fromDate = from ? new Date(from) : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+        // Set to end of day for toDate
+        toDate.setUTCHours(23, 59, 59, 999);
+        fromDate.setUTCHours(0, 0, 0, 0);
+        const dailyData = await buildDailyAnalytics(fromDate, toDate);
+        res.json({ dailyAnalytics: dailyData, from: fromDate, to: toDate });
+    }
+    catch (e) {
+        console.error("Daily analytics failed:", e);
         res.status(500).json({ error: "Server error" });
     }
 });

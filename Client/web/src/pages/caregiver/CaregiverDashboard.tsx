@@ -56,6 +56,7 @@ interface OverviewMed {
   riskLevel: string;
   refillDueDate: string | null;
   status: string;
+  lastChangedAt: string | null;
   patient: { id: string; username: string; patientProfile: { legalName: string } | null };
 }
 
@@ -208,6 +209,9 @@ export default function CaregiverDashboard() {
             <button className={`nav-item ${activeTab === "safety" ? "active" : ""}`} onClick={() => setActiveTab("safety")}>
               Safety
             </button>
+            <button className={`nav-item ${activeTab === "feedback" ? "active" : ""}`} onClick={() => setActiveTab("feedback")}>
+              Feedback
+            </button>
             <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
               Messages
             </button>
@@ -216,9 +220,9 @@ export default function CaregiverDashboard() {
         <div className="cg-header-right">
           <NotificationBell onMessageClick={(view) => setActiveTab(view)} />
           <div className="cg-user-info">
-            <span className="cg-user-name">{user?.username || user?.email || "Caregiver"}</span>
+            <span className="cg-user-name">{user?.username || user?.email || "MPOA/Family"}</span>
             <div className="cg-user-badges">
-              <span className="badge-caregiver">Caregiver</span>
+              <span className="badge-caregiver">MPOA/Family</span>
             </div>
           </div>
           <button className="btn-logout" onClick={handleLogout}>Logout</button>
@@ -233,29 +237,14 @@ export default function CaregiverDashboard() {
         {activeTab === "alerts" && <CaregiverAlerts onNavigate={setActiveTab} />}
         {activeTab === "access" && <CaregiverAccess />}
         {activeTab === "safety" && <CaregiverSafety onNavigate={setActiveTab} />}
+        {activeTab === "feedback" && <CaregiverFeedback />}
         {activeTab === "messages" && <CaregiverMessages />}
       </main>
     </div>
   );
 }
 
-// ─── Placeholder for future tabs ─────────────────────────────────────────────
-
-function PlaceholderTab({ label }: { label: string }) {
-  return (
-    <div className="cg-content">
-      <div className="cg-no-patients" style={{ padding: "3rem" }}>
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" style={{ margin: "0 auto 1rem" }}>
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-          <line x1="3" y1="9" x2="21" y2="9" />
-          <line x1="9" y1="21" x2="9" y2="9" />
-        </svg>
-        <h2>{label}</h2>
-        <p>This section will be available in an upcoming release.</p>
-      </div>
-    </div>
-  );
-}
+// ─── Types for messaging ─────────────────────────────────────────────────────
 
 type AssignedClinician = {
   id: string;
@@ -638,16 +627,50 @@ function CaregiverAlerts({ onNavigate }: { onNavigate: (tab: string) => void }) 
 }
 
 function CaregiverAccess() {
+  const { showToast } = useFeedback();
   const [data, setData] = useState<AccessPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showAddPatient, setShowAddPatient] = useState(false);
+  const [invitationCode, setInvitationCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadAccessData = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/api/caregiver/access");
+      setData(res.data);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    api
-      .get("/api/caregiver/access")
-      .then((res) => setData(res.data))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+    loadAccessData();
   }, []);
+
+  const handleAddPatient = async () => {
+    if (!invitationCode.trim()) {
+      showToast("Please enter an invitation code", "error");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await api.post("/api/caregiver-links/use-code", {
+        code: invitationCode.trim().toUpperCase(),
+      });
+      showToast(res.data.message || "Successfully linked to patient", "success");
+      setShowAddPatient(false);
+      setInvitationCode("");
+      await loadAccessData();
+    } catch (e: any) {
+      showToast(e?.response?.data?.error || "Failed to link to patient", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (loading) return <div className="cg-loading">Loading access settings...</div>;
 
@@ -670,11 +693,14 @@ function CaregiverAccess() {
     <div className="cg-content">
       <div className="cg-section-header">
         <h2 className="cg-section-title">Access &amp; Permissions</h2>
+        <button className="btn-primary" onClick={() => setShowAddPatient(true)}>
+          + Add Patient
+        </button>
       </div>
 
       <div className="cg-access-head">
         <span className={`cg-order-status ${data.role === "PRIMARY_MPOA" ? "ok" : "warning"}`}>
-          {data.role === "PRIMARY_MPOA" ? "Primary MPOA" : "Caregiver"}
+          {data.role === "PRIMARY_MPOA" ? "Primary MPOA" : "MPOA/Family"}
         </span>
         <span className="cg-access-note">
           Access level is role-based and audited for compliance.
@@ -721,6 +747,59 @@ function CaregiverAccess() {
           </div>
         </div>
       </div>
+
+      {showAddPatient && (
+        <div className="modal-overlay" onClick={() => setShowAddPatient(false)}>
+          <div className="modal-content cg-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Add Patient</h3>
+              <button className="modal-close" onClick={() => setShowAddPatient(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: "1rem", color: "#4b5563" }}>
+                Enter the invitation code provided by the patient to link to their account.
+              </p>
+              <div className="form-group">
+                <label>Invitation Code</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={invitationCode}
+                  onChange={(e) => setInvitationCode(e.target.value.toUpperCase())}
+                  placeholder="Enter 8-character code"
+                  maxLength={8}
+                  disabled={submitting}
+                  style={{ textTransform: "uppercase", letterSpacing: "0.1em" }}
+                />
+              </div>
+              <p style={{ marginTop: "0.5rem", color: "#6b7280", fontSize: "0.85rem" }}>
+                The patient can generate an invitation code from their Family tab.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn-secondary"
+                onClick={() => setShowAddPatient(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleAddPatient}
+                disabled={submitting || !invitationCode.trim()}
+              >
+                {submitting ? "Linking..." : "Link to Patient"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -907,6 +986,109 @@ function HomeOverview() {
     );
   }
 
+  // Multi-patient overview: show cards for each patient
+  if (data.patients.length > 1 && !selectedPatientId) {
+    return (
+      <div className="cg-content">
+        <div className="cg-section-header">
+          <h2 className="cg-section-title">MPOA/Family Overview</h2>
+          <p style={{ color: "#6b7280", fontSize: "0.9rem", marginTop: "0.5rem" }}>
+            Select a patient to view their detailed care information
+          </p>
+        </div>
+
+        <div className="cg-patient-cards-grid">
+          {data.patients.map((p) => {
+            const patientVisits = data.upcomingVisits.filter((v) => v.patient.id === p.id);
+            const patientMeds = data.medications.filter((m) => m.patient.id === p.id);
+            const patientAlerts = data.alerts.filter((a) => !a.meta?.patientId || a.meta.patientId === p.id);
+            const nextVisit = patientVisits[0];
+            const highRiskMeds = patientMeds.filter((m) => m.riskLevel === "HIGH_RISK").length;
+            const criticalAlerts = patientAlerts.filter((a) => a.severity === "red").length;
+
+            return (
+              <div
+                key={p.id}
+                className="cg-patient-overview-card"
+                onClick={() => setSelectedPatientId(p.id)}
+              >
+                <div className="cg-patient-card-header">
+                  <div className="cg-patient-card-avatar">{patientInitials(p)}</div>
+                  <div className="cg-patient-card-info">
+                    <h3 className="cg-patient-card-name">{patientDisplayName(p)}</h3>
+                    <span className="cg-patient-card-rel">
+                      {p.relationship || "Caregiver"}
+                      {p.isPrimary && " · Primary MPOA"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="cg-patient-card-stats">
+                  <div className="cg-patient-card-stat">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                    <span>
+                      {nextVisit
+                        ? `Next visit: ${formatDate(nextVisit.scheduledAt)}`
+                        : "No upcoming visits"}
+                    </span>
+                  </div>
+
+                  <div className="cg-patient-card-stat">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2z" />
+                      <line x1="12" y1="8" x2="12" y2="16" />
+                      <line x1="8" y1="12" x2="16" y2="12" />
+                    </svg>
+                    <span>{patientMeds.length} active medications</span>
+                  </div>
+
+                  {criticalAlerts > 0 && (
+                    <div className="cg-patient-card-stat alert">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                      <span style={{ color: "#ef4444", fontWeight: 600 }}>
+                        {criticalAlerts} critical alert{criticalAlerts !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  )}
+
+                  {highRiskMeds > 0 && (
+                    <div className="cg-patient-card-stat alert">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      <span style={{ color: "#f59e0b", fontWeight: 600 }}>
+                        {highRiskMeds} high-risk med{highRiskMeds !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="cg-patient-card-footer">
+                  <button className="cg-btn cg-btn-confirm">View Details</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: "2rem", padding: "1rem", background: "#f9fafb", borderRadius: "8px" }}>
+          <p style={{ color: "#6b7280", fontSize: "0.9rem", margin: 0 }}>
+            <strong>Note:</strong> All patient information is strictly isolated. Selecting a patient shows only their data.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const selectedPatient = data.patients.find((p) => p.id === selectedPatientId) || data.patients[0];
 
   const filteredVisits = data.upcomingVisits.filter((v) => v.patient.id === selectedPatient.id);
@@ -919,6 +1101,15 @@ function HomeOverview() {
     <div className="cg-content">
       <div className="cg-section-header">
         <h2 className="cg-section-title">Home Overview</h2>
+        {data.patients.length > 1 && (
+          <button
+            className="btn-secondary"
+            onClick={() => setSelectedPatientId(null)}
+            style={{ marginLeft: "auto" }}
+          >
+            ← Back to All Patients
+          </button>
+        )}
       </div>
 
       {/* Patient Selector (show if multiple patients) */}
@@ -1640,7 +1831,7 @@ function CaregiverMedications() {
             )}
           </div>
           <p className="cg-order-note">
-            Caregivers can track and acknowledge order updates here. Clinical order edits remain clinician/physician controlled.
+            MPOA/Family members can track and acknowledge order updates here. Clinical order edits remain clinician/physician controlled.
           </p>
         </div>
       </div>
@@ -1803,6 +1994,354 @@ function CaregiverProgress() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// ─── Feedback Tab ────────────────────────────────────────────────────────────
+
+type FeedbackPrompt = {
+  id: string;
+  patientId: string;
+  patientName: string;
+  eventType: "VISIT_COMPLETED" | "MEDICATION_CHANGED";
+  relatedId: string;
+  eventDate: string;
+  dismissed: boolean;
+};
+
+function CaregiverFeedback() {
+  const { showToast } = useFeedback();
+  const [overview, setOverview] = useState<OverviewData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [prompts, setPrompts] = useState<FeedbackPrompt[]>([]);
+  const [showFeedbackModal, setShowFeedbackModal] = useState<FeedbackPrompt | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Feedback form state
+  const [ratingHelpfulness, setRatingHelpfulness] = useState<number>(0);
+  const [ratingCommunication, setRatingCommunication] = useState<number>(0);
+  const [comment, setComment] = useState("");
+
+  useEffect(() => {
+    api
+      .get("/api/caregiver/overview")
+      .then((res) => {
+        setOverview(res.data);
+        if (res.data.patients.length > 0) {
+          setSelectedPatientId(res.data.patients[0].id);
+        }
+        generatePrompts(res.data);
+      })
+      .catch(() => setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const generatePrompts = (data: OverviewData) => {
+    const now = Date.now();
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const dismissed = getDismissedPrompts();
+
+    const newPrompts: FeedbackPrompt[] = [];
+
+    // Generate prompts for completed visits in last 7 days
+    data.upcomingVisits.forEach((v) => {
+      if (v.status === "COMPLETED") {
+        const visitTime = new Date(v.scheduledAt).getTime();
+        if (visitTime >= sevenDaysAgo && visitTime <= now) {
+          const promptId = `visit-${v.id}`;
+          if (!dismissed.includes(promptId)) {
+            newPrompts.push({
+              id: promptId,
+              patientId: v.patient.id,
+              patientName: v.patient.patientProfile?.legalName || v.patient.username,
+              eventType: "VISIT_COMPLETED",
+              relatedId: v.id,
+              eventDate: v.scheduledAt,
+              dismissed: false,
+            });
+          }
+        }
+      }
+    });
+
+    // Generate prompts for recently changed medications
+    data.medications.forEach((m) => {
+      if (m.riskLevel === "CHANGED" && m.lastChangedAt) {
+        const changeTime = new Date(m.lastChangedAt).getTime();
+        if (changeTime >= sevenDaysAgo && changeTime <= now) {
+          const promptId = `med-${m.id}`;
+          if (!dismissed.includes(promptId)) {
+            newPrompts.push({
+              id: promptId,
+              patientId: m.patient.id,
+              patientName: m.patient.patientProfile?.legalName || m.patient.username,
+              eventType: "MEDICATION_CHANGED",
+              relatedId: m.id,
+              eventDate: m.lastChangedAt,
+              dismissed: false,
+            });
+          }
+        }
+      }
+    });
+
+    setPrompts(newPrompts);
+  };
+
+  const getDismissedPrompts = (): string[] => {
+    try {
+      const raw = localStorage.getItem("cg_feedback_dismissed");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const dismissPrompt = (promptId: string) => {
+    const dismissed = getDismissedPrompts();
+    dismissed.push(promptId);
+    localStorage.setItem("cg_feedback_dismissed", JSON.stringify(dismissed));
+    setPrompts((prev) => prev.filter((p) => p.id !== promptId));
+  };
+
+  const openFeedbackModal = (prompt: FeedbackPrompt) => {
+    setShowFeedbackModal(prompt);
+    setRatingHelpfulness(0);
+    setRatingCommunication(0);
+    setComment("");
+  };
+
+  const submitFeedback = async () => {
+    if (!showFeedbackModal) return;
+
+    if (ratingHelpfulness === 0 && ratingCommunication === 0 && !comment.trim()) {
+      showToast("Please provide at least one rating or comment", "error");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api.post("/api/family-feedback", {
+        patientId: showFeedbackModal.patientId,
+        eventType: showFeedbackModal.eventType,
+        relatedId: showFeedbackModal.relatedId,
+        ratingHelpfulness: ratingHelpfulness > 0 ? ratingHelpfulness : null,
+        ratingCommunication: ratingCommunication > 0 ? ratingCommunication : null,
+        comment: comment.trim() || null,
+      });
+
+      showToast("Feedback submitted successfully", "success");
+      dismissPrompt(showFeedbackModal.id);
+      setShowFeedbackModal(null);
+    } catch (e: any) {
+      showToast(e?.response?.data?.error || "Failed to submit feedback", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="cg-loading">Loading feedback...</div>;
+  }
+
+  if (!overview || overview.patients.length === 0) {
+    return (
+      <div className="cg-content">
+        <div className="cg-no-patients">
+          <h2>No Linked Patients</h2>
+          <p>Once you are linked to a patient, you can provide feedback on their care.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const selectedPatient =
+    overview.patients.find((p) => p.id === selectedPatientId) || overview.patients[0];
+
+  const patientPrompts = prompts.filter((p) => p.patientId === selectedPatient.id);
+
+  return (
+    <div className="cg-content">
+      <div className="cg-section-header">
+        <h2 className="cg-section-title">MPOA/Family Feedback</h2>
+        <p style={{ color: "#6b7280", fontSize: "0.9rem", marginTop: "0.5rem" }}>
+          Share your feedback on visits and care changes. Your input helps improve care quality.
+        </p>
+      </div>
+
+      {overview.patients.length > 1 && (
+        <div className="cg-patient-selector">
+          {overview.patients.map((p) => (
+            <div
+              key={p.id}
+              className={`cg-patient-chip ${p.id === selectedPatient.id ? "active" : ""}`}
+              onClick={() => setSelectedPatientId(p.id)}
+            >
+              <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
+              <div className="cg-patient-chip-info">
+                <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
+                <span className="cg-patient-chip-rel">{p.relationship || "Caregiver"}</span>
+              </div>
+              {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="cg-card info">
+        <div className="cg-card-header">
+          <h3 className="cg-card-title">Pending Feedback Requests</h3>
+          <span className="cg-card-count">{patientPrompts.length}</span>
+        </div>
+
+        {patientPrompts.length === 0 ? (
+          <div className="cg-empty">
+            <div className="cg-empty-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="1.5">
+                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+            </div>
+            <p>No pending feedback requests. You're all caught up!</p>
+          </div>
+        ) : (
+          <div className="cg-feedback-prompt-list">
+            {patientPrompts.map((prompt) => (
+              <div key={prompt.id} className="cg-feedback-prompt-item">
+                <div className="cg-feedback-prompt-main">
+                  <h4 className="cg-feedback-prompt-title">
+                    {prompt.eventType === "VISIT_COMPLETED"
+                      ? "Visit Completed"
+                      : "Medication Changed"}
+                  </h4>
+                  <p className="cg-feedback-prompt-desc">
+                    {prompt.eventType === "VISIT_COMPLETED"
+                      ? "How was the recent visit? Share your feedback on communication and helpfulness."
+                      : "A medication was recently changed. How was the communication about this change?"}
+                  </p>
+                  <div className="cg-feedback-prompt-meta">
+                    <span>Patient: {prompt.patientName}</span>
+                    <span>{new Date(prompt.eventDate).toLocaleDateString()}</span>
+                  </div>
+                </div>
+                <div className="cg-feedback-prompt-actions">
+                  <button
+                    className="cg-btn cg-btn-confirm"
+                    onClick={() => openFeedbackModal(prompt)}
+                  >
+                    Provide Feedback
+                  </button>
+                  <button
+                    className="cg-btn cg-btn-resched"
+                    onClick={() => dismissPrompt(prompt.id)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: "1.5rem", padding: "1rem", background: "#f0fdf4", borderRadius: "8px", border: "1px solid #86efac" }}>
+        <p style={{ color: "#166534", fontSize: "0.9rem", margin: 0 }}>
+          <strong>Privacy Note:</strong> Your feedback is anonymous to clinicians. It's used to improve care quality and is visible to administrators for quality assurance.
+        </p>
+      </div>
+
+      {showFeedbackModal && (
+        <div className="modal-overlay" onClick={() => setShowFeedbackModal(null)}>
+          <div className="modal-content cg-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Provide Feedback</h3>
+              <button className="modal-close" onClick={() => setShowFeedbackModal(null)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ marginBottom: "1rem", color: "#4b5563" }}>
+                <strong>Patient:</strong> {showFeedbackModal.patientName}
+                <br />
+                <strong>Event:</strong>{" "}
+                {showFeedbackModal.eventType === "VISIT_COMPLETED"
+                  ? "Visit Completed"
+                  : "Medication Changed"}
+                <br />
+                <strong>Date:</strong> {new Date(showFeedbackModal.eventDate).toLocaleDateString()}
+              </p>
+
+              <div className="form-group">
+                <label>How helpful was this care event? (1-5)</label>
+                <div className="cg-rating-stars">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      className={`cg-star ${ratingHelpfulness >= star ? "active" : ""}`}
+                      onClick={() => setRatingHelpfulness(star)}
+                      disabled={submitting}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>How clear was the communication? (1-5)</label>
+                <div className="cg-rating-stars">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      className={`cg-star ${ratingCommunication >= star ? "active" : ""}`}
+                      onClick={() => setRatingCommunication(star)}
+                      disabled={submitting}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Additional comments (optional)</label>
+                <textarea
+                  className="form-textarea"
+                  rows={4}
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Share any additional thoughts or concerns..."
+                  disabled={submitting}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="btn-secondary"
+                onClick={() => setShowFeedbackModal(null)}
+                disabled={submitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                onClick={submitFeedback}
+                disabled={submitting}
+              >
+                {submitting ? "Submitting..." : "Submit Feedback"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

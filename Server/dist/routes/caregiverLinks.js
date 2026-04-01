@@ -142,6 +142,136 @@ router.patch("/:id", async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 });
+// ─── POST /api/caregiver-links/use-code ──────────────────────────────────────
+// Existing CAREGIVER uses an invitation code to link to a new patient.
+router.post("/use-code", async (req, res) => {
+    try {
+        const user = getUser(req);
+        if (user.role !== "CAREGIVER") {
+            return res.status(403).json({ error: "Only caregivers can use invitation codes" });
+        }
+        const { code } = req.body || {};
+        if (!code?.trim()) {
+            return res.status(400).json({ error: "Invitation code is required" });
+        }
+        // Find and validate invitation
+        const invitation = await db_1.prisma.caregiverInvitation.findUnique({
+            where: { code: code.toUpperCase().trim() },
+            include: {
+                patient: {
+                    select: {
+                        id: true,
+                        username: true,
+                        patientProfile: { select: { legalName: true } },
+                    },
+                },
+            },
+        });
+        if (!invitation) {
+            return res.status(404).json({ error: "Invalid invitation code" });
+        }
+        if (invitation.status !== "PENDING") {
+            return res.status(400).json({ error: `Invitation has been ${invitation.status.toLowerCase()}` });
+        }
+        if (new Date() > invitation.expiresAt) {
+            await db_1.prisma.caregiverInvitation.update({
+                where: { id: invitation.id },
+                data: { status: "EXPIRED" },
+            });
+            return res.status(400).json({ error: "Invitation code has expired" });
+        }
+        // Check if link already exists
+        const existingLink = await db_1.prisma.caregiverPatientLink.findUnique({
+            where: {
+                caregiverId_patientId: {
+                    caregiverId: user.id,
+                    patientId: invitation.patientId,
+                },
+            },
+        });
+        if (existingLink) {
+            if (existingLink.isActive) {
+                return res.status(400).json({ error: "You are already linked to this patient" });
+            }
+            else {
+                // Reactivate existing link
+                const reactivated = await db_1.prisma.caregiverPatientLink.update({
+                    where: { id: existingLink.id },
+                    data: { isActive: true },
+                    select: linkSelect,
+                });
+                // Mark invitation as accepted
+                await db_1.prisma.caregiverInvitation.update({
+                    where: { id: invitation.id },
+                    data: {
+                        status: "ACCEPTED",
+                        usedAt: new Date(),
+                        usedByUserId: user.id,
+                    },
+                });
+                await (0, audit_1.logAuditEvent)({
+                    actorId: user.id,
+                    actorRole: user.role,
+                    actionType: client_1.AuditActionType.CAREGIVER_LINK_UPDATED,
+                    targetType: "CaregiverPatientLink",
+                    targetId: reactivated.id,
+                    description: "Reactivated caregiver link via invitation code",
+                    metadata: {
+                        invitationCode: code,
+                        patientId: invitation.patientId,
+                    },
+                });
+                return res.json({
+                    link: reactivated,
+                    message: "Successfully reactivated link to patient",
+                });
+            }
+        }
+        // Create new link
+        const newLink = await db_1.prisma.caregiverPatientLink.create({
+            data: {
+                caregiverId: user.id,
+                patientId: invitation.patientId,
+                invitationId: invitation.id,
+                relationship: invitation.firstName && invitation.lastName
+                    ? `${invitation.firstName} ${invitation.lastName}`
+                    : "Family Member",
+                isPrimary: false,
+                isActive: true,
+            },
+            select: linkSelect,
+        });
+        // Mark invitation as accepted
+        await db_1.prisma.caregiverInvitation.update({
+            where: { id: invitation.id },
+            data: {
+                status: "ACCEPTED",
+                usedAt: new Date(),
+                usedByUserId: user.id,
+            },
+        });
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.id,
+            actorRole: user.role,
+            actionType: client_1.AuditActionType.CAREGIVER_LINK_UPDATED,
+            targetType: "CaregiverPatientLink",
+            targetId: newLink.id,
+            description: "Created caregiver link via invitation code",
+            metadata: {
+                invitationCode: code,
+                patientId: invitation.patientId,
+            },
+        });
+        res.status(201).json({
+            link: newLink,
+            message: `Successfully linked to ${invitation.patient?.patientProfile?.legalName || "patient"}`,
+        });
+    }
+    catch (e) {
+        console.error("use invitation code error:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
 // ─── DELETE /api/caregiver-links/:id ─────────────────────────────────────────
 // Patient deactivates a caregiver link (soft delete).
 router.delete("/:id", async (req, res) => {

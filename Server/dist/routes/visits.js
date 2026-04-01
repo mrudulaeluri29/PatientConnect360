@@ -9,6 +9,8 @@ const availabilityTime_1 = require("../availabilityTime");
 // Feature 2 — notification hooks
 const notificationHelpers_1 = require("../helpers/notificationHelpers");
 const visitReminders_1 = require("../jobs/visitReminders");
+// Feature 5 — audit logging
+const audit_1 = require("../lib/audit");
 const router = (0, express_1.Router)();
 // All routes require authentication
 router.use(requireAuth_1.requireAuth);
@@ -356,6 +358,15 @@ router.post("/", async (req, res) => {
             // Admin-created confirmed visits should also trigger approval notification
             (0, notificationHelpers_1.onVisitApproved)(patientId, user.id, visit.id, clinician.username, scheduledDate);
         }
+        // ── Feature 5: Audit log for appointment creation ──
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.id,
+            actorRole: user.role,
+            actionType: client_1.AuditActionType.APPOINTMENT_CREATED,
+            targetType: "Visit",
+            targetId: visit.id,
+            description: `${user.role} created ${createStatus} appointment for patient ${patientId} with clinician ${clinician.username}`,
+        });
         res.status(201).json({ visit });
     }
     catch (e) {
@@ -471,6 +482,16 @@ router.post("/:id/review", requireRole_1.requireAdmin, async (req, res) => {
             });
             // ── Feature 2: Notify patient/caregivers that visit was denied ──
             (0, notificationHelpers_1.onVisitDenied)(existing.patient.id, existing.requestedById, existing.id, existing.clinician.username, reviewNote ?? null);
+            // ── Feature 5: Audit log for appointment rejection ──
+            await (0, audit_1.logAuditEvent)({
+                actorId: user.id,
+                actorRole: user.role,
+                actionType: client_1.AuditActionType.APPOINTMENT_REJECTED,
+                targetType: "Visit",
+                targetId: existing.id,
+                description: `Admin rejected appointment request for patient ${existing.patient.id}`,
+                metadata: { reviewNote: reviewNote ?? null },
+            });
             return res.json({ visit: rejected });
         }
         const nextScheduledAt = scheduledAt ? new Date(scheduledAt) : new Date(existing.scheduledAt);
@@ -528,6 +549,16 @@ router.post("/:id/review", requireRole_1.requireAdmin, async (req, res) => {
         });
         // ── Feature 2: Notify that visit was approved ──
         (0, notificationHelpers_1.onVisitApproved)(existing.patient.id, existing.requestedById, existing.id, existing.clinician.username, nextScheduledAt);
+        // ── Feature 5: Audit log for appointment approval ──
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.id,
+            actorRole: user.role,
+            actionType: client_1.AuditActionType.APPOINTMENT_APPROVED,
+            targetType: "Visit",
+            targetId: existing.id,
+            description: `Admin approved appointment for patient ${existing.patient.id}`,
+            metadata: { scheduledAt: nextScheduledAt.toISOString() },
+        });
         return res.json({ visit: approved });
     }
     catch (e) {
@@ -701,6 +732,16 @@ router.patch("/:id", async (req, res) => {
             });
             (0, notificationHelpers_1.onVisitCancelled)(existing.patientId, existing.clinicianId, existing.id, data.cancelReason || null, cancellingUser?.username || "A user");
             (0, visitReminders_1.cancelPendingReminders)(existing.id);
+            // ── Feature 5: Audit log for appointment cancellation ──
+            await (0, audit_1.logAuditEvent)({
+                actorId: user.id,
+                actorRole: user.role,
+                actionType: client_1.AuditActionType.APPOINTMENT_CANCELLED,
+                targetType: "Visit",
+                targetId: existing.id,
+                description: `${user.role} cancelled appointment`,
+                metadata: { cancelReason: data.cancelReason || null },
+            });
         }
         res.json({ visit });
     }
