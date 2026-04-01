@@ -81,6 +81,9 @@ export default function AdminDashboard() {
             <button className={`nav-item ${activeTab === "audit" ? "active" : ""}`} onClick={() => setActiveTab("audit")}>
               Audit Log
             </button>
+            <button className={`nav-item ${activeTab === "feedback" ? "active" : ""}`} onClick={() => setActiveTab("feedback")}>
+              Family Feedback
+            </button>
           </nav>
         </div>
         <div className="admin-header-right">
@@ -149,6 +152,12 @@ export default function AdminDashboard() {
         {activeTab === "audit" && (
           <div className="admin-content">
             <AuditLogPanel />
+          </div>
+        )}
+
+        {activeTab === "feedback" && (
+          <div className="admin-content">
+            <FamilyFeedbackPanel />
           </div>
         )}
       </main>
@@ -1983,6 +1992,186 @@ function AvailabilityReview() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ─── Family Feedback Panel ──────────────────────────────────────────────────
+
+type FamilyFeedbackItem = {
+  id: string;
+  patientId: string;
+  patientName: string;
+  eventType: string;
+  relatedId: string | null;
+  ratingHelpfulness: number | null;
+  ratingCommunication: number | null;
+  comment: string | null;
+  createdAt: string;
+};
+
+type FeedbackAggregates = {
+  total: number;
+  avgHelpfulness: number | null;
+  avgCommunication: number | null;
+  byEventType: Record<string, number>;
+};
+
+function FamilyFeedbackPanel() {
+  const [feedback, setFeedback] = useState<FamilyFeedbackItem[]>([]);
+  const [aggregates, setAggregates] = useState<FeedbackAggregates | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>("all");
+
+  useEffect(() => {
+    loadFeedback();
+  }, [eventTypeFilter]);
+
+  const loadFeedback = async () => {
+    setLoading(true);
+    try {
+      const params: any = {};
+      if (eventTypeFilter !== "all") {
+        params.eventType = eventTypeFilter;
+      }
+
+      const res = await api.get("/api/family-feedback/admin", { params });
+      setFeedback(res.data.feedback || []);
+      setAggregates(res.data.aggregates || null);
+    } catch (e) {
+      console.error("Failed to load feedback:", e);
+      setFeedback([]);
+      setAggregates(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderStars = (rating: number | null) => {
+    if (rating === null) return <span style={{ color: "#9ca3af" }}>—</span>;
+    return (
+      <span style={{ color: "#f59e0b", fontSize: "1.1rem" }}>
+        {"★".repeat(Math.round(rating))}
+        {"☆".repeat(5 - Math.round(rating))}
+      </span>
+    );
+  };
+
+  if (loading) {
+    return <div className="admin-loading">Loading family feedback...</div>;
+  }
+
+  return (
+    <div className="admin-panel">
+      <div className="admin-panel-header">
+        <h2>MPOA/Family Feedback</h2>
+        <p style={{ color: "#6b7280", fontSize: "0.9rem", marginTop: "0.5rem" }}>
+          Anonymous feedback from family members and MPOAs on care quality
+        </p>
+      </div>
+
+      {aggregates && (
+        <div className="admin-stats-grid">
+          <div className="admin-stat-card">
+            <div className="admin-stat-value">{aggregates.total}</div>
+            <div className="admin-stat-label">Total Feedback</div>
+          </div>
+          <div className="admin-stat-card">
+            <div className="admin-stat-value">
+              {aggregates.avgHelpfulness ? aggregates.avgHelpfulness.toFixed(1) : "—"}
+            </div>
+            <div className="admin-stat-label">Avg Helpfulness</div>
+          </div>
+          <div className="admin-stat-card">
+            <div className="admin-stat-value">
+              {aggregates.avgCommunication ? aggregates.avgCommunication.toFixed(1) : "—"}
+            </div>
+            <div className="admin-stat-label">Avg Communication</div>
+          </div>
+          <div className="admin-stat-card">
+            <div className="admin-stat-value">
+              {aggregates.byEventType.VISIT_COMPLETED || 0}
+            </div>
+            <div className="admin-stat-label">Visit Feedback</div>
+          </div>
+          <div className="admin-stat-card">
+            <div className="admin-stat-value">
+              {aggregates.byEventType.MEDICATION_CHANGED || 0}
+            </div>
+            <div className="admin-stat-label">Medication Feedback</div>
+          </div>
+        </div>
+      )}
+
+      <div className="admin-toolbar">
+        <div className="admin-filter-group">
+          <label>Event Type:</label>
+          <select
+            className="admin-select"
+            value={eventTypeFilter}
+            onChange={(e) => setEventTypeFilter(e.target.value)}
+          >
+            <option value="all">All Events</option>
+            <option value="VISIT_COMPLETED">Visit Completed</option>
+            <option value="MEDICATION_CHANGED">Medication Changed</option>
+          </select>
+        </div>
+        <button className="btn-secondary" onClick={loadFeedback}>
+          Refresh
+        </button>
+      </div>
+
+      <div className="admin-table-container">
+        {feedback.length === 0 ? (
+          <div className="admin-empty">
+            <p>No feedback matching current filters.</p>
+          </div>
+        ) : (
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Patient</th>
+                <th>Event Type</th>
+                <th>Helpfulness</th>
+                <th>Communication</th>
+                <th>Comment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {feedback.map((item) => (
+                <tr key={item.id}>
+                  <td>{new Date(item.createdAt).toLocaleDateString()}</td>
+                  <td>{item.patientName}</td>
+                  <td>
+                    <span className={`admin-badge ${item.eventType === "VISIT_COMPLETED" ? "success" : "warning"}`}>
+                      {item.eventType === "VISIT_COMPLETED" ? "Visit" : "Medication"}
+                    </span>
+                  </td>
+                  <td>{renderStars(item.ratingHelpfulness)}</td>
+                  <td>{renderStars(item.ratingCommunication)}</td>
+                  <td>
+                    {item.comment ? (
+                      <div style={{ maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {item.comment}
+                      </div>
+                    ) : (
+                      <span style={{ color: "#9ca3af" }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div style={{ marginTop: "1.5rem", padding: "1rem", background: "#f0fdf4", borderRadius: "8px", border: "1px solid #86efac" }}>
+        <p style={{ color: "#166534", fontSize: "0.9rem", margin: 0 }}>
+          <strong>Privacy Note:</strong> Submitter identity is not shown to maintain anonymity. Feedback is used for quality improvement.
+        </p>
+      </div>
     </div>
   );
 }
