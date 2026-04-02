@@ -491,6 +491,17 @@ router.post("/:id/reschedule-request", async (req: Request, res: Response) => {
     // ── Feature 2: Notify requester that reschedule request was received ──
     onVisitRequestCreated(user.id, requestVisit.id, original.clinician.username, nextDate);
 
+    // ── Feature 5: Audit log for reschedule request ──
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.VISIT_RESCHEDULE_REQUESTED,
+      targetType: "Visit",
+      targetId: requestVisit.id,
+      description: `${user.role} requested reschedule for visit`,
+      metadata: { originalVisitId: original.id, newScheduledAt: nextDate.toISOString(), reason: String(reason).trim() },
+    });
+
     res.status(201).json({ visit: requestVisit });
   } catch (e) {
     console.error("POST /api/visits/:id/reschedule-request failed:", e);
@@ -599,6 +610,17 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
       );
       // Cancel any pending reminders for the original visit
       cancelPendingReminders(existing.originalVisitId!);
+
+      // ── Feature 5: Audit log for reschedule approval ──
+      await logAuditEvent({
+        actorId: user.id,
+        actorRole: user.role as any,
+        actionType: AuditActionType.VISIT_RESCHEDULE_APPROVED,
+        targetType: "Visit",
+        targetId: existing.id,
+        description: `Admin approved reschedule request for patient ${existing.patient.id}`,
+        metadata: { originalVisitId: existing.originalVisitId, newScheduledAt: nextScheduledAt.toISOString() },
+      });
 
       return res.json({ visit: updated });
     }

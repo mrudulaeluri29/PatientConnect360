@@ -506,19 +506,31 @@ function AuditLogPanel() {
   const [search, setSearch] = useState("");
   const [actionType, setActionType] = useState("");
   const [actorRole, setActorRole] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const limit = 50;
 
   const loadLogs = async () => {
     setLoading(true);
     try {
+      const offset = (page - 1) * limit;
       const data = await getAuditLogs({
         search: search || undefined,
         actionType: actionType || undefined,
         actorRole: actorRole || undefined,
+        from: fromDate || undefined,
+        to: toDate || undefined,
+        limit,
+        offset,
       });
-      setLogs(data);
+      setLogs(data.logs);
+      setTotal(data.total);
     } catch (error) {
       console.error("Failed to load audit logs:", error);
       setLogs([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -526,7 +538,16 @@ function AuditLogPanel() {
 
   useEffect(() => {
     loadLogs();
-  }, [actionType, actorRole]);
+  }, [actionType, actorRole, page]);
+
+  const totalPages = Math.ceil(total / limit);
+  const startEntry = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endEntry = Math.min(page * limit, total);
+
+  const handleFilterApply = () => {
+    setPage(1); // Reset to first page when filters change
+    loadLogs();
+  };
 
   return (
     <div className="system-settings">
@@ -563,9 +584,35 @@ function AuditLogPanel() {
               <option value="CAREGIVER">CAREGIVER</option>
             </select>
           </div>
-          <button className="btn-primary" style={{ alignSelf: "flex-end" }} onClick={loadLogs}>
+          <button className="btn-primary" style={{ alignSelf: "flex-end" }} onClick={handleFilterApply}>
             Apply Filters
           </button>
+        </div>
+        <div className="assign-form-row" style={{ marginTop: "1rem" }}>
+          <div className="form-group">
+            <label>From Date</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              placeholder="Start date"
+            />
+          </div>
+          <div className="form-group">
+            <label>To Date</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              placeholder="End date"
+            />
+          </div>
+          <div className="form-group" style={{ visibility: "hidden" }}>
+            {/* Spacer for alignment */}
+          </div>
+          <div className="form-group" style={{ visibility: "hidden" }}>
+            {/* Spacer for alignment */}
+          </div>
         </div>
       </div>
 
@@ -574,32 +621,58 @@ function AuditLogPanel() {
       ) : logs.length === 0 ? (
         <EmptyState text="No audit events matched those filters." />
       ) : (
-        <div className="users-table" style={{ marginTop: "1.5rem" }}>
-          <table>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Actor</th>
-                <th>Role</th>
-                <th>Action</th>
-                <th>Target</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log) => (
-                <tr key={log.id}>
-                  <td>{new Date(log.createdAt).toLocaleString()}</td>
-                  <td>{log.actor?.username || log.actor?.email || log.actorId || "System"}</td>
-                  <td>{log.actorRole || "SYSTEM"}</td>
-                  <td>{log.actionType}</td>
-                  <td>{[log.targetType, log.targetId].filter(Boolean).join(" ΓÇó ") || "ΓÇö"}</td>
-                  <td>{log.description || "ΓÇö"}</td>
+        <>
+          <div className="users-table" style={{ marginTop: "1.5rem" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Actor</th>
+                  <th>Role</th>
+                  <th>Action</th>
+                  <th>Target</th>
+                  <th>Description</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr key={log.id}>
+                    <td>{new Date(log.createdAt).toLocaleString()}</td>
+                    <td>{log.actor?.username || log.actor?.email || log.actorId || "System"}</td>
+                    <td>{log.actorRole || "SYSTEM"}</td>
+                    <td>{log.actionType}</td>
+                    <td>{[log.targetType, log.targetId].filter(Boolean).join(" • ") || "—"}</td>
+                    <td>{log.description || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="pagination-controls">
+            <div className="pagination-info">
+              Showing {startEntry}-{endEntry} of {total} entries
+            </div>
+            <div className="pagination-buttons">
+              <button
+                className="btn-secondary"
+                onClick={() => setPage(page - 1)}
+                disabled={page === 1}
+              >
+                Previous
+              </button>
+              <span className="pagination-page">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                className="btn-secondary"
+                onClick={() => setPage(page + 1)}
+                disabled={page >= totalPages}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

@@ -2505,3 +2505,42 @@
   background: #eff6ff;
   color: #1d4ed8;
 }
+
+/* Pagination Controls */
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.pagination-info {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.pagination-buttons {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pagination-page {
+  color: #374151;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.pagination-buttons .btn-secondary {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+.pagination-buttons .btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

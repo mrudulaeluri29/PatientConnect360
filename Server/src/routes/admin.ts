@@ -639,7 +639,7 @@ router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
     await logAuditEvent({
       actorId: actor.id,
       actorRole: actor.role,
-      actionType: AuditActionType.SETTINGS_UPDATED,
+      actionType: AuditActionType.BRANDING_UPDATED,
       targetType: "AgencySettings",
       targetId: settings.id,
       description: "Updated agency branding and support settings",
@@ -661,8 +661,9 @@ router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
 // GET /api/admin/audit-logs
 router.get("/audit-logs", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { actionType, actorRole, search, limit } = req.query;
-    const take = Math.min(Math.max(Number(limit) || 100, 1), 250);
+    const { actionType, actorRole, search, limit, offset, from, to } = req.query;
+    const take = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const skip = Math.max(Number(offset) || 0, 0);
 
     const where: any = {};
     if (actionType && typeof actionType === "string") {
@@ -688,6 +689,23 @@ router.get("/audit-logs", requireAdmin, async (req: Request, res: Response) => {
       ];
     }
 
+    // Date range filtering
+    if (from || to) {
+      where.createdAt = {};
+      if (from && typeof from === "string") {
+        where.createdAt.gte = new Date(from);
+      }
+      if (to && typeof to === "string") {
+        // Add one day to include the entire 'to' date
+        const toDate = new Date(to);
+        toDate.setDate(toDate.getDate() + 1);
+        where.createdAt.lt = toDate;
+      }
+    }
+
+    // Get total count for pagination
+    const total = await prisma.auditLog.count({ where });
+
     const logs = await prisma.auditLog.findMany({
       where,
       include: {
@@ -701,9 +719,10 @@ router.get("/audit-logs", requireAdmin, async (req: Request, res: Response) => {
       },
       orderBy: { createdAt: "desc" },
       take,
+      skip,
     });
 
-    res.json({ logs });
+    res.json({ logs, total, limit: take, offset: skip });
   } catch (e) {
     console.error("Admin get audit logs failed:", e);
     res.status(500).json({ error: "Server error" });
