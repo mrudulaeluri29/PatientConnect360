@@ -19,7 +19,13 @@ PatientConnect360 addresses this challenge by providing a centralized patient po
 - Password reset functionality with email OTP verification via Twilio Verify
 - Separate web and mobile applications connected to a shared backend API
 - Messaging endpoints to support secure communication between users
+- Appointment scheduling flows with admin review (request/approve/deny), plus reschedule and cancel
+- Clinician availability gating for scheduling, including a structured `availabilityHint` payload on conflicts
+- In-app notification center (visit lifecycle + reminders) backed by `/api/notifications`
+- Visit reminder scheduler with outbound delivery (Twilio SMS + SendGrid email), using per-user reminder preferences
+- Message center upgrades (conversation starring + role-based conversation filtering endpoints)
 - Administrative utilities for managing users and access levels
+- Admin audit log viewer with pagination and date filtering
 - Database seeding scripts for creating admin and test users
 - Environment based configuration for secure credential management
 
@@ -133,7 +139,8 @@ This approach ensures that sensitive healthcare data and system operations are a
 ### Tooling and Utilities
 - Nodemon and ts node for development
 - Environment variable management using dotenv
-- Email/OTP services via Twilio Verify (used for both signup verification and password reset)
+- Twilio Verify for OTP and password reset email verification
+- SendGrid for appointment-related transactional emails (reminders + visit status updates)
 
 ## System Architecture Overview
 PatientConnect360 follows a client server architecture with a shared backend API.
@@ -205,11 +212,14 @@ You can still run commands inside `Server/` or `Client/web/` directly when you o
 ### Backend Setup
 - Clone the repository and navigate to the Server directory (or use root scripts above)
 - Install backend dependencies (`npm install` or `yarn`)
-  - If you previously used SendGrid, you can remove it with `npm uninstall @sendgrid/mail` since it's no longer required.
 - Create an environment configuration file containing database connection details, authentication secrets, and Twilio credentials for OTP/email verification
     - Required variables: `DATABASE_URL`, `JWT_SECRET`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`
     - The `TWILIO_ACCOUNT_SID` must start with `AC` (Twilio will emit a warning otherwise and OTP routes will be disabled)
     - **Important**: if you are sending OTPs via the email channel you must configure an email integration (SendGrid) for the Verify service in the Twilio console. Without it you'll see error 60217 and the backend will return a 500 response.  Alternatively, switch the code to use SMS or remove the email requirement.
+- Additionally, appointment reminders / visit status emails require SendGrid:
+  - `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` (verified sender in SendGrid)
+  - `ENABLE_APPOINTMENT_EMAILS` (default enabled; set to `false` to disable appointment lifecycle emails)
+  - `ENABLE_OUTBOUND_REMINDERS` (set to `true` to enqueue/send reminder jobs)
 - Initialize the database using Prisma by applying the schema and running migrations (`npx prisma migrate dev`)
 - Optionally run seed scripts to create admin and test users (`npm run seed:admin`)
 - Start the backend server in development mode using nodemon and ts-node (`npm run dev`)
@@ -232,7 +242,7 @@ This setup enables full end to end testing of application workflows across web a
 ## Current Status and Limitations
 - Several user interface pages are implemented as placeholders to prioritize backend architecture and authentication flows
 - The application is not yet deployed to a public production environment
-- Advanced compliance features such as audit logging and regulatory reporting are outside the scope of the current version
+- Audit logging is implemented for core appointment/messaging actions; extended regulatory/compliance reporting is still being built
 
 ## Health Tech and HIPAA Alignment
 PatientConnect360 is intentionally designed with healthcare security and privacy considerations in mind.
@@ -245,7 +255,7 @@ While this project is not a certified HIPAA compliant system, its architecture a
 - Containerized deployment using Docker
 - Automated testing and continuous integration pipelines
 - Expanded messaging and notification workflows
-- Appointment scheduling and care plan management
+- Care plan management and expanded scheduling communication (beyond current visit notifications/reminders)
 - Improved UI polish, accessibility, and usability
 - Public demo deployment for recruiter and revieweraccess
 
