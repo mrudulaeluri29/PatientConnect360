@@ -85,9 +85,17 @@ export async function getAuditLogs(params?: {
   actorRole?: string;
   search?: string;
   limit?: number;
+  offset?: number;
+  from?: string;
+  to?: string;
 }) {
   const res = await api.get("/api/admin/audit-logs", { params });
-  return res.data.logs as AuditLogRecord[];
+  return res.data as {
+    logs: AuditLogRecord[];
+    total: number;
+    limit: number;
+    offset: number;
+  };
 }
 
 export async function getDailyAnalytics(from?: string, to?: string) {

@@ -275,6 +275,17 @@ router.post("/batch", async (req, res) => {
             select: availabilitySelect,
         })));
         res.status(201).json({ availability: results, count: results.length });
+        // ── Feature 5: Audit log for availability submission ──
+        // req.user from JWT is only { id, role } — actor display name comes from AuditLog.actor relation in the UI.
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.id,
+            actorRole: user.role,
+            actionType: "AVAILABILITY_SUBMITTED",
+            targetType: "ClinicianAvailability",
+            targetId: targetClinicianId,
+            description: `${user.role} submitted ${results.length} availability day(s)`,
+            metadata: { daysCount: results.length, clinicianId: targetClinicianId },
+        });
     }
     catch (e) {
         console.error("POST /api/availability/batch failed:", e);

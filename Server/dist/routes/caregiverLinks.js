@@ -253,7 +253,7 @@ router.post("/use-code", async (req, res) => {
         await (0, audit_1.logAuditEvent)({
             actorId: user.id,
             actorRole: user.role,
-            actionType: client_1.AuditActionType.CAREGIVER_LINK_UPDATED,
+            actionType: client_1.AuditActionType.CAREGIVER_LINK_CREATED,
             targetType: "CaregiverPatientLink",
             targetId: newLink.id,
             description: "Created caregiver link via invitation code",

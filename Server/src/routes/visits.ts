@@ -95,13 +95,30 @@ function minutesFromTimeString(value: string): number | null {
   return hh * 60 + mm;
 }
 
-async function assertWithinApprovedAvailability(
+/** Returned on 400 when a visit time is outside approved availability (admin UI can show this). */
+type AvailabilityHintPayload = {
+  timeZone: string;
+  date: string;
+  hasApprovedSlot: boolean;
+  startTime: string | null;
+  endTime: string | null;
+};
+
+async function checkApprovedAvailability(
   clinicianId: string,
   scheduledAt: Date,
   durationMinutes: number
-): Promise<string | null> {
+): Promise<{ ok: true } | { ok: false; error: string; availabilityHint: AvailabilityHintPayload }> {
   const tz = getAvailabilityTimeZone();
   const dayKey = dayKeyInTimeZone(scheduledAt, tz);
+  const emptyHint = (): AvailabilityHintPayload => ({
+    timeZone: tz,
+    date: dayKey,
+    hasApprovedSlot: false,
+    startTime: null,
+    endTime: null,
+  });
+
   const slot = await prisma.clinicianAvailability.findFirst({
     where: {
       clinicianId,
@@ -115,21 +132,42 @@ async function assertWithinApprovedAvailability(
   });
 
   if (!slot) {
-    return "Clinician does not have an approved availability slot on that date.";
+    return {
+      ok: false,
+      error: "Clinician does not have an approved availability slot on that date.",
+      availabilityHint: emptyHint(),
+    };
   }
+
+  const windowHint: AvailabilityHintPayload = {
+    timeZone: tz,
+    date: dayKey,
+    hasApprovedSlot: true,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+  };
 
   const start = minutesFromTimeString(slot.startTime);
   const end = minutesFromTimeString(slot.endTime);
   if (start === null || end === null || end <= start) {
-    return "Clinician availability slot is invalid.";
+    return {
+      ok: false,
+      error: "Clinician availability slot is invalid.",
+      availabilityHint: windowHint,
+    };
   }
 
   const visitStart = wallClockMinutesInTimeZone(scheduledAt, tz);
   const visitEnd = visitStart + durationMinutes;
   if (visitStart < start || visitEnd > end) {
-    return `Visit must be fully within approved availability (${slot.startTime}-${slot.endTime}).`;
+    return {
+      ok: false,
+      error: `Visit must be fully within approved availability (${slot.startTime}-${slot.endTime}).`,
+      availabilityHint: windowHint,
+    };
   }
-  return null;
+
+  return { ok: true };
 }
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
@@ -370,9 +408,12 @@ router.post("/", async (req: Request, res: Response) => {
     const createRequestType = VisitRequestType.INITIAL;
 
     if (user.role === "ADMIN") {
-      const availabilityError = await assertWithinApprovedAvailability(clinicianId, scheduledDate, requestedDuration);
-      if (availabilityError) {
-        return res.status(400).json({ error: availabilityError });
+      const availabilityCheck = await checkApprovedAvailability(clinicianId, scheduledDate, requestedDuration);
+      if (!availabilityCheck.ok) {
+        return res.status(400).json({
+          error: availabilityCheck.error,
+          availabilityHint: availabilityCheck.availabilityHint,
+        });
       }
     }
 
@@ -491,6 +532,17 @@ router.post("/:id/reschedule-request", async (req: Request, res: Response) => {
     // ── Feature 2: Notify requester that reschedule request was received ──
     onVisitRequestCreated(user.id, requestVisit.id, original.clinician.username, nextDate);
 
+    // ── Feature 5: Audit log for reschedule request ──
+    await logAuditEvent({
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: AuditActionType.VISIT_RESCHEDULE_REQUESTED,
+      targetType: "Visit",
+      targetId: requestVisit.id,
+      description: `${user.role} requested reschedule for visit`,
+      metadata: { originalVisitId: original.id, newScheduledAt: nextDate.toISOString(), reason: String(reason).trim() },
+    });
+
     res.status(201).json({ visit: requestVisit });
   } catch (e) {
     console.error("POST /api/visits/:id/reschedule-request failed:", e);
@@ -557,8 +609,13 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
     if (isNaN(nextScheduledAt.getTime())) return res.status(400).json({ error: "Invalid scheduledAt" });
     const nextDuration = durationMinutes !== undefined ? Number(durationMinutes) : existing.durationMinutes;
 
-    const availabilityError = await assertWithinApprovedAvailability(existing.clinician.id, nextScheduledAt, nextDuration);
-    if (availabilityError) return res.status(400).json({ error: availabilityError });
+    const availabilityCheck = await checkApprovedAvailability(existing.clinician.id, nextScheduledAt, nextDuration);
+    if (!availabilityCheck.ok) {
+      return res.status(400).json({
+        error: availabilityCheck.error,
+        availabilityHint: availabilityCheck.availabilityHint,
+      });
+    }
 
     if (existing.status === VisitStatus.RESCHEDULE_REQUESTED && existing.originalVisitId) {
       const original = await prisma.visit.findUnique({
@@ -599,6 +656,17 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
       );
       // Cancel any pending reminders for the original visit
       cancelPendingReminders(existing.originalVisitId!);
+
+      // ── Feature 5: Audit log for reschedule approval ──
+      await logAuditEvent({
+        actorId: user.id,
+        actorRole: user.role as any,
+        actionType: AuditActionType.VISIT_RESCHEDULE_APPROVED,
+        targetType: "Visit",
+        targetId: existing.id,
+        description: `Admin approved reschedule request for patient ${existing.patient.id}`,
+        metadata: { originalVisitId: existing.originalVisitId, newScheduledAt: nextScheduledAt.toISOString() },
+      });
 
       return res.json({ visit: updated });
     }

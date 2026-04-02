@@ -83,6 +83,10 @@
   border: 1px solid #e5e7eb;
 }
 
+.pc-feedback-modal--wide {
+  max-width: 520px;
+}
+
 .pc-feedback-modal__title {
   margin: 0 0 0.65rem;
   font-size: 1.1rem;
@@ -95,6 +99,10 @@
   font-size: 0.92rem;
   color: #4b5563;
   line-height: 1.5;
+}
+
+.pc-feedback-modal__body--preline {
+  white-space: pre-line;
 }
 
 .pc-feedback-modal__textarea {

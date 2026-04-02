@@ -2,6 +2,8 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../db";
 import jwt from "jsonwebtoken";
+import { AuditActionType } from "@prisma/client";
+import { logAuditEvent } from "../lib/audit";
 
 const router = Router();
 
@@ -249,6 +251,17 @@ router.post("/send", async (req: Request, res: Response) => {
         },
       });
       console.log("[SEND] Created new conversation:", conversation.id, "with participants:", conversation.participants.map((p: any) => p.userId));
+      
+      // Log audit event for conversation creation
+      await logAuditEvent({
+        actorId: user.uid,
+        actorRole: user.role as any,
+        actionType: AuditActionType.CONVERSATION_CREATED,
+        targetType: "Conversation",
+        targetId: conversation.id,
+        description: `User ${user.uid} created conversation with ${recipientId}`,
+        metadata: { recipientId, subject },
+      });
     }
 
     // Create the message
@@ -276,6 +289,21 @@ router.post("/send", async (req: Request, res: Response) => {
       senderRole: user.role,
       recipientId: recipientId,
       participants: conversation.participants?.map((p: any) => p.userId)
+    });
+    
+    // Log audit event for message sent
+    await logAuditEvent({
+      actorId: user.uid,
+      actorRole: user.role as any,
+      actionType: AuditActionType.MESSAGE_SENT,
+      targetType: "Message",
+      targetId: message.id,
+      description: `User sent message in conversation ${conversation.id}`,
+      metadata: {
+        conversationId: conversation.id,
+        recipientId,
+        messageLength: body.length,
+      },
     });
 
     // Update conversation timestamp
@@ -614,6 +642,26 @@ router.post("/conversation/:id/reply", async (req: Request, res: Response) => {
       },
       include: {
         sender: { select: { id: true, username: true, email: true } },
+      },
+    });
+    
+    // Log audit event for message sent (reply)
+    const otherParticipants = conversation.participants
+      .filter((p: any) => p.userId !== user.uid)
+      .map((p: any) => p.userId);
+    
+    await logAuditEvent({
+      actorId: user.uid,
+      actorRole: user.role as any,
+      actionType: AuditActionType.MESSAGE_SENT,
+      targetType: "Message",
+      targetId: message.id,
+      description: `User replied in conversation ${id}`,
+      metadata: {
+        conversationId: id,
+        recipientIds: otherParticipants,
+        messageLength: body.length,
+        isReply: true,
       },
     });
 

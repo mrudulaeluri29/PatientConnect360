@@ -9,6 +9,7 @@ exports.startReminderScheduler = startReminderScheduler;
 // Environment-gated: only sends if ENABLE_OUTBOUND_REMINDERS=true
 const db_1 = require("../db");
 const twilio_1 = require("../twilio");
+const sendgridEmail_1 = require("../lib/sendgridEmail");
 const SEND_ENABLED = process.env.ENABLE_OUTBOUND_REMINDERS === "true";
 // ─── Enqueue reminders ──────────────────────────────────────────────────────
 // Finds upcoming CONFIRMED/SCHEDULED visits that need 24h or 1h reminders
@@ -77,12 +78,13 @@ async function createReminderIfNotExists(visit, type, timeLabel) {
     if (!pref || pref.channel === "IN_APP_ONLY" || !pref.enabled)
         return;
     // Enqueue outbound notifications based on channel preference
-    if (pref.channel === "EMAIL" || pref.channel === "EMAIL_AND_SMS") {
+    const patientEmail = (visit.patient.email || "").trim();
+    if ((pref.channel === "EMAIL" || pref.channel === "EMAIL_AND_SMS") && patientEmail.includes("@")) {
         await db_1.prisma.outboundNotification.create({
             data: {
                 userId: visit.patient.id,
                 channel: "EMAIL",
-                toAddress: visit.patient.email,
+                toAddress: patientEmail,
                 templateKey: `visit_reminder_${timeLabel.replace(" ", "")}`,
                 payload: {
                     visitId: visit.id,
@@ -143,20 +145,31 @@ async function sendPendingOutbound() {
                     to: job.toAddress,
                 });
             }
-            // EMAIL channel: Use Twilio Verify for email sending (same as OTP)
-            if (job.channel === "EMAIL" && twilio_1.twilioClient && process.env.TWILIO_VERIFY_SERVICE_SID) {
+            if (job.channel === "EMAIL") {
                 const emailBody = buildEmailBody(job.payload, job.templateKey);
-                // Using Twilio Verify's email channel for consistency with existing auth flow
-                await twilio_1.twilioClient.verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID)
-                    .verifications.create({
-                    to: job.toAddress,
-                    channel: "email",
-                    channelConfiguration: {
-                        substitutions: {
-                            message: emailBody
-                        }
-                    }
-                });
+                const to = (job.toAddress || "").trim();
+                if (!to.includes("@")) {
+                    throw new Error("Invalid email address on outbound job");
+                }
+                if ((0, sendgridEmail_1.isSendGridConfigured)()) {
+                    await (0, sendgridEmail_1.sendTransactionalEmail)({
+                        to,
+                        subject: "PatientConnect360 — Visit reminder",
+                        text: emailBody,
+                    });
+                }
+                else if (twilio_1.twilioClient && process.env.TWILIO_VERIFY_SERVICE_SID) {
+                    await twilio_1.twilioClient.verify.v2.services(process.env.TWILIO_VERIFY_SERVICE_SID).verifications.create({
+                        to,
+                        channel: "email",
+                        channelConfiguration: {
+                            substitutions: { message: emailBody },
+                        },
+                    });
+                }
+                else {
+                    throw new Error("No email transport (configure SendGrid or Twilio Verify for email)");
+                }
             }
             await db_1.prisma.outboundNotification.update({
                 where: { id: job.id },

@@ -1,5 +1,6 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
+import { useFeedback } from "../../contexts/FeedbackContext";
 import NotificationBell from "../../components/NotificationBell";
 import { api } from "../../lib/axios";
 import { useAgencyBranding } from "../../branding/AgencyBranding";
@@ -18,6 +19,7 @@ import {
   getAdminVisitRequests,
   reviewVisitRequest,
   type ApiVisit,
+  type AvailabilityHint,
 } from "../../api/visits";
 import {
   getAdminAnalytics,
@@ -31,6 +33,14 @@ import {
   type AuditLogRecord,
   type DailyAnalyticsData,
 } from "../../api/admin";
+
+function formatAvailabilityGuidanceBody(hint: AvailabilityHint, durationMinutes: number): string {
+  const tz = hint.timeZone.replace(/_/g, " ");
+  if (!hint.hasApprovedSlot) {
+    return `There is no approved availability on ${hint.date} (agency calendar, ${tz}).\n\nThe clinician must submit availability for that day and you must approve it before scheduling in that window.`;
+  }
+  return `Choose a start time so the entire visit fits inside the approved window.\n\n• Day: ${hint.date}\n• Time zone: ${tz}\n• Approved hours: ${hint.startTime} – ${hint.endTime}\n• Visit duration: ${durationMinutes} minutes\n\nAdjust the date/time field above, then try Approve/Schedule again.`;
+}
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -506,19 +516,31 @@ function AuditLogPanel() {
   const [search, setSearch] = useState("");
   const [actionType, setActionType] = useState("");
   const [actorRole, setActorRole] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const limit = 50;
 
   const loadLogs = async () => {
     setLoading(true);
     try {
+      const offset = (page - 1) * limit;
       const data = await getAuditLogs({
         search: search || undefined,
         actionType: actionType || undefined,
         actorRole: actorRole || undefined,
+        from: fromDate || undefined,
+        to: toDate || undefined,
+        limit,
+        offset,
       });
-      setLogs(data);
+      setLogs(data.logs);
+      setTotal(data.total);
     } catch (error) {
       console.error("Failed to load audit logs:", error);
       setLogs([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -526,7 +548,16 @@ function AuditLogPanel() {
 
   useEffect(() => {
     loadLogs();
-  }, [actionType, actorRole]);
+  }, [actionType, actorRole, page]);
+
+  const totalPages = Math.ceil(total / limit);
+  const startEntry = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endEntry = Math.min(page * limit, total);
+
+  const handleFilterApply = () => {
+    setPage(1); // Reset to first page when filters change
+    loadLogs();
+  };
 
   return (
     <div className="system-settings">
@@ -563,9 +594,35 @@ function AuditLogPanel() {
               <option value="CAREGIVER">CAREGIVER</option>
             </select>
           </div>
-          <button className="btn-primary" style={{ alignSelf: "flex-end" }} onClick={loadLogs}>
+          <button className="btn-primary" style={{ alignSelf: "flex-end" }} onClick={handleFilterApply}>
             Apply Filters
           </button>
+        </div>
+        <div className="assign-form-row" style={{ marginTop: "1rem" }}>
+          <div className="form-group">
+            <label>From Date</label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              placeholder="Start date"
+            />
+          </div>
+          <div className="form-group">
+            <label>To Date</label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              placeholder="End date"
+            />
+          </div>
+          <div className="form-group" style={{ visibility: "hidden" }}>
+            {/* Spacer for alignment */}
+          </div>
+          <div className="form-group" style={{ visibility: "hidden" }}>
+            {/* Spacer for alignment */}
+          </div>
         </div>
       </div>
 
@@ -574,32 +631,58 @@ function AuditLogPanel() {
       ) : logs.length === 0 ? (
         <EmptyState text="No audit events matched those filters." />
       ) : (
-        <div className="users-table" style={{ marginTop: "1.5rem" }}>
-          <table>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Actor</th>
-                <th>Role</th>
-                <th>Action</th>
-                <th>Target</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((log) => (
-                <tr key={log.id}>
-                  <td>{new Date(log.createdAt).toLocaleString()}</td>
-                  <td>{log.actor?.username || log.actor?.email || log.actorId || "System"}</td>
-                  <td>{log.actorRole || "SYSTEM"}</td>
-                  <td>{log.actionType}</td>
-                  <td>{[log.targetType, log.targetId].filter(Boolean).join(" ΓÇó ") || "ΓÇö"}</td>
-                  <td>{log.description || "ΓÇö"}</td>
+        <>
+          <div className="users-table" style={{ marginTop: "1.5rem" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Actor</th>
+                  <th>Role</th>
+                  <th>Action</th>
+                  <th>Target</th>
+                  <th>Description</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {logs.map((log) => (
+                  <tr key={log.id}>
+                    <td>{new Date(log.createdAt).toLocaleString()}</td>
+                    <td>{log.actor?.username || log.actor?.email || log.actorId || "System"}</td>
+                    <td>{log.actorRole || "SYSTEM"}</td>
+                    <td>{log.actionType}</td>
+                    <td>{[log.targetType, log.targetId].filter(Boolean).join(" • ") || "—"}</td>
+                    <td>{log.description || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="pagination-controls">
+            <div className="pagination-info">
+              Showing {startEntry}-{endEntry} of {total} entries
+            </div>
+            <div className="pagination-buttons">
+              <button
+                className="btn-secondary"
+                onClick={() => setPage(page - 1)}
+                disabled={page === 1}
+              >
+                Previous
+              </button>
+              <span className="pagination-page">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                className="btn-secondary"
+                onClick={() => setPage(page + 1)}
+                disabled={page >= totalPages}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -607,6 +690,7 @@ function AuditLogPanel() {
 
 // Assignment Manager Component
 function AssignmentManager() {
+  const { showToast, confirmDialog } = useFeedback();
   const [patients, setPatients] = useState<{ id: string; username: string; email: string }[]>([]);
   const [clinicians, setClinicians] = useState<{ id: string; username: string; email: string }[]>([]);
   const [assignments, setAssignments] = useState<{ id: string; patient: any; clinician: any; isActive: boolean }[]>([]);
@@ -655,17 +739,23 @@ function AssignmentManager() {
       setSelectedPatient("");
       setSelectedClinician("");
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to assign");
+      showToast(e.response?.data?.error || "Failed to assign", "error");
     }
   };
 
   const handleRemove = async (assignmentId: string) => {
-    if (!window.confirm("Remove this assignment?")) return;
+    const ok = await confirmDialog(
+      "Remove assignment?",
+      "This patient will no longer be assigned to this clinician.",
+      { danger: true, confirmLabel: "Remove" }
+    );
+    if (!ok) return;
     try {
       await api.delete(`/api/admin/assignments/${assignmentId}`);
       setAssignments(prev => prev.filter(a => a.id !== assignmentId));
+      showToast("Assignment removed.", "success");
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to remove assignment");
+      showToast(e.response?.data?.error || "Failed to remove assignment", "error");
     }
   };
 
@@ -675,7 +765,7 @@ function AssignmentManager() {
       // Update local state
       setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, isActive: !currentStatus } : a));
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to update assignment");
+      showToast(e.response?.data?.error || "Failed to update assignment", "error");
     }
   };
 
@@ -796,6 +886,7 @@ function AssignmentManager() {
 // Admin Messages Component
 function AdminMessages() {
   const { user } = useAuth();
+  const { showToast, confirmDialog } = useFeedback();
   const [activeView, setActiveView] = useState<"all-messages" | "broadcast">("all-messages");
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -961,13 +1052,19 @@ function AdminMessages() {
 
 
   const handleDeleteMessage = async (messageId: string) => {
-    if (confirm("Are you sure you want to delete this message?")) {
-      try {
-        await api.delete(`/messages/${messageId}`);
-        fetchAllMessages(); // Refresh messages list
-      } catch (error) {
-        console.error("Failed to delete message:", error);
-      }
+    const ok = await confirmDialog(
+      "Delete message?",
+      "Are you sure you want to delete this message?",
+      { danger: true, confirmLabel: "Delete" }
+    );
+    if (!ok) return;
+    try {
+      await api.delete(`/messages/${messageId}`);
+      fetchAllMessages();
+      showToast("Message deleted.", "success");
+    } catch (error) {
+      console.error("Failed to delete message:", error);
+      showToast("Failed to delete message.", "error");
     }
   };
 
@@ -998,7 +1095,7 @@ function AdminMessages() {
     
     if (!broadcastSubject.trim() || !broadcastMessage.trim() || broadcastRecipients.length === 0) {
       console.log("Γ¥î Validation failed");
-      alert("Please fill in all fields and select recipients");
+      showToast("Please fill in all fields and select recipients", "error");
       return;
     }
 
@@ -1029,11 +1126,11 @@ function AdminMessages() {
       setBroadcastRecipients([]);
       
       console.log("≡ƒÄë Broadcast completed successfully!");
-      alert("Broadcast sent successfully!");
+      showToast("Broadcast sent successfully!", "success");
     } catch (error: any) {
       console.error("Γ¥î Failed to send broadcast:", error);
       console.error("Error details:", error.response?.data || error.message);
-      alert("Failed to send broadcast");
+      showToast("Failed to send broadcast", "error");
     } finally {
       setSendingBroadcast(false);
     }
@@ -1416,6 +1513,7 @@ function AdminMessages() {
 
 // User Management Component
 function UserManagement() {
+  const { showToast, confirmDialog } = useFeedback();
   const [users, setUsers] = useState<{ id: string; username: string; email: string; role: string; createdAt: string }[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -1452,19 +1550,25 @@ function UserManagement() {
   });
 
   const handleRemoveUser = async (userId: string) => {
-    if (!window.confirm("Are you sure you want to remove this user?")) return;
+    const ok = await confirmDialog(
+      "Remove user?",
+      "Are you sure you want to remove this user? This cannot be undone.",
+      { danger: true, confirmLabel: "Remove user" }
+    );
+    if (!ok) return;
     try {
       await api.delete(`/api/admin/users/${userId}`);
       setUsers((prev) => prev.filter((u) => u.id !== userId));
+      showToast("User removed.", "success");
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to remove user");
+      showToast(e.response?.data?.error || "Failed to remove user", "error");
     }
   };
 
   const handleSendInvite = () => {
     if (!inviteEmail) return;
     // TODO: Implement API call to send invite
-    alert(`Invitation sent to ${inviteEmail}`);
+    showToast(`Invitation sent to ${inviteEmail}`, "success");
     setInviteEmail("");
     setShowInviteModal(false);
   };
@@ -1567,6 +1671,7 @@ function UserManagement() {
 // Reports & Analytics Component
 // ΓöÇΓöÇΓöÇ Appointments Review (Admin) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 function AppointmentsReview() {
+  const { showToast, infoDialog } = useFeedback();
   const [loading, setLoading] = useState(true);
   const [newRequests, setNewRequests] = useState<ApiVisit[]>([]);
   const [rescheduleRequests, setRescheduleRequests] = useState<ApiVisit[]>([]);
@@ -1609,18 +1714,29 @@ function AppointmentsReview() {
     return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
   };
 
-  const runReview = async (visitId: string, action: "APPROVE" | "REJECT") => {
-    setReviewingId(visitId);
+  const runReview = async (visit: ApiVisit, action: "APPROVE" | "REJECT") => {
+    setReviewingId(visit.id);
     try {
-      const overrideIso = datetimeLocalToIso(scheduleOverrides[visitId]);
-      await reviewVisitRequest(visitId, {
+      const overrideIso = datetimeLocalToIso(scheduleOverrides[visit.id]);
+      await reviewVisitRequest(visit.id, {
         action,
-        reviewNote: reviewNotes[visitId] || undefined,
+        reviewNote: reviewNotes[visit.id] || undefined,
         scheduledAt: overrideIso,
       });
       await refresh();
+      showToast(action === "APPROVE" ? "Request updated." : "Request rejected.", "success");
     } catch (e: any) {
-      alert(e?.response?.data?.error || "Review action failed");
+      const data = e?.response?.data;
+      const hint = data?.availabilityHint as AvailabilityHint | undefined;
+      if (hint && action === "APPROVE") {
+        await infoDialog(
+          "Outside clinician availability",
+          formatAvailabilityGuidanceBody(hint, visit.durationMinutes ?? 60),
+          { wide: true, confirmLabel: "OK" }
+        );
+      } else {
+        showToast(data?.error || "Review action failed", "error");
+      }
     } finally {
       setReviewingId(null);
     }
@@ -1650,7 +1766,7 @@ function AppointmentsReview() {
                 <td>{v.clinician.username}</td>
                 <td>{new Date(v.scheduledAt).toLocaleString()}</td>
                 <td>{v.status.replaceAll("_", " ")}</td>
-                <td>{v.rescheduleReason || v.purpose || v.notes || "ΓÇö"}</td>
+                <td>{v.rescheduleReason || v.purpose || v.notes || "—"}</td>
                 <td>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
                     <input
@@ -1670,16 +1786,18 @@ function AppointmentsReview() {
                     />
                     <div style={{ display: "flex", gap: "0.35rem" }}>
                       <button
+                        type="button"
                         className="btn-approve"
                         disabled={reviewingId === v.id}
-                        onClick={() => runReview(v.id, "APPROVE")}
+                        onClick={() => void runReview(v, "APPROVE")}
                       >
                         Approve/Schedule
                       </button>
                       <button
+                        type="button"
                         className="btn-reject"
                         disabled={reviewingId === v.id}
-                        onClick={() => runReview(v.id, "REJECT")}
+                        onClick={() => void runReview(v, "REJECT")}
                       >
                         Reject
                       </button>
@@ -1758,6 +1876,7 @@ function AppointmentsReview() {
 
 // ΓöÇΓöÇΓöÇ Availability Review (Admin) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 function AvailabilityReview() {
+  const { showToast, confirmDialog } = useFeedback();
   const [records, setRecords] = useState<ApiAvailability[]>([]);
   const [allRecords, setAllRecords] = useState<ApiAvailability[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1809,21 +1928,27 @@ function AvailabilityReview() {
       setReviewModalRecord(null);
       setReviewNote("");
     } catch (err: any) {
-      alert(err.response?.data?.error || "Review failed");
+      showToast(err.response?.data?.error || "Review failed", "error");
     } finally {
       setReviewingId(null);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this availability record?")) return;
+    const ok = await confirmDialog(
+      "Delete availability?",
+      "This removes the clinician’s availability block for that day.",
+      { danger: true, confirmLabel: "Delete" }
+    );
+    if (!ok) return;
     setDeletingId(id);
     try {
       await deleteAvailability(id);
       setRecords((prev) => prev.filter((r) => r.id !== id));
       setAllRecords((prev) => prev.filter((r) => r.id !== id));
+      showToast("Availability deleted.", "success");
     } catch (err: any) {
-      alert(err.response?.data?.error || "Delete failed");
+      showToast(err.response?.data?.error || "Delete failed", "error");
     } finally {
       setDeletingId(null);
     }

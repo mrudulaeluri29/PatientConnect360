@@ -450,6 +450,19 @@ router.post("/login", async (req: Request, res: Response) => {
 
     // If user does not exist, return generic invalid credentials (don't reveal which)
     if (!user) {
+      // Log failed login attempt for non-existent user (security tracking)
+      try {
+        await logAuditEvent({
+          actorId: null,
+          actorRole: null,
+          actionType: AuditActionType.LOGIN,
+          description: `Failed login attempt for non-existent user`,
+          metadata: { success: false, emailOrUsername },
+        });
+      } catch (e) {
+        console.error("Failed to log audit event:", e);
+      }
+      
       // if we just created an admin above and the caller used a matching
       // username/email we could return its credentials here too, but for
       // simplicity we just fail and let the client resubmit with the right
@@ -468,6 +481,15 @@ router.post("/login", async (req: Request, res: Response) => {
             failedLoginAttempts: { increment: 1 },
             lastFailedAt: new Date()
           }
+        });
+        
+        // Log audit event for failed login attempt
+        await logAuditEvent({
+          actorId: user.id,
+          actorRole: user.role as any,
+          actionType: AuditActionType.LOGIN,
+          description: `Failed login attempt for user ${user.username}`,
+          metadata: { success: false, emailOrUsername },
         });
       } catch (e) {
         console.error("Failed to update failed login counter:", e);
@@ -492,6 +514,7 @@ router.post("/login", async (req: Request, res: Response) => {
         actorRole: user.role as any,
         actionType: AuditActionType.LOGIN,
         description: `User ${user.username} logged in successfully`,
+        metadata: { success: true, rememberMe: Boolean(rememberMe) },
       });
     } catch (e) {
       console.error("Failed to update login metadata:", e);

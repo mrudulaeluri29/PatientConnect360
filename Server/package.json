@@ -9,13 +9,22 @@
     "build": "npm run prisma:generate && tsc",
     "start": "node dist/index.js",
     "seed:admin": "ts-node src/scripts/createAdmin.ts",
-    "seed:feedback": "ts-node scripts/seedFeedback.ts"
+    "seed:feedback": "ts-node scripts/seedFeedback.ts",
+    "seed:comprehensive": "ts-node scripts/seedComprehensive.ts",
+    "test:login-audit": "ts-node scripts/testLoginAudit.ts",
+    "test:messaging-audit": "ts-node scripts/testMessagingAudit.ts",
+    "test:caregiver-audit": "ts-node scripts/testCaregiverAudit.ts",
+    "test:activity-dau": "ts-node scripts/testActivityDAU.ts",
+    "test:audit-pagination": "ts-node scripts/testAuditPagination.ts",
+    "test:date-range": "ts-node scripts/testDateRangeFilter.ts",
+    "test:additional-audit": "ts-node scripts/testAdditionalAudit.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "@sendgrid/mail": "^8.1.6",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

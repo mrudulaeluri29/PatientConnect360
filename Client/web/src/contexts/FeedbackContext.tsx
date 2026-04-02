@@ -16,6 +16,12 @@ type FeedbackContextValue = {
     body: string,
     options?: { danger?: boolean; confirmLabel?: string }
   ) => Promise<boolean>;
+  /** Single-action informational modal (replaces window.alert for important UX copy). */
+  infoDialog: (
+    title: string,
+    body: string,
+    options?: { confirmLabel?: string; wide?: boolean }
+  ) => Promise<void>;
   promptDialog: (title: string, options?: { placeholder?: string; confirmLabel?: string }) => Promise<string | null>;
 };
 
@@ -45,6 +51,13 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     resolve: (v: string | null) => void;
   } | null>(null);
   const [promptValue, setPromptValue] = useState("");
+  const [infoState, setInfoState] = useState<{
+    title: string;
+    body: string;
+    confirmLabel: string;
+    wide: boolean;
+    resolve: () => void;
+  } | null>(null);
 
   const showToast = useCallback((message: string, variant: ToastItem["variant"] = "info") => {
     const id = Date.now() + Math.random();
@@ -91,9 +104,28 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const infoDialog = useCallback(
+    (
+      title: string,
+      body: string,
+      options?: { confirmLabel?: string; wide?: boolean }
+    ): Promise<void> => {
+      return new Promise((resolve) => {
+        setInfoState({
+          title,
+          body,
+          confirmLabel: options?.confirmLabel ?? "OK",
+          wide: options?.wide ?? false,
+          resolve,
+        });
+      });
+    },
+    []
+  );
+
   const value = useMemo(
-    () => ({ showToast, confirmDialog, promptDialog }),
-    [showToast, confirmDialog, promptDialog]
+    () => ({ showToast, confirmDialog, infoDialog, promptDialog }),
+    [showToast, confirmDialog, infoDialog, promptDialog]
   );
 
   return (
@@ -145,6 +177,36 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
               >
                 {confirmState.confirmLabel ??
                   (confirmState.danger ? "Remove" : "Confirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {infoState && (
+        <div
+          className="pc-feedback-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pc-info-title"
+        >
+          <div
+            className={`pc-feedback-modal${infoState.wide ? " pc-feedback-modal--wide" : ""}`}
+          >
+            <h3 id="pc-info-title" className="pc-feedback-modal__title">
+              {infoState.title}
+            </h3>
+            <p className="pc-feedback-modal__body pc-feedback-modal__body--preline">{infoState.body}</p>
+            <div className="pc-feedback-modal__actions">
+              <button
+                type="button"
+                className="pc-feedback-btn pc-feedback-btn--primary"
+                onClick={() => {
+                  infoState.resolve();
+                  setInfoState(null);
+                }}
+              >
+                {infoState.confirmLabel}
               </button>
             </div>
           </div>
