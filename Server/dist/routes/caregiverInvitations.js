@@ -8,6 +8,7 @@ const crypto_1 = __importDefault(require("crypto"));
 const db_1 = require("../db");
 const requireAuth_1 = require("../middleware/requireAuth");
 const client_1 = require("@prisma/client");
+const audit_1 = require("../lib/audit");
 const router = (0, express_1.Router)();
 function getUser(req) {
     return req.user;
@@ -80,6 +81,20 @@ router.post("/", requireAuth_1.requireAuth, async (req, res) => {
             },
             select: invitationSelect,
         });
+        // Log audit event for invitation creation
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.id,
+            actorRole: user.role,
+            actionType: client_1.AuditActionType.CAREGIVER_INVITATION_CREATED,
+            targetType: "CaregiverInvitation",
+            targetId: invitation.id,
+            description: `Patient created caregiver invitation for ${firstName} ${lastName}`,
+            metadata: {
+                code: invitation.code,
+                email: invitation.email,
+                expiresAt: invitation.expiresAt.toISOString(),
+            },
+        });
         res.status(201).json({ invitation });
     }
     catch (e) {
@@ -145,6 +160,19 @@ router.delete("/:id", requireAuth_1.requireAuth, async (req, res) => {
             where: { id: req.params.id },
             data: { status: "REVOKED" },
             select: invitationSelect,
+        });
+        // Log audit event for invitation revocation
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.id,
+            actorRole: user.role,
+            actionType: client_1.AuditActionType.CAREGIVER_INVITATION_REVOKED,
+            targetType: "CaregiverInvitation",
+            targetId: updated.id,
+            description: `Patient revoked caregiver invitation for ${updated.firstName} ${updated.lastName}`,
+            metadata: {
+                code: updated.code,
+                email: updated.email,
+            },
         });
         res.json({ invitation: updated });
     }

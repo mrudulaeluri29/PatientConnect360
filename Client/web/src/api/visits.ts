@@ -14,6 +14,15 @@ export type VisitStatus =
   | "MISSED"
   | "RESCHEDULED";
 
+/** Included in 400 responses when scheduling conflicts with clinician availability. */
+export type AvailabilityHint = {
+  timeZone: string;
+  date: string;
+  hasApprovedSlot: boolean;
+  startTime: string | null;
+  endTime: string | null;
+};
+
 export type VisitType =
   | "HOME_HEALTH"
   | "WOUND_CARE"

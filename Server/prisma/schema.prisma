@@ -1,91 +1,440 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
-generator client { //this tells prisma that After reading this file, generate a JavaScript/TypeScript client so my code can talk to the database easily.
+generator client {
   provider = "prisma-client-js"
 }
 
-datasource db { //defines what kind of database is using and where to find it
+datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-} 
-//So this connects Prisma to local PostgreSQL instance using the URL stored in .env
+}
+
+model User {
+  id                    String                    @id @default(cuid())
+  email                 String                    @unique
+  username              String                    @unique
+  passwordHash          String
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  role                  Role                      @default(PATIENT)
+  failedLoginAttempts   Int                       @default(0)
+  lastFailedAt          DateTime?
+  lastLogin             DateTime?
+  passwordResetAttempts Int                       @default(0)
+  passwordResetExpiry   DateTime?
+  passwordResetToken    String?
+  adminProfile          AdminProfile?
+  auditLogs             AuditLog[]                @relation("AuditActor")
+  caregiverInvitations  CaregiverInvitation[]     @relation("PatientInvitations")
+  usedInvitations       CaregiverInvitation[]     @relation("CaregiverInvitationsUsed")
+  caregiverLinks        CaregiverPatientLink[]    @relation("CaregiverLinks")
+  patientCaregiverLinks CaregiverPatientLink[]    @relation("PatientCaregiverLinks")
+  caregiverProfile      CaregiverProfile?
+  availability          ClinicianAvailability[]   @relation("ClinicianAvailability")
+  clinicianProfile      ClinicianProfile?
+  conversations         ConversationParticipant[]
+  conversationStars     ConversationStar[]
+  patientFeedback       FamilyFeedback[]          @relation("PatientFeedback")
+  submittedFeedback     FamilyFeedback[]          @relation("SubmittedFeedback")
+  medications           Medication[]              @relation("PatientMedications")
+  prescribed            Medication[]              @relation("PrescribedMedications")
+  sentMessages          Message[]                 @relation("SentMessages")
+  notifications         Notification[]
+  outboundNotifications OutboundNotification[]
+  assignedTo            PatientAssignment[]       @relation("AssignedClinician")
+  assignments           PatientAssignment[]       @relation("AssignedPatients")
+  patientProfile        PatientProfile?
+  clinicianVisits       Visit[]                   @relation("ClinicianVisits")
+  patientVisits         Visit[]                   @relation("PatientVisits")
+  reminderPreference    VisitReminderPreference?
+  vitals                VitalSign[]               @relation("PatientVitals")
+  recordedVitals        VitalSign[]               @relation("RecordedVitals")
+}
+
+model AgencySettings {
+  id           String   @id @default("default")
+  portalName   String   @default("MediHealth")
+  logoUrl      String?
+  primaryColor String   @default("#6E5B9A")
+  supportEmail String?
+  supportPhone String?
+  supportName  String?
+  supportHours String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String          @id @default(cuid())
+  actorId     String?
+  actorRole   Role?
+  actionType  AuditActionType
+  targetType  String?
+  targetId    String?
+  description String?
+  metadata    Json?
+  createdAt   DateTime        @default(now())
+  actor       User?           @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([actionType])
+  @@index([createdAt])
+  @@index([targetType, targetId])
+}
+
+model PatientProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  legalName             String
+  dateOfBirth           DateTime
+  phoneNumber           String
+  homeAddress           String
+  apartmentSuite        String?
+  insuranceProvider     String
+  insurancePolicyNumber String
+  preferredPharmacyName String
+  pharmacyAddress       String
+  pharmacyPhoneNumber   String
+  uploadedFileName      String?
+  uploadedFileUrl       String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  username              String?
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ClinicianProfile {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  specialization      String?
+  licenseNumber       String?
+  hospitalAffiliation String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  username            String?
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CaregiverProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  relationship   String?
+  certifications String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  legalFirstName String?
+  legalLastName  String?
+  phoneNumber    String?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AdminProfile {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  displayName           String?
+  phoneNumber           String?
+  emergencyContactEmail String?
+  emergencyContactPhone String?
+  superAdmin            Boolean   @default(false)
+  notes                 String?
+  lastSecurityAudit     DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PatientAssignment {
+  id          String   @id @default(cuid())
+  patientId   String
+  clinicianId String
+  assignedAt  DateTime @default(now())
+  assignedBy  String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  clinician   User     @relation("AssignedClinician", fields: [clinicianId], references: [id], onDelete: Cascade)
+  patient     User     @relation("AssignedPatients", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, clinicianId])
+  @@index([patientId])
+  @@index([clinicianId])
+}
+
+model PendingVerification {
+  id         String    @id @default(cuid())
+  email      String    @unique
+  pending    Json
+  attempts   Int       @default(0)
+  lastSentAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Conversation {
+  id           String                    @id @default(cuid())
+  subject      String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  participants ConversationParticipant[]
+  stars        ConversationStar[]
+  messages     Message[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  unreadCount    Int          @default(0)
+  lastReadAt     DateTime?
+  joinedAt       DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String
+  attachmentUrl  String?
+  attachmentName String?
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+model Visit {
+  id                        String           @id @default(cuid())
+  patientId                 String
+  clinicianId               String
+  scheduledAt               DateTime
+  durationMinutes           Int              @default(60)
+  status                    VisitStatus      @default(SCHEDULED)
+  visitType                 VisitType        @default(HOME_HEALTH)
+  purpose                   String?
+  address                   String?
+  notes                     String?
+  clinicianNotes            String?
+  checkedInAt               DateTime?
+  completedAt               DateTime?
+  cancelledAt               DateTime?
+  cancelReason              String?
+  createdBy                 String?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+  cancellationRequestedAt   DateTime?
+  cancellationRequestedById String?
+  originalVisitId           String?
+  requestType               VisitRequestType @default(INITIAL)
+  requestedById             String?
+  rescheduleReason          String?
+  reviewNote                String?
+  reviewedAt                DateTime?
+  reviewedByAdminId         String?
+  clinician                 User             @relation("ClinicianVisits", fields: [clinicianId], references: [id], onDelete: Cascade)
+  originalVisit             Visit?           @relation("VisitRescheduleChain", fields: [originalVisitId], references: [id])
+  rescheduleChildren        Visit[]          @relation("VisitRescheduleChain")
+  patient                   User             @relation("PatientVisits", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([clinicianId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@index([originalVisitId])
+  @@index([requestType])
+}
+
+model Medication {
+  id            String              @id @default(cuid())
+  patientId     String
+  prescribedBy  String?
+  name          String
+  dosage        String
+  frequency     String?
+  startDate     DateTime?
+  endDate       DateTime?
+  status        MedicationStatus    @default(ACTIVE)
+  riskLevel     MedicationRiskLevel @default(NORMAL)
+  notes         String?
+  refillDueDate DateTime?
+  lastChangedAt DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  rxcui         String?
+  patient       User                @relation("PatientMedications", fields: [patientId], references: [id], onDelete: Cascade)
+  prescriber    User?               @relation("PrescribedMedications", fields: [prescribedBy], references: [id])
+
+  @@index([patientId])
+  @@index([status])
+}
+
+model VitalSign {
+  id         String     @id @default(cuid())
+  patientId  String
+  recordedBy String?
+  visitId    String?
+  type       VitalType
+  value      String
+  unit       String?
+  trend      VitalTrend @default(STABLE)
+  notes      String?
+  recordedAt DateTime   @default(now())
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  patient    User       @relation("PatientVitals", fields: [patientId], references: [id], onDelete: Cascade)
+  recorder   User?      @relation("RecordedVitals", fields: [recordedBy], references: [id])
+
+  @@index([patientId])
+  @@index([type])
+  @@index([recordedAt])
+}
+
+model ClinicianAvailability {
+  id          String             @id @default(cuid())
+  clinicianId String
+  date        DateTime
+  startTime   String
+  endTime     String
+  status      AvailabilityStatus @default(PENDING)
+  reviewedBy  String?
+  reviewNote  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  clinician   User               @relation("ClinicianAvailability", fields: [clinicianId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicianId, date])
+  @@index([clinicianId])
+  @@index([date])
+  @@index([status])
+}
+
+model CaregiverInvitation {
+  id           String           @id @default(cuid())
+  patientId    String
+  code         String           @unique
+  firstName    String
+  lastName     String
+  email        String
+  phoneNumber  String
+  expiresAt    DateTime
+  usedAt       DateTime?
+  usedByUserId String?
+  status       InvitationStatus @default(PENDING)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  patient      User             @relation("PatientInvitations", fields: [patientId], references: [id], onDelete: Cascade)
+  usedBy       User?            @relation("CaregiverInvitationsUsed", fields: [usedByUserId], references: [id])
+
+  @@index([patientId])
+  @@index([code])
+  @@index([expiresAt])
+}
+
+model CaregiverPatientLink {
+  id           String   @id @default(cuid())
+  caregiverId  String
+  patientId    String
+  invitationId String?
+  relationship String?
+  isPrimary    Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  caregiver    User     @relation("CaregiverLinks", fields: [caregiverId], references: [id], onDelete: Cascade)
+  patient      User     @relation("PatientCaregiverLinks", fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([caregiverId, patientId])
+  @@index([caregiverId])
+  @@index([patientId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  meta      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([isRead])
+}
+
+model VisitReminderPreference {
+  id       String          @id @default(cuid())
+  userId   String          @unique
+  channel  ReminderChannel @default(IN_APP_ONLY)
+  timezone String?
+  enabled  Boolean         @default(true)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OutboundNotification {
+  id          String         @id @default(cuid())
+  userId      String
+  channel     String
+  toAddress   String
+  templateKey String
+  payload     Json?
+  status      OutboundStatus @default(PENDING)
+  sendAt      DateTime
+  sentAt      DateTime?
+  error       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([sendAt])
+  @@index([userId])
+}
+
+model ConversationStar {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  starredAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model FamilyFeedback {
+  id                  String                  @id @default(cuid())
+  patientId           String
+  submittedByUserId   String
+  eventType           FamilyFeedbackEventType
+  relatedId           String?
+  ratingHelpfulness   Int?
+  ratingCommunication Int?
+  comment             String?
+  createdAt           DateTime                @default(now())
+  patient             User                    @relation("PatientFeedback", fields: [patientId], references: [id], onDelete: Cascade)
+  submittedBy         User                    @relation("SubmittedFeedback", fields: [submittedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([submittedByUserId])
+}
 
 enum Role {
   ADMIN
   PATIENT
   CAREGIVER
   CLINICIAN
-}
-
-//Each model in Prisma corresponds to a table in PostgreSQL.
-model User {
-  id           String   @id @default(cuid()) //Creates a column named id of type String. It's the primary key (@id). @default(cuid()) means Prisma will auto-generate a random unique ID like ckz7x0m8d0000vsf78xyz2h6f
-  email        String   @unique //A column called email of type String. It must be unique—no two users can share the same email.
-  username     String   @unique //Same rule as above for usernames.
-  passwordHash String //Stores the hashed password, never the plain password.
-  role         Role     @default(PATIENT)
-  createdAt    DateTime @default(now()) //Automatically stores the date/time when the user row is first created.
-  updatedAt    DateTime @updatedAt //Automatically updates to the current time whenever that row changes.
-
-  // Login tracking
-  lastLogin           DateTime? // timestamp of the last successful login
-  failedLoginAttempts Int      @default(0) // number of consecutive failed login attempts
-  lastFailedAt        DateTime? // timestamp of the last failed login attempt
-
-  // Password reset tracking
-  passwordResetToken  String?   // OTP token for password reset
-  passwordResetExpiry DateTime? // Expiry time for the OTP token (15 minutes)
-  passwordResetAttempts Int     @default(0) // Number of failed OTP attempts
-
-  // Relations to profile tables
-  patientProfile   PatientProfile?
-  clinicianProfile ClinicianProfile?
-  caregiverProfile CaregiverProfile?
-  adminProfile    AdminProfile?
-  
-  // Relations for messaging
-  sentMessages     Message[]        @relation("SentMessages")
-  conversations    ConversationParticipant[]
-  assignments      PatientAssignment[] @relation("AssignedPatients")
-  assignedTo       PatientAssignment[] @relation("AssignedClinician")
-
-  // Relations for visits
-  patientVisits    Visit[]          @relation("PatientVisits")
-  clinicianVisits  Visit[]          @relation("ClinicianVisits")
-
-  // Relations for medications
-  medications      Medication[]     @relation("PatientMedications")
-  prescribed       Medication[]     @relation("PrescribedMedications")
-
-  // Relations for vitals
-  vitals           VitalSign[]      @relation("PatientVitals")
-  recordedVitals   VitalSign[]      @relation("RecordedVitals")
-
-  // Relations for availability
-  availability     ClinicianAvailability[] @relation("ClinicianAvailability")
-
-  // Relations for caregiver invitations & links
-  caregiverInvitations     CaregiverInvitation[]   @relation("PatientInvitations")
-  usedInvitations          CaregiverInvitation[]   @relation("CaregiverInvitationsUsed")
-  caregiverLinks           CaregiverPatientLink[]  @relation("CaregiverLinks")
-  patientCaregiverLinks    CaregiverPatientLink[]  @relation("PatientCaregiverLinks")
-
-  // Feature 2: Notifications & preferences
-  notifications            Notification[]
-  reminderPreference       VisitReminderPreference?
-  conversationStars        ConversationStar[]
-  outboundNotifications    OutboundNotification[]
-  
-  // Audit logs
-  auditLogs                AuditLog[]              @relation("AuditActor")
-  
-  // Feature 3: Family feedback
-  patientFeedback          FamilyFeedback[]        @relation("PatientFeedback")
-  submittedFeedback        FamilyFeedback[]        @relation("SubmittedFeedback")
 }
 
 enum AuditActionType {
@@ -100,230 +449,29 @@ enum AuditActionType {
   CAREGIVER_LINK_UPDATED
   ASSIGNMENT_UPDATED
   AVAILABILITY_REVIEWED
-  AVAILABILITY_SUBMITTED
   SETTINGS_UPDATED
   MESSAGE_SENT
   CONVERSATION_CREATED
   CAREGIVER_INVITATION_CREATED
   CAREGIVER_INVITATION_REVOKED
   CAREGIVER_LINK_CREATED
+  AVAILABILITY_SUBMITTED
   VISIT_RESCHEDULE_REQUESTED
   VISIT_RESCHEDULE_APPROVED
   BRANDING_UPDATED
 }
 
-model AgencySettings {
-  id             String   @id @default("default")
-  portalName     String   @default("MediHealth")
-  logoUrl        String?
-  primaryColor   String   @default("#6E5B9A")
-  supportEmail   String?
-  supportPhone   String?
-  supportName    String?
-  supportHours   String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-}
-
-model AuditLog {
-  id          String          @id @default(cuid())
-  actorId     String?
-  actorRole   Role?
-  actionType  AuditActionType
-  targetType  String?
-  targetId    String?
-  description String?
-  metadata    Json?
-  createdAt   DateTime        @default(now())
-
-  actor       User?           @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
-
-  @@index([actorId])
-  @@index([actionType])
-  @@index([createdAt])
-  @@index([targetType, targetId])
-}
-
-// Patient-specific profile information
-model PatientProfile {
-  id                    String   @id @default(cuid())
-  userId                String   @unique
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  username              String?  // Duplicate of User.username for quicker profile queries (optional; populated at registration)
-  
-  // Personal Information
-  legalName             String
-  dateOfBirth           DateTime
-  phoneNumber           String
-  homeAddress           String
-  apartmentSuite        String?
-  
-  // Insurance Information
-  insuranceProvider     String
-  insurancePolicyNumber String
-  
-  // Pharmacy Information
-  preferredPharmacyName String
-  pharmacyAddress       String
-  pharmacyPhoneNumber   String
-  
-  // Optional file attachment (for insurance card, etc.)
-  uploadedFileName      String?
-  uploadedFileUrl       String?
-  
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-}
-
-// Clinician-specific profile information
-model ClinicianProfile {
-  id                    String   @id @default(cuid())
-  userId                String   @unique
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  username              String?  // Duplicate of User.username for quicker profile queries (optional; populated at registration)
-  
-  // Professional Information
-  specialization        String?
-  licenseNumber         String?
-  hospitalAffiliation   String?
-  
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-}
-
-// Caregiver-specific profile information
-model CaregiverProfile {
-  id                    String   @id @default(cuid())
-  userId                String   @unique
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  legalFirstName        String?
-  legalLastName         String?
-  phoneNumber           String?
-  relationship          String?  // e.g., "Family Member", "MPOA", "Spouse/Partner"
-  certifications        String?
-  
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-}
-
-// Admin-specific profile information (optional metadata kept separate from core User fields)
-model AdminProfile {
-  id                     String   @id @default(cuid())
-  userId                 String   @unique
-  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Presentation / contact
-  displayName            String?
-  phoneNumber            String?
-  emergencyContactEmail  String?
-  emergencyContactPhone  String?
-
-  // Privilege & notes
-  superAdmin             Boolean  @default(false) // Can manage other admins, perform high-risk ops
-  notes                  String?  @db.Text        // Internal operational notes
-
-  // Audit / tracking
-  lastSecurityAudit      DateTime? // Timestamp of last manual or automated security review
-
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-}
-
-// Patient-Clinician Assignment
-// Links patients to their assigned clinicians (many-to-many)
-model PatientAssignment {
-  id            String   @id @default(cuid())
-  patientId     String
-  clinicianId   String
-  assignedAt    DateTime @default(now())
-  assignedBy    String?  // Admin user ID who made the assignment
-  isActive      Boolean  @default(true)
-  
-  patient       User     @relation("AssignedPatients", fields: [patientId], references: [id], onDelete: Cascade)
-  clinician     User     @relation("AssignedClinician", fields: [clinicianId], references: [id], onDelete: Cascade)
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  @@unique([patientId, clinicianId])
-  @@index([patientId])
-  @@index([clinicianId])
-}
-
-// Pending email verification for signup. Twilio Verify handles code generation
-// and validation; we store the pending user data until the email is verified.
-model PendingVerification {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  pending    Json
-  attempts   Int      @default(0)
-  lastSentAt DateTime?
-  createdAt  DateTime @default(now())
-}
-
-// Conversation (thread between users)
-model Conversation {
-  id           String                     @id @default(cuid())
-  subject      String?                    // Optional subject line
-  createdAt    DateTime                   @default(now())
-  updatedAt    DateTime                   @updatedAt
-  
-  participants ConversationParticipant[]
-  messages     Message[]
-  stars        ConversationStar[]
-}
-
-// Links users to conversations (many-to-many)
-model ConversationParticipant {
-  id             String       @id @default(cuid())
-  conversationId String
-  userId         String
-  unreadCount    Int          @default(0)  // Track unread messages for this user
-  lastReadAt     DateTime?
-  joinedAt       DateTime     @default(now())
-  
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([conversationId, userId])
-  @@index([userId])
-}
-
-// Individual message in a conversation
-model Message {
-  id             String       @id @default(cuid())
-  conversationId String
-  senderId       String
-  content        String       @db.Text
-  attachmentUrl  String?      // Optional file attachment
-  attachmentName String?
-  isRead         Boolean      @default(false)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender         User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  
-  @@index([conversationId])
-  @@index([senderId])
-}
-
-// ─────────────────────────────────────────────
-// VISIT / APPOINTMENT
-// ─────────────────────────────────────────────
-
 enum VisitStatus {
-  REQUESTED            // New appointment request awaiting admin review
-  RESCHEDULE_REQUESTED // Reschedule request awaiting admin review
-  REJECTED             // Request rejected by admin
-  SCHEDULED            // Legacy/admin-created schedule
-  CONFIRMED    // Patient confirmed
-  IN_PROGRESS  // Clinician checked in
-  COMPLETED    // Visit finished
-  CANCELLED    // Cancelled by any party
-  MISSED       // No-show
-  RESCHEDULED  // Replaced by another visit
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  MISSED
+  RESCHEDULED
+  REQUESTED
+  RESCHEDULE_REQUESTED
+  REJECTED
 }
 
 enum VisitRequestType {
@@ -343,54 +491,6 @@ enum VisitType {
   OTHER
 }
 
-// A scheduled home health visit between a clinician and patient
-model Visit {
-  id              String      @id @default(cuid())
-  patientId       String
-  clinicianId     String
-  scheduledAt     DateTime                    // When the visit is scheduled
-  durationMinutes Int         @default(60)    // Expected duration
-  status          VisitStatus @default(SCHEDULED)
-  visitType       VisitType   @default(HOME_HEALTH)
-  purpose         String?                     // Free-text description of visit purpose
-  address         String?                     // Visit location (defaults to patient home address)
-  notes           String?     @db.Text        // Pre-visit notes from admin/clinician
-  clinicianNotes  String?     @db.Text        // Post-visit documentation by clinician
-  checkedInAt     DateTime?                   // When clinician confirmed arrival
-  completedAt     DateTime?                   // When visit was marked complete
-  cancelledAt     DateTime?
-  cancelReason    String?
-  createdBy       String?                     // Admin user ID who created the visit
-  requestType     VisitRequestType @default(INITIAL)
-  requestedById   String?
-  originalVisitId String?
-  rescheduleReason String?    @db.Text
-  reviewNote      String?     @db.Text
-  reviewedByAdminId String?
-  reviewedAt      DateTime?
-  cancellationRequestedById String?
-  cancellationRequestedAt DateTime?
-  
-  patient         User        @relation("PatientVisits",   fields: [patientId],   references: [id], onDelete: Cascade)
-  clinician       User        @relation("ClinicianVisits", fields: [clinicianId], references: [id], onDelete: Cascade)
-  originalVisit   Visit?      @relation("VisitRescheduleChain", fields: [originalVisitId], references: [id], onDelete: SetNull)
-  rescheduleChildren Visit[]  @relation("VisitRescheduleChain")
-
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-
-  @@index([patientId])
-  @@index([clinicianId])
-  @@index([scheduledAt])
-  @@index([status])
-  @@index([originalVisitId])
-  @@index([requestType])
-}
-
-// ─────────────────────────────────────────────
-// MEDICATIONS
-// ─────────────────────────────────────────────
-
 enum MedicationStatus {
   ACTIVE
   DISCONTINUED
@@ -400,40 +500,9 @@ enum MedicationStatus {
 
 enum MedicationRiskLevel {
   NORMAL
-  CHANGED    // Recently changed — flag for review
-  HIGH_RISK  // High-alert medication (e.g. warfarin, insulin)
+  CHANGED
+  HIGH_RISK
 }
-
-// A medication prescribed to a patient
-model Medication {
-  id            String              @id @default(cuid())
-  patientId     String
-  prescribedBy  String?             // Clinician user ID (optional — may be external physician)
-  name          String              // Drug name e.g. "Metformin 500mg"
-  rxcui         String?             // RxNorm Concept Unique Identifier — for FHIR interoperability
-  dosage        String              // e.g. "Take 1 tablet twice daily with meals"
-  frequency     String?             // e.g. "Twice daily", "As needed"
-  startDate     DateTime?
-  endDate       DateTime?           // Null = ongoing
-  status        MedicationStatus    @default(ACTIVE)
-  riskLevel     MedicationRiskLevel @default(NORMAL)
-  notes         String?             @db.Text
-  refillDueDate DateTime?           // When refill is needed
-  lastChangedAt DateTime?           // When dosage/instructions last changed
-
-  patient       User                @relation("PatientMedications",  fields: [patientId],    references: [id], onDelete: Cascade)
-  prescriber    User?               @relation("PrescribedMedications", fields: [prescribedBy], references: [id], onDelete: SetNull)
-
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-
-  @@index([patientId])
-  @@index([status])
-}
-
-// ─────────────────────────────────────────────
-// VITAL SIGNS
-// ─────────────────────────────────────────────
 
 enum VitalType {
   BLOOD_PRESSURE
@@ -453,123 +522,18 @@ enum VitalTrend {
   CRITICAL
 }
 
-// A single vital sign reading recorded for a patient
-model VitalSign {
-  id          String      @id @default(cuid())
-  patientId   String
-  recordedBy  String?     // Clinician user ID who recorded it (null = patient self-reported)
-  visitId     String?     // Optional link to the visit during which it was recorded
-  type        VitalType
-  value       String      // Stored as string to handle varied formats: "120/80", "72", "98.6"
-  unit        String?     // e.g. "mmHg", "bpm", "°F", "%", "lbs", "mg/dL"
-  trend       VitalTrend  @default(STABLE)
-  notes       String?
-  recordedAt  DateTime    @default(now())
-
-  patient     User        @relation("PatientVitals",    fields: [patientId],  references: [id], onDelete: Cascade)
-  recorder    User?       @relation("RecordedVitals",   fields: [recordedBy], references: [id], onDelete: SetNull)
-
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-
-  @@index([patientId])
-  @@index([type])
-  @@index([recordedAt])
-}
-
-// ─────────────────────────────────────────────
-// CLINICIAN AVAILABILITY
-// ─────────────────────────────────────────────
-
 enum AvailabilityStatus {
-  PENDING    // Submitted by clinician, awaiting admin review
-  APPROVED   // Admin approved — slots can be used for scheduling
-  REJECTED   // Admin rejected
+  PENDING
+  APPROVED
+  REJECTED
 }
-
-// A block of time a clinician is available for visits
-model ClinicianAvailability {
-  id           String             @id @default(cuid())
-  clinicianId  String
-  date         DateTime           // The calendar date (time portion ignored — use startTime/endTime)
-  startTime    String             // "09:00" — 24h format
-  endTime      String             // "17:00" — 24h format
-  status       AvailabilityStatus @default(PENDING)
-  reviewedBy   String?            // Admin user ID who approved/rejected
-  reviewNote   String?            // Optional admin note on rejection
-  reviewedAt   DateTime?
-
-  clinician    User               @relation("ClinicianAvailability", fields: [clinicianId], references: [id], onDelete: Cascade)
-
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-
-  @@unique([clinicianId, date])   // One availability block per clinician per day
-  @@index([clinicianId])
-  @@index([date])
-  @@index([status])
-}
-
-// ─────────────────────────────────────────────
-// CAREGIVER INVITATION & LINKING
-// ─────────────────────────────────────────────
 
 enum InvitationStatus {
-  PENDING    // Awaiting caregiver to sign up with the code
-  ACCEPTED   // Caregiver signed up and linked
-  EXPIRED    // Code expired (72h window passed)
-  REVOKED    // Patient cancelled the invitation
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
 }
-
-// A one-time invitation code sent by a patient to a prospective caregiver
-model CaregiverInvitation {
-  id            String           @id @default(cuid())
-  patientId     String
-  code          String           @unique
-  firstName     String
-  lastName      String
-  email         String
-  phoneNumber   String
-  expiresAt     DateTime
-  usedAt        DateTime?
-  usedByUserId  String?
-  status        InvitationStatus @default(PENDING)
-
-  patient       User             @relation("PatientInvitations", fields: [patientId], references: [id], onDelete: Cascade)
-  usedBy        User?            @relation("CaregiverInvitationsUsed", fields: [usedByUserId], references: [id])
-
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-
-  @@index([patientId])
-  @@index([code])
-  @@index([expiresAt])
-}
-
-// Active link between a caregiver user and a patient user
-model CaregiverPatientLink {
-  id            String   @id @default(cuid())
-  caregiverId   String
-  patientId     String
-  invitationId  String?
-  relationship  String?
-  isPrimary     Boolean  @default(false)
-  isActive      Boolean  @default(true)
-
-  caregiver     User     @relation("CaregiverLinks", fields: [caregiverId], references: [id], onDelete: Cascade)
-  patient       User     @relation("PatientCaregiverLinks", fields: [patientId], references: [id], onDelete: Cascade)
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@unique([caregiverId, patientId])
-  @@index([caregiverId])
-  @@index([patientId])
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 2: NOTIFICATIONS & COMMUNICATION
-// ─────────────────────────────────────────────
 
 enum NotificationType {
   VISIT_REQUEST_RECEIVED
@@ -581,10 +545,6 @@ enum NotificationType {
   CAREPLAN_UPDATED
   MESSAGE_RECEIVED
 }
-
-// ─────────────────────────────────────────────
-// FEATURE 3: FAMILY / MPOA FEEDBACK
-// ─────────────────────────────────────────────
 
 enum FamilyFeedbackEventType {
   VISIT_COMPLETED
@@ -603,95 +563,4 @@ enum OutboundStatus {
   SENT
   FAILED
   CANCELLED
-}
-
-// In-app notification for any user
-model Notification {
-  id        String           @id @default(cuid())
-  userId    String
-  type      NotificationType
-  title     String
-  body      String
-  meta      Json?
-  isRead    Boolean          @default(false)
-  createdAt DateTime         @default(now())
-
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([createdAt])
-  @@index([isRead])
-}
-
-// User preference for visit reminder delivery channel
-model VisitReminderPreference {
-  id       String          @id @default(cuid())
-  userId   String          @unique
-  channel  ReminderChannel @default(IN_APP_ONLY)
-  timezone String?
-  enabled  Boolean         @default(true)
-
-  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-// Queue for outbound SMS/email reminders
-model OutboundNotification {
-  id          String         @id @default(cuid())
-  userId      String
-  channel     String         // "SMS" or "EMAIL"
-  toAddress   String         // phone number or email
-  templateKey String
-  payload     Json?
-  status      OutboundStatus @default(PENDING)
-  sendAt      DateTime
-  sentAt      DateTime?
-  error       String?
-
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-
-  @@index([status])
-  @@index([sendAt])
-  @@index([userId])
-}
-
-// Star/important flag on a conversation (per user)
-model ConversationStar {
-  id             String       @id @default(cuid())
-  conversationId String
-  userId         String
-  starredAt      DateTime     @default(now())
-
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([conversationId, userId])
-  @@index([userId])
-}
-
-// ─────────────────────────────────────────────
-// FEATURE 3: FAMILY / MPOA FEEDBACK
-// ─────────────────────────────────────────────
-
-// Anonymous feedback from family/MPOA after key events
-model FamilyFeedback {
-  id                   String                   @id @default(cuid())
-  patientId            String
-  submittedByUserId    String                   // Caregiver/MPOA user ID (stored for audit, not shown to clinicians)
-  eventType            FamilyFeedbackEventType
-  relatedId            String?                  // visitId or medicationId
-  ratingHelpfulness    Int?                     // 1-5 scale
-  ratingCommunication  Int?                     // 1-5 scale
-  comment              String?                  @db.Text
-  createdAt            DateTime                 @default(now())
-
-  patient              User                     @relation("PatientFeedback", fields: [patientId], references: [id], onDelete: Cascade)
-  submittedBy          User                     @relation("SubmittedFeedback", fields: [submittedByUserId], references: [id], onDelete: Cascade)
-
-  @@index([patientId])
-  @@index([eventType])
-  @@index([createdAt])
-  @@index([submittedByUserId])
 }

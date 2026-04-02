@@ -2,6 +2,7 @@
 // Called from visit route hooks to create in-app Notification rows.
 import { prisma } from "../db";
 import { NotificationType } from "@prisma/client";
+import { sendVisitStatusEmailsToUserIds } from "./appointmentEmail";
 
 interface CreateNotifOptions {
   userId: string;
@@ -56,13 +57,19 @@ export async function onVisitRequestCreated(
   scheduledAt: Date
 ) {
   const time = scheduledAt.toLocaleString();
+  const body = `We received your appointment request with ${clinicianName} for ${time}. You'll be notified once it's reviewed.`;
   await createNotification({
     userId: requesterId,
     type: "VISIT_REQUEST_RECEIVED",
     title: "Visit Request Received",
-    body: `We received your appointment request with ${clinicianName} for ${time}. You'll be notified once it's reviewed.`,
+    body,
     meta: { visitId },
   });
+  void sendVisitStatusEmailsToUserIds(
+    [requesterId],
+    "PatientConnect360 — Visit request received",
+    `${body}\n\nVisit ID: ${visitId}`
+  );
 }
 
 /** Visit approved — notify requester + patient + linked caregivers. */
@@ -77,12 +84,18 @@ export async function onVisitApproved(
   const caregiverIds = await getLinkedCaregiverIds(patientId);
   const recipients = [...new Set([patientId, ...(requestedById ? [requestedById] : []), ...caregiverIds])];
 
+  const body = `Your appointment with ${clinicianName} on ${time} has been approved.`;
   await notifyMany(recipients, {
     type: "VISIT_APPROVED",
     title: "Appointment Approved",
-    body: `Your appointment with ${clinicianName} on ${time} has been approved.`,
+    body,
     meta: { visitId },
   });
+  void sendVisitStatusEmailsToUserIds(
+    recipients,
+    "PatientConnect360 — Appointment approved",
+    `${body}\n\nVisit ID: ${visitId}`
+  );
 }
 
 /** Visit denied/rejected — notify requester + patient + linked caregivers. */
@@ -97,12 +110,18 @@ export async function onVisitDenied(
   const recipients = [...new Set([patientId, ...(requestedById ? [requestedById] : []), ...caregiverIds])];
   const noteText = reviewNote ? ` Reason: ${reviewNote}` : "";
 
+  const body = `Your appointment request with ${clinicianName} was not approved.${noteText}`;
   await notifyMany(recipients, {
     type: "VISIT_DENIED",
     title: "Appointment Denied",
-    body: `Your appointment request with ${clinicianName} was not approved.${noteText}`,
+    body,
     meta: { visitId },
   });
+  void sendVisitStatusEmailsToUserIds(
+    recipients,
+    "PatientConnect360 — Appointment not approved",
+    `${body}\n\nVisit ID: ${visitId}`
+  );
 }
 
 /** Visit cancelled — notify admin(s) + clinician + patient + linked caregivers. */
@@ -125,10 +144,16 @@ export async function onVisitCancelled(
   const recipients = [...new Set([patientId, clinicianId, ...caregiverIds, ...adminIds])];
   const reasonText = cancelReason ? ` Reason: ${cancelReason}` : "";
 
+  const body = `An appointment has been cancelled by ${cancelledByName}.${reasonText}`;
   await notifyMany(recipients, {
     type: "VISIT_CANCELLED",
     title: "Appointment Cancelled",
-    body: `An appointment has been cancelled by ${cancelledByName}.${reasonText}`,
+    body,
     meta: { visitId },
   });
+  void sendVisitStatusEmailsToUserIds(
+    recipients,
+    "PatientConnect360 — Appointment cancelled",
+    `${body}\n\nVisit ID: ${visitId}`
+  );
 }

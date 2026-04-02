@@ -577,7 +577,7 @@ router.put("/settings", requireRole_1.requireAdmin, async (req, res) => {
         await (0, audit_1.logAuditEvent)({
             actorId: actor.id,
             actorRole: actor.role,
-            actionType: client_1.AuditActionType.SETTINGS_UPDATED,
+            actionType: client_1.AuditActionType.BRANDING_UPDATED,
             targetType: "AgencySettings",
             targetId: settings.id,
             description: "Updated agency branding and support settings",
@@ -598,8 +598,9 @@ router.put("/settings", requireRole_1.requireAdmin, async (req, res) => {
 // GET /api/admin/audit-logs
 router.get("/audit-logs", requireRole_1.requireAdmin, async (req, res) => {
     try {
-        const { actionType, actorRole, search, limit } = req.query;
-        const take = Math.min(Math.max(Number(limit) || 100, 1), 250);
+        const { actionType, actorRole, search, limit, offset, from, to } = req.query;
+        const take = Math.min(Math.max(Number(limit) || 50, 1), 200);
+        const skip = Math.max(Number(offset) || 0, 0);
         const where = {};
         if (actionType && typeof actionType === "string") {
             where.actionType = actionType.toUpperCase();
@@ -623,6 +624,21 @@ router.get("/audit-logs", requireRole_1.requireAdmin, async (req, res) => {
                 },
             ];
         }
+        // Date range filtering
+        if (from || to) {
+            where.createdAt = {};
+            if (from && typeof from === "string") {
+                where.createdAt.gte = new Date(from);
+            }
+            if (to && typeof to === "string") {
+                // Add one day to include the entire 'to' date
+                const toDate = new Date(to);
+                toDate.setDate(toDate.getDate() + 1);
+                where.createdAt.lt = toDate;
+            }
+        }
+        // Get total count for pagination
+        const total = await db_1.prisma.auditLog.count({ where });
         const logs = await db_1.prisma.auditLog.findMany({
             where,
             include: {
@@ -636,8 +652,9 @@ router.get("/audit-logs", requireRole_1.requireAdmin, async (req, res) => {
             },
             orderBy: { createdAt: "desc" },
             take,
+            skip,
         });
-        res.json({ logs });
+        res.json({ logs, total, limit: take, offset: skip });
     }
     catch (e) {
         console.error("Admin get audit logs failed:", e);

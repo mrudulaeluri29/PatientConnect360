@@ -7,6 +7,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../db");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const client_1 = require("@prisma/client");
+const audit_1 = require("../lib/audit");
 const router = (0, express_1.Router)();
 async function getCaregiverLinkedPatientIds(caregiverId) {
     const links = await db_1.prisma.caregiverPatientLink.findMany({
@@ -237,6 +239,16 @@ router.post("/send", async (req, res) => {
                 },
             });
             console.log("[SEND] Created new conversation:", conversation.id, "with participants:", conversation.participants.map((p) => p.userId));
+            // Log audit event for conversation creation
+            await (0, audit_1.logAuditEvent)({
+                actorId: user.uid,
+                actorRole: user.role,
+                actionType: client_1.AuditActionType.CONVERSATION_CREATED,
+                targetType: "Conversation",
+                targetId: conversation.id,
+                description: `User ${user.uid} created conversation with ${recipientId}`,
+                metadata: { recipientId, subject },
+            });
         }
         // Create the message
         const message = await db_1.prisma.message.create({
@@ -262,6 +274,20 @@ router.post("/send", async (req, res) => {
             senderRole: user.role,
             recipientId: recipientId,
             participants: conversation.participants?.map((p) => p.userId)
+        });
+        // Log audit event for message sent
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.uid,
+            actorRole: user.role,
+            actionType: client_1.AuditActionType.MESSAGE_SENT,
+            targetType: "Message",
+            targetId: message.id,
+            description: `User sent message in conversation ${conversation.id}`,
+            metadata: {
+                conversationId: conversation.id,
+                recipientId,
+                messageLength: body.length,
+            },
         });
         // Update conversation timestamp
         await db_1.prisma.conversation.update({
@@ -579,6 +605,24 @@ router.post("/conversation/:id/reply", async (req, res) => {
             },
             include: {
                 sender: { select: { id: true, username: true, email: true } },
+            },
+        });
+        // Log audit event for message sent (reply)
+        const otherParticipants = conversation.participants
+            .filter((p) => p.userId !== user.uid)
+            .map((p) => p.userId);
+        await (0, audit_1.logAuditEvent)({
+            actorId: user.uid,
+            actorRole: user.role,
+            actionType: client_1.AuditActionType.MESSAGE_SENT,
+            targetType: "Message",
+            targetId: message.id,
+            description: `User replied in conversation ${id}`,
+            metadata: {
+                conversationId: id,
+                recipientIds: otherParticipants,
+                messageLength: body.length,
+                isReply: true,
             },
         });
         // Update conversation timestamp
