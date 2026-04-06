@@ -47,6 +47,16 @@ model User {
   reminderPreference    VisitReminderPreference?
   vitals                VitalSign[]               @relation("PatientVitals")
   recordedVitals        VitalSign[]               @relation("RecordedVitals")
+  // Feature 1 — health records / care plans
+  patientCarePlans           CarePlan[]             @relation("PatientCarePlans")
+  clinicianCreatedCarePlans  CarePlan[]             @relation("ClinicianCarePlans")
+  adminCreatedCarePlans      CarePlan[]             @relation("AdminCarePlans")
+  carePlanProgressAsPatient  CarePlanItemProgress[] @relation("CarePlanProgressPatient")
+  carePlanProgressUpdates    CarePlanItemProgress[] @relation("CarePlanProgressUpdater")
+  carePlanCheckInsSubmitted  CarePlanCheckIn[]      @relation("CarePlanCheckInAuthor")
+  patientDocuments           PatientDocument[]      @relation("PatientDocumentsPatient")
+  uploadedPatientDocuments   PatientDocument[]      @relation("PatientDocumentUploader")
+  visitSummariesAuthored     Visit[]                @relation("VisitSummaryAuthor")
 }
 
 model AgencySettings {
@@ -240,6 +250,14 @@ model Visit {
   originalVisit             Visit?           @relation("VisitRescheduleChain", fields: [originalVisitId], references: [id])
   rescheduleChildren        Visit[]          @relation("VisitRescheduleChain")
   patient                   User             @relation("PatientVisits", fields: [patientId], references: [id], onDelete: Cascade)
+  // Feature 1 — structured visit summary (clinician/admin edit; patient/caregiver read via visit GET)
+  summaryDiagnosis       String?
+  summaryCareProvided    String?
+  summaryPatientResponse String?
+  summaryFollowUp        String?
+  summaryUpdatedAt       DateTime?
+  summaryUpdatedById     String?
+  summaryUpdatedBy       User?            @relation("VisitSummaryAuthor", fields: [summaryUpdatedById], references: [id], onDelete: SetNull)
 
   @@index([patientId])
   @@index([clinicianId])
@@ -247,6 +265,94 @@ model Visit {
   @@index([status])
   @@index([originalVisitId])
   @@index([requestType])
+}
+
+// ─── Feature 1: Care plans & patient documents ───────────────────────────────
+
+model CarePlan {
+  id                   String         @id @default(cuid())
+  patientId            String
+  createdByClinicianId String?
+  createdByAdminId     String?
+  status               CarePlanStatus @default(ACTIVE)
+  reviewBy             DateTime?
+  version              Int            @default(1)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  patient              User           @relation("PatientCarePlans", fields: [patientId], references: [id], onDelete: Cascade)
+  createdByClinician   User?          @relation("ClinicianCarePlans", fields: [createdByClinicianId], references: [id], onDelete: SetNull)
+  createdByAdmin       User?          @relation("AdminCarePlans", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  items                CarePlanItem[]
+  checkIns             CarePlanCheckIn[]
+
+  @@index([patientId])
+  @@index([status])
+}
+
+model CarePlanItem {
+  id         String           @id @default(cuid())
+  carePlanId String
+  type       CarePlanItemType
+  title      String
+  details    String?
+  sortOrder  Int              @default(0)
+  isActive   Boolean          @default(true)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  carePlan   CarePlan         @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+  progress   CarePlanItemProgress[]
+
+  @@index([carePlanId])
+}
+
+model CarePlanItemProgress {
+  id              String                     @id @default(cuid())
+  carePlanItemId  String
+  patientId       String
+  updatedByUserId String
+  status          CarePlanItemProgressStatus @default(NOT_STARTED)
+  note            String?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  carePlanItem   CarePlanItem @relation(fields: [carePlanItemId], references: [id], onDelete: Cascade)
+  patient        User         @relation("CarePlanProgressPatient", fields: [patientId], references: [id], onDelete: Cascade)
+  updatedBy      User         @relation("CarePlanProgressUpdater", fields: [updatedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([carePlanItemId, patientId])
+  @@index([patientId])
+}
+
+model CarePlanCheckIn {
+  id              String                @id @default(cuid())
+  carePlanId      String
+  updatedByUserId String
+  status          CarePlanCheckInStatus @default(OK)
+  note            String?
+  createdAt       DateTime              @default(now())
+  carePlan  CarePlan @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+  updatedBy User     @relation("CarePlanCheckInAuthor", fields: [updatedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([carePlanId])
+}
+
+model PatientDocument {
+  id               String   @id @default(cuid())
+  patientId        String
+  uploadedByUserId String
+  docType          String
+  filename         String
+  contentType      String
+  blobUrl          String
+  blobPath         String
+  blobContainer    String   @default("patient-documents")
+  isHidden         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  patient          User     @relation("PatientDocumentsPatient", fields: [patientId], references: [id], onDelete: Cascade)
+  uploadedBy       User     @relation("PatientDocumentUploader", fields: [uploadedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([isHidden])
 }
 
 model Medication {
@@ -563,4 +669,31 @@ enum OutboundStatus {
   SENT
   FAILED
   CANCELLED
+}
+
+// ─── Feature 1 enums ────────────────────────────────────────────────────────
+
+enum CarePlanStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum CarePlanItemType {
+  PROBLEM
+  GOAL
+  INTERVENTION
+}
+
+enum CarePlanItemProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum CarePlanCheckInStatus {
+  OK
+  FAIR
+  NEEDS_ATTENTION
 }
