@@ -51,12 +51,6 @@ const visitSelect = {
   cancelReason: true,
   createdAt: true,
   updatedAt: true,
-  summaryDiagnosis: true,
-  summaryCareProvided: true,
-  summaryPatientResponse: true,
-  summaryFollowUp: true,
-  summaryUpdatedAt: true,
-  summaryUpdatedById: true,
   patient: {
     select: {
       id: true,
@@ -717,51 +711,6 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
   }
 });
 
-// PATCH /api/visits/:id/summary
-// Structured visit summary — clinician on the visit or admin only.
-router.patch("/:id/summary", async (req: Request, res: Response) => {
-  try {
-    const user = getUser(req);
-    const { id } = req.params;
-    const existing = await prisma.visit.findUnique({
-      where: { id },
-      select: { id: true, patientId: true, clinicianId: true },
-    });
-    if (!existing) return res.status(404).json({ error: "Visit not found" });
-
-    if (user.role !== "ADMIN") {
-      if (user.role !== "CLINICIAN" || existing.clinicianId !== user.id) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-    }
-
-    const b = req.body || {};
-    const data: Record<string, unknown> = {
-      summaryUpdatedAt: new Date(),
-      summaryUpdatedById: user.id,
-    };
-    const fields = [
-      "summaryDiagnosis",
-      "summaryCareProvided",
-      "summaryPatientResponse",
-      "summaryFollowUp",
-    ] as const;
-    for (const k of fields) {
-      if (k in b) data[k] = b[k] === null || b[k] === "" ? null : String(b[k]);
-    }
-
-    const visit = await prisma.visit.update({
-      where: { id },
-      data,
-      select: visitSelect,
-    });
-    res.json({ visit });
-  } catch (e) {
-    console.error("PATCH /api/visits/:id/summary failed:", e);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
 // PATCH /api/visits/:id
 // Role-based partial update:
 //
@@ -841,24 +790,51 @@ router.patch("/:id", async (req: Request, res: Response) => {
         data.clinicianId = clinicianId;
       }
 
+   /* } else if (user.role === "CLINICIAN") {
+  const { status, clinicianNotes } = req.body || {};
+  if (clinicianNotes !== undefined) data.clinicianNotes = clinicianNotes;
+  if (status) {
+    // ← WE ADD OUR 50-CHAR CHECK RIGHT HERE
+    if (status === VisitStatus.COMPLETED) data.completedAt = new Date();
+  }
+} */
+
     } else if (user.role === "CLINICIAN") {
-      const { status, clinicianNotes } = req.body || {};
+  const { status, clinicianNotes } = req.body || {};
 
-      if (clinicianNotes !== undefined) data.clinicianNotes = clinicianNotes;
+  if (clinicianNotes !== undefined) data.clinicianNotes = clinicianNotes;
 
-      if (status) {
-        const allowed: VisitStatus[] = [VisitStatus.IN_PROGRESS, VisitStatus.COMPLETED, VisitStatus.MISSED];
-        if (!allowed.includes(status)) {
-          return res.status(403).json({
-            error: `Clinicians can only set status to: ${allowed.join(", ")}`,
-          });
-        }
-        data.status = status;
-        if (status === VisitStatus.IN_PROGRESS) data.checkedInAt  = new Date();
-        if (status === VisitStatus.COMPLETED)   data.completedAt  = new Date();
+  if (status) {
+    const allowed: VisitStatus[] = [VisitStatus.IN_PROGRESS, VisitStatus.COMPLETED, VisitStatus.MISSED];
+    if (!allowed.includes(status)) {
+      return res.status(403).json({
+        error: `Clinicians can only set status to: ${allowed.join(", ")}`,
+      });
+    }
+
+    // ── Feature 4: Documentation gating ──
+    // Clinician cannot complete a visit without at least 50 chars of notes.
+    if (status === VisitStatus.COMPLETED) {
+      const existingVisit = await prisma.visit.findUnique({
+        where: { id },
+        select: { clinicianNotes: true },
+      });
+      const finalNotes = clinicianNotes ?? existingVisit?.clinicianNotes ?? "";
+      if (String(finalNotes).trim().length < 50) {
+        return res.status(400).json({
+          error: "Cannot complete visit: clinical notes must be at least 50 characters. Please document your findings before completing.",
+        });
       }
+    }
+    // ── End Feature 4 gating ──
 
-    } else if (user.role === "PATIENT") {
+    data.status = status;
+    if (status === VisitStatus.IN_PROGRESS) data.checkedInAt = new Date();
+    if (status === VisitStatus.COMPLETED)   data.completedAt = new Date();
+  }
+}
+
+    else if (user.role === "PATIENT") {
       const { status, cancelReason } = req.body || {};
 
       if (status) {

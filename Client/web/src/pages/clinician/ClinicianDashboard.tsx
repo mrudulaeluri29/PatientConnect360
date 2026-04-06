@@ -1,3 +1,4 @@
+import ClinicianWorklistTab from "./ClinicianWorklistTab";
 import { useState, useEffect, useCallback } from "react";
 import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
@@ -21,7 +22,6 @@ import {
   type ApiAvailability,
   type AvailabilityStatus,
 } from "../../api/availability";
-import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
 
 export default function ClinicianDashboard() {
   const [activeTab, setActiveTab] = useState("schedule");
@@ -58,12 +58,6 @@ export default function ClinicianDashboard() {
               onClick={() => setActiveTab("patients")}
             >
               Patients
-            </button>
-            <button
-              className={`nav-item ${activeTab === "care-records" ? "active" : ""}`}
-              onClick={() => setActiveTab("care-records")}
-            >
-              Care records
             </button>
             <button
               className={`nav-item ${activeTab === "messages" ? "active" : ""}`}
@@ -110,19 +104,13 @@ export default function ClinicianDashboard() {
           <div className="clinician-main-content">
             {activeTab === "schedule" && <TodaySchedule />}
             {activeTab === "patients" && <PatientSnapshot />}
-            {activeTab === "care-records" && <ClinicianCareRecordsTab />}
             {activeTab === "messages" && (
               <SimpleMessages
                 pendingConversation={pendingConversation}
                 onConversationOpened={() => setPendingConversation(null)}
               />
             )}
-            {activeTab === "tasks" && (
-              <FlaggedTasks
-                onNavigateToMessages={() => setActiveTab("messages")}
-                onNavigateToPatients={() => setActiveTab("patients")}
-              />
-            )}
+{activeTab === "tasks" && <ClinicianWorklistTab />}
             {activeTab === "appointments" && <AppointmentsHub />}
             {activeTab === "contact-staff" && <ContactStaffHub />}
           </div>
@@ -141,9 +129,6 @@ function AssistantSidebar({ activeTab }: { activeTab: string }) {
   if (activeTab === "patients") {
     title = "AI Patient Assistant";
     subtitle = "Focused on the selected patient's risk and care plan.";
-  } else if (activeTab === "care-records") {
-    title = "AI Care Records Assistant";
-    subtitle = "Document care plans, uploads, and visit summaries consistently.";
   } else if (activeTab === "messages") {
     title = "AI Communication Assistant";
     subtitle = "Helps you triage and respond to patient messages efficiently.";
@@ -1072,71 +1057,6 @@ function TodaySchedule() {
   );
 }
  
-
-function ClinicianCareRecordsTab() {
-  const [options, setOptions] = useState<{ id: string; label: string }[]>([]);
-  const [sel, setSel] = useState("");
-
-  useEffect(() => {
-    api
-      .get("/api/simple-messages/assigned-patients")
-      .then((r) => {
-        const pts = r.data.patients || [];
-        const opts = pts.map((p: { id: string; username?: string; email?: string; profile?: { legalName?: string } }) => ({
-          id: p.id,
-          label: p.profile?.legalName || p.username || p.email || "Patient",
-        }));
-        setOptions(opts);
-        setSel((s) => (s && opts.some((o) => o.id === s) ? s : opts[0]?.id || ""));
-      })
-      .catch(() => {
-        setOptions([]);
-      });
-  }, []);
-
-  if (options.length === 0) {
-    return (
-      <div className="clinician-content">
-        <div className="content-header">
-          <div className="content-header-main">
-            <h2 className="section-title">Care plans &amp; documents</h2>
-          </div>
-        </div>
-        <p style={{ padding: "1rem 1.5rem", color: "#6b7280" }}>
-          No assigned patients. An admin must assign patients to you under <strong>Assign Patients</strong> before you
-          can create care plans or upload documents.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="clinician-content">
-      <div className="content-header">
-        <div className="content-header-main">
-          <h2 className="section-title">Care plans &amp; documents</h2>
-        </div>
-      </div>
-      <div style={{ padding: "0 1.5rem 1rem" }}>
-        <label style={{ fontSize: "0.95rem" }}>
-          Patient{" "}
-          <select
-            value={sel}
-            onChange={(e) => setSel(e.target.value)}
-            style={{ minWidth: 280, marginLeft: 8, padding: "0.35rem 0.5rem" }}
-          >
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {sel ? <StaffPatientRecordsEditor patientId={sel} /> : null}
-    </div>
-  );
-}
 
 // Patient Snapshot Panel Component
 function PatientSnapshot() {
