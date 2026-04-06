@@ -58,6 +58,13 @@ export interface ApiVisit {
   cancelledAt: string | null;
   cancelReason: string | null;
   createdAt: string;
+  /** Feature 1 — structured visit summary (optional on older rows) */
+  summaryDiagnosis?: string | null;
+  summaryCareProvided?: string | null;
+  summaryPatientResponse?: string | null;
+  summaryFollowUp?: string | null;
+  summaryUpdatedAt?: string | null;
+  summaryUpdatedById?: string | null;
   patient: {
     id: string;
     username: string;
@@ -143,11 +150,16 @@ export async function getVisits(params?: {
   status?: VisitStatus;
   from?: string;
   to?: string;
+  /** Admin: filter server-side. Clinician: ignored by API (still scoped to your schedule). */
+  patientId?: string;
+  clinicianId?: string;
 }): Promise<ApiVisit[]> {
   const q: Record<string, string> = {};
   if (params?.status) q.status = params.status;
   if (params?.from) q.from = params.from;
   if (params?.to) q.to = params.to;
+  if (params?.patientId) q.patientId = params.patientId;
+  if (params?.clinicianId) q.clinicianId = params.clinicianId;
   const res = await api.get("/api/visits", Object.keys(q).length ? { params: q } : {});
   return res.data.visits;
 }
@@ -209,4 +221,18 @@ export async function getAdminVisitRequests(): Promise<{
 }> {
   const res = await api.get("/api/visits/admin/requests");
   return res.data;
+}
+
+/** Clinician on the visit or admin — structured visit summary fields (all optional). */
+export async function updateVisitSummary(
+  visitId: string,
+  body: Partial<{
+    summaryDiagnosis: string | null;
+    summaryCareProvided: string | null;
+    summaryPatientResponse: string | null;
+    summaryFollowUp: string | null;
+  }>
+): Promise<ApiVisit> {
+  const res = await api.patch(`/api/visits/${visitId}/summary`, body);
+  return res.data.visit;
 }

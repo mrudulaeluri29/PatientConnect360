@@ -18,6 +18,7 @@ import {
   medicationCardClass,
   type ApiMedication,
 } from "../../api/medications";
+import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
 import "./CaregiverDashboard.css";
 
 // ─── Types for the overview payload ──────────────────────────────────────────
@@ -200,6 +201,9 @@ export default function CaregiverDashboard() {
             <button className={`nav-item ${activeTab === "progress" ? "active" : ""}`} onClick={() => setActiveTab("progress")}>
               Progress
             </button>
+            <button className={`nav-item ${activeTab === "records" ? "active" : ""}`} onClick={() => setActiveTab("records")}>
+              Records
+            </button>
             <button className={`nav-item ${activeTab === "alerts" ? "active" : ""}`} onClick={() => setActiveTab("alerts")}>
               Alerts
             </button>
@@ -234,6 +238,7 @@ export default function CaregiverDashboard() {
         {activeTab === "schedule" && <CaregiverSchedule />}
         {activeTab === "medications" && <CaregiverMedications />}
         {activeTab === "progress" && <CaregiverProgress />}
+        {activeTab === "records" && <CaregiverRecordsTab />}
         {activeTab === "alerts" && <CaregiverAlerts onNavigate={setActiveTab} />}
         {activeTab === "access" && <CaregiverAccess />}
         {activeTab === "safety" && <CaregiverSafety onNavigate={setActiveTab} />}
@@ -241,6 +246,66 @@ export default function CaregiverDashboard() {
         {activeTab === "messages" && <CaregiverMessages />}
       </main>
     </div>
+  );
+}
+
+function CaregiverRecordsTab() {
+  const [overview, setOverview] = useState<OverviewData | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get("/api/caregiver/overview")
+      .then((res) => {
+        const data = res.data as OverviewData;
+        setOverview(data);
+        if (data.patients.length === 1) {
+          setSelectedPatientId(data.patients[0].id);
+        } else {
+          setSelectedPatientId(null);
+        }
+      })
+      .catch(() =>
+        setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] })
+      );
+  }, []);
+
+  if (!overview) {
+    return <p style={{ padding: "2rem", color: "#6b7280" }}>Loading…</p>;
+  }
+
+  if (overview.patients.length === 0) {
+    return (
+      <p style={{ padding: "2rem", color: "#6b7280" }}>
+        No linked patients yet. Use <strong>Access</strong> to connect to a patient.
+      </p>
+    );
+  }
+
+  const effectivePatientId =
+    overview.patients.length === 1 ? overview.patients[0].id : selectedPatientId;
+
+  return (
+    <>
+      {overview.patients.length > 1 && (
+        <div className="f1-chip-row" style={{ padding: "0.5rem 1rem 0" }}>
+          {overview.patients.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`f1-chip ${selectedPatientId === p.id ? "active" : ""}`}
+              onClick={() => setSelectedPatientId(p.id)}
+            >
+              {patientDisplayName(p)}
+            </button>
+          ))}
+        </div>
+      )}
+      <PatientCareRecordsPanel
+        patientId={effectivePatientId}
+        emptyMessage="Select a family member above to view their care plan and documents."
+      />
+    </>
   );
 }
 

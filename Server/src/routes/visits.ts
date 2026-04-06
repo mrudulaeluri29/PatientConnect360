@@ -51,6 +51,12 @@ const visitSelect = {
   cancelReason: true,
   createdAt: true,
   updatedAt: true,
+  summaryDiagnosis: true,
+  summaryCareProvided: true,
+  summaryPatientResponse: true,
+  summaryFollowUp: true,
+  summaryUpdatedAt: true,
+  summaryUpdatedById: true,
   patient: {
     select: {
       id: true,
@@ -707,6 +713,51 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
     return res.json({ visit: approved });
   } catch (e) {
     console.error("POST /api/visits/:id/review failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PATCH /api/visits/:id/summary
+// Structured visit summary — clinician on the visit or admin only.
+router.patch("/:id/summary", async (req: Request, res: Response) => {
+  try {
+    const user = getUser(req);
+    const { id } = req.params;
+    const existing = await prisma.visit.findUnique({
+      where: { id },
+      select: { id: true, patientId: true, clinicianId: true },
+    });
+    if (!existing) return res.status(404).json({ error: "Visit not found" });
+
+    if (user.role !== "ADMIN") {
+      if (user.role !== "CLINICIAN" || existing.clinicianId !== user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
+    const b = req.body || {};
+    const data: Record<string, unknown> = {
+      summaryUpdatedAt: new Date(),
+      summaryUpdatedById: user.id,
+    };
+    const fields = [
+      "summaryDiagnosis",
+      "summaryCareProvided",
+      "summaryPatientResponse",
+      "summaryFollowUp",
+    ] as const;
+    for (const k of fields) {
+      if (k in b) data[k] = b[k] === null || b[k] === "" ? null : String(b[k]);
+    }
+
+    const visit = await prisma.visit.update({
+      where: { id },
+      data,
+      select: visitSelect,
+    });
+    res.json({ visit });
+  } catch (e) {
+    console.error("PATCH /api/visits/:id/summary failed:", e);
     res.status(500).json({ error: "Server error" });
   }
 });

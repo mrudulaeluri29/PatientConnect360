@@ -50,6 +50,7 @@ import {
   type ApiInvitation,
   type ApiCaregiverLink,
 } from "../../api/caregiverInvitations";
+import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
 
 const datetimeLocalToIso = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -105,6 +106,12 @@ export default function PatientDashboard() {
               Health
             </button>
             <button
+              className={`nav-item ${activeTab === "records" ? "active" : ""}`}
+              onClick={() => setActiveTab("records")}
+            >
+              Records
+            </button>
+            <button
               className={`nav-item ${activeTab === "messages" ? "active" : ""}`}
               onClick={() => setActiveTab("messages")}
             >
@@ -141,10 +148,16 @@ export default function PatientDashboard() {
 
       {/* Main Content */}
       <main className="patient-main">
-        {activeTab === "overview" && <OverviewTab onNavigateToVisits={() => setActiveTab("visits")} />}
+        {activeTab === "overview" && (
+          <OverviewTab
+            onNavigateToVisits={() => setActiveTab("visits")}
+            onNavigateToRecords={() => setActiveTab("records")}
+          />
+        )}
         {activeTab === "visits" && <UpcomingVisits />}
         {activeTab === "medications" && <MedicationsSupplies />}
         {activeTab === "health" && <HealthSummary />}
+        {activeTab === "records" && <PatientCareRecordsPanel patientId={user?.id ?? null} />}
         {activeTab === "messages" && (
           <SimpleMessages
             pendingConversation={pendingConversation}
@@ -158,7 +171,13 @@ export default function PatientDashboard() {
 }
 
 // overview Tab Component
-function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void }) {
+function OverviewTab({
+  onNavigateToVisits,
+  onNavigateToRecords,
+}: {
+  onNavigateToVisits: () => void;
+  onNavigateToRecords: () => void;
+}) {
   const { user } = useAuth();
   const [allVisits, setAllVisits] = useState<ApiVisit[]>([]);
   const [upcomingVisits, setUpcomingVisits] = useState<ApiVisit[]>([]);
@@ -251,32 +270,14 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
           <button className="btn-view-all" onClick={onNavigateToVisits}>View All Visits</button>
         </div>
 
-        {/* Care Plan Progress — static until care plan model is built */}
         <div className="overview-card">
-          <h3 className="card-title">Care Plan Progress</h3>
-          <div className="goals-tracker">
-            <div className="goal-item">
-              <div className="goal-header">
-                <span className="goal-name">Walk 50 ft independently</span>
-                <span className="goal-progress">75%</span>
-              </div>
-              <div className="progress-bar"><div className="progress-fill" style={{ width: "75%" }}></div></div>
-            </div>
-            <div className="goal-item">
-              <div className="goal-header">
-                <span className="goal-name">Manage diabetes</span>
-                <span className="goal-progress">90%</span>
-              </div>
-              <div className="progress-bar"><div className="progress-fill" style={{ width: "90%" }}></div></div>
-            </div>
-            <div className="goal-item">
-              <div className="goal-header">
-                <span className="goal-name">Wound healing</span>
-                <span className="goal-progress">60%</span>
-              </div>
-              <div className="progress-bar"><div className="progress-fill" style={{ width: "60%" }}></div></div>
-            </div>
-          </div>
+          <h3 className="card-title">Care plan &amp; documents</h3>
+          <p style={{ color: "#6b7280", fontSize: "0.9rem", margin: "0 0 0.75rem" }}>
+            View your structured care plan, update progress, and download documents your team shares with you.
+          </p>
+          <button type="button" className="btn-view-all" onClick={onNavigateToRecords}>
+            Open Records
+          </button>
         </div>
 
         {/* Assigned Clinicians — clickable to see history + schedule */}

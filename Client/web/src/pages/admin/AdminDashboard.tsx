@@ -33,6 +33,7 @@ import {
   type AuditLogRecord,
   type DailyAnalyticsData,
 } from "../../api/admin";
+import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
 
 function formatAvailabilityGuidanceBody(hint: AvailabilityHint, durationMinutes: number): string {
   const tz = hint.timeZone.replace(/_/g, " ");
@@ -93,6 +94,9 @@ export default function AdminDashboard() {
             </button>
             <button className={`nav-item ${activeTab === "feedback" ? "active" : ""}`} onClick={() => setActiveTab("feedback")}>
               Family Feedback
+            </button>
+            <button className={`nav-item ${activeTab === "records" ? "active" : ""}`} onClick={() => setActiveTab("records")}>
+              Patient records
             </button>
           </nav>
         </div>
@@ -170,7 +174,70 @@ export default function AdminDashboard() {
             <FamilyFeedbackPanel />
           </div>
         )}
+
+        {activeTab === "records" && (
+          <div className="admin-content">
+            <AdminPatientRecordsTab />
+          </div>
+        )}
       </main>
+    </div>
+  );
+}
+
+function AdminPatientRecordsTab() {
+  const [options, setOptions] = useState<{ id: string; label: string }[]>([]);
+  const [sel, setSel] = useState("");
+
+  useEffect(() => {
+    api
+      .get("/api/admin/users")
+      .then((r) => {
+        const users = (r.data.users || []).filter((u: { role: string }) => u.role === "PATIENT");
+        const opts = users.map((u: { id: string; username: string; email: string }) => ({
+          id: u.id,
+          label: `${u.username} (${u.email})`,
+        }));
+        setOptions(opts);
+        setSel((s) => (s && opts.some((o) => o.id === s) ? s : opts[0]?.id || ""));
+      })
+      .catch(() => setOptions([]));
+  }, []);
+
+  if (options.length === 0) {
+    return (
+      <div className="admin-content-inner" style={{ padding: "1.5rem" }}>
+        <h2 className="section-title">Patient records</h2>
+        <p style={{ color: "#6b7280" }}>No patient accounts found.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-content-inner" style={{ paddingBottom: "2rem" }}>
+      <h2 className="section-title" style={{ padding: "0 1.5rem" }}>
+        Patient records — care plans &amp; documents
+      </h2>
+      <p style={{ color: "#6b7280", padding: "0 1.5rem", marginTop: 0 }}>
+        Select a patient to create or edit care plans, upload documents (Azure required), toggle visibility, and edit visit summaries.
+      </p>
+      <div style={{ padding: "0 1.5rem 1rem" }}>
+        <label>
+          Patient{" "}
+          <select
+            value={sel}
+            onChange={(e) => setSel(e.target.value)}
+            style={{ minWidth: 320, marginLeft: 8, padding: "0.4rem 0.6rem" }}
+          >
+            {options.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {sel ? <StaffPatientRecordsEditor patientId={sel} /> : null}
     </div>
   );
 }

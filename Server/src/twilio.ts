@@ -1,4 +1,3 @@
-import "dotenv/config";
 import Twilio from "twilio";
 
 export let twilioClient: ReturnType<typeof Twilio> | null = null;
