@@ -127,6 +127,93 @@
   align-items: flex-start;
 }
 
+/* Care records: AI assistant sits inline in the tab header; main area is one full-width column */
+.clinician-main-layout--care-records-full {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Header row: page title + patient picker | compact AI card */
+.care-records-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 1.25rem;
+  padding: 0 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.care-records-header-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.care-records-header-title.content-header {
+  margin-bottom: 0.5rem;
+}
+
+.care-records-patient-row {
+  padding-bottom: 0.35rem;
+}
+
+.care-records-patient-label {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: #1f2937;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.care-records-patient-select {
+  min-width: 430px;
+  max-width: min(66vw, 640px);
+  margin-left: 0;
+  padding: 0.62rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #111827;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.care-records-patient-select:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+
+.care-records-ai-compact {
+  flex: 0 0 min(340px, 36%);
+  max-width: 380px;
+  align-self: flex-start;
+  margin-bottom: 0;
+}
+
+.care-records-ai-compact .panel-title {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.care-records-ai-compact .assistant-subtitle {
+  margin-bottom: 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .care-records-header-row {
+    flex-direction: column;
+  }
+
+  .care-records-ai-compact {
+    flex: 1 1 auto;
+    max-width: none;
+    width: 100%;
+  }
+}
+
 .clinician-main-content {
   display: flex;
   flex-direction: column;

@@ -7,6 +7,7 @@ import {
   canEditCarePlanDefinition,
   canUpdateCarePlanProgress,
 } from "../lib/patientAccess";
+import { getPatientPrivacySettings } from "../lib/privacySettings";
 import {
   CarePlanStatus,
   CarePlanItemType,
@@ -26,14 +27,16 @@ const ITEM_TYPES = Object.values(CarePlanItemType);
 const PROGRESS_STATUSES = Object.values(CarePlanItemProgressStatus);
 const CHECKIN_STATUSES = Object.values(CarePlanCheckInStatus);
 
-const carePlanInclude = {
-  items: {
-    where: { isActive: true },
-    orderBy: { sortOrder: "asc" as const },
-    include: { progress: true },
-  },
-  checkIns: { orderBy: { createdAt: "desc" as const }, take: 50 },
-} as const;
+function carePlanInclude(includeInactiveItems: boolean) {
+  return {
+    items: {
+      where: includeInactiveItems ? undefined : { isActive: true },
+      orderBy: { sortOrder: "asc" as const },
+      include: { progress: true },
+    },
+    checkIns: { orderBy: { createdAt: "desc" as const }, take: 50 },
+  } as const;
+}
 
 // GET /api/care-plans?patientId=
 router.get("/", async (req: Request, res: Response) => {
@@ -44,10 +47,20 @@ router.get("/", async (req: Request, res: Response) => {
     const u = actor(req);
     const level = await getPatientAccessLevel(u.id, u.role, patientId);
     if (!canReadCarePlanData(level)) return res.status(403).json({ error: "Forbidden" });
+    if (level === "CAREGIVER") {
+      const privacy = await getPatientPrivacySettings(patientId);
+      if (!privacy.carePlanVisibleToCaregivers) {
+        return res.status(403).json({ error: "Care plan visibility is disabled by the patient." });
+      }
+    }
+
+    const includeInactiveQuery = String(req.query.includeInactive || "").trim();
+    const includeInactive = includeInactiveQuery === "1" || includeInactiveQuery.toLowerCase() === "true";
+    const includeInactiveItems = includeInactive && canEditCarePlanDefinition(level);
 
     const carePlans = await prisma.carePlan.findMany({
       where: { patientId },
-      include: carePlanInclude,
+      include: carePlanInclude(includeInactiveItems),
       orderBy: { updatedAt: "desc" },
     });
 
@@ -84,7 +97,7 @@ router.post("/", async (req: Request, res: Response) => {
         createdByClinicianId: u.role === "CLINICIAN" ? u.id : null,
         createdByAdminId: u.role === "ADMIN" ? u.id : null,
       },
-      include: carePlanInclude,
+      include: carePlanInclude(false),
     });
 
     res.status(201).json({ carePlan });
@@ -263,7 +276,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
     const carePlan = await prisma.carePlan.update({
       where: { id },
       data,
-      include: carePlanInclude,
+      include: carePlanInclude(false),
     });
     res.json({ carePlan });
   } catch (e) {

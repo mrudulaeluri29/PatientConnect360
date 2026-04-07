@@ -255,6 +255,7 @@ model Visit {
   summaryCareProvided    String?
   summaryPatientResponse String?
   summaryFollowUp        String?
+  medicationChangesSummary String?
   summaryUpdatedAt       DateTime?
   summaryUpdatedById     String?
   summaryUpdatedBy       User?            @relation("VisitSummaryAuthor", fields: [summaryUpdatedById], references: [id], onDelete: SetNull)

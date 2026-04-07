@@ -1,0 +1,2 @@
+-- Restored placeholder migration file to fix Prisma P3015.
+-- This migration directory existed without a migration.sql.

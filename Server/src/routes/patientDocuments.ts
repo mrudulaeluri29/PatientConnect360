@@ -3,6 +3,7 @@ import multer from "multer";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
 import { getPatientAccessLevel, canManageDocuments } from "../lib/patientAccess";
+import { getPatientPrivacySettings } from "../lib/privacySettings";
 import { uploadBufferToBlob, getBlobReadSasUrl, isAzureBlobConfigured } from "../storage/blob";
 import { randomUUID } from "crypto";
 
@@ -39,6 +40,10 @@ async function canReadPatientDocument(
 ): Promise<boolean> {
   const level = await getPatientAccessLevel(userId, role, doc.patientId);
   if (level === "NONE") return false;
+  if (level === "CAREGIVER") {
+    const privacy = await getPatientPrivacySettings(doc.patientId);
+    if (!privacy.shareDocumentsWithCaregivers) return false;
+  }
   if (doc.isHidden) return level === "CLINICIAN" || level === "ADMIN";
   return true;
 }
@@ -52,6 +57,12 @@ router.get("/", async (req: Request, res: Response) => {
     const u = actor(req);
     const level = await getPatientAccessLevel(u.id, u.role, patientId);
     if (level === "NONE") return res.status(403).json({ error: "Forbidden" });
+    if (level === "CAREGIVER") {
+      const privacy = await getPatientPrivacySettings(patientId);
+      if (!privacy.shareDocumentsWithCaregivers) {
+        return res.status(403).json({ error: "Document sharing is disabled by the patient." });
+      }
+    }
 
     const where: { patientId: string; isHidden?: boolean } = { patientId };
     if (level === "SELF" || level === "CAREGIVER") {

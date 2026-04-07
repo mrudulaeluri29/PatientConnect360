@@ -222,7 +222,32 @@ You can still run commands inside `Server/` or `Client/web/` directly when you o
   - `ENABLE_OUTBOUND_REMINDERS` (set to `true` to enqueue/send reminder jobs)
 - Initialize the database using Prisma by applying the schema and running migrations (`npx prisma migrate dev`)
 - Optionally run seed scripts to create admin and test users (`npm run seed:admin`)
+- Feature 1 storage variables (documents):
+  - `AZURE_STORAGE_CONNECTION_STRING`
+  - `AZURE_STORAGE_CONTAINER` (default: `patient-documents`)
+  - `AZURE_BLOB_SAS_MINUTES` (default: 15)
 - Start the backend server in development mode using nodemon and ts-node (`npm run dev`)
+
+## Feature 1 seed + smoke (F7)
+
+Run from `Server/`:
+
+1. Seed Feature 1 demo data:
+   - `npm run seed:feature1`
+2. Run smoke checks against a running API:
+   - Set env vars for patient login used by smoke:
+     - `FEATURE1_SMOKE_LOGIN`
+     - `FEATURE1_SMOKE_PASSWORD`
+   - Optional base URL (default `http://localhost:4000`):
+     - `FEATURE1_SMOKE_BASE_URL`
+   - Execute:
+     - `npm run smoke:feature1`
+
+Smoke checks include:
+- `GET /api/care-plans?patientId=...`
+- `POST /api/care-plans/:id/checkins` (if a care plan exists)
+- `GET /api/patient-documents?patientId=...`
+- `POST /api/patient-documents/:id/download-url` (expects `200` or `503` when Azure is not configured)
 
 ### Web Application Setup
 - Navigate to the Client web directory (or use `npm run dev` from the repository root)

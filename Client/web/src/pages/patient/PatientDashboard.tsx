@@ -18,6 +18,7 @@ import {
   type ApiVisit,
   type VisitType,
 } from "../../api/visits";
+import { VisitStructuredSummaryPanel } from "../../components/visits/VisitStructuredSummaryPanel";
 import {
   getMedications,
   medicationCardClass,
@@ -51,6 +52,11 @@ import {
   type ApiCaregiverLink,
 } from "../../api/caregiverInvitations";
 import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
+import {
+  getMyPrivacySettings,
+  updateMyPrivacySettings,
+  type ApiPrivacySettings,
+} from "../../api/privacy";
 
 const datetimeLocalToIso = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -67,11 +73,17 @@ const datetimeLocalToIso = (value?: string): string | undefined => {
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [pendingConversation, setPendingConversation] = useState<{ convId: string; messageId?: string } | null>(null);
+  const [privacyConsentRequired, setPrivacyConsentRequired] = useState(false);
   const { user, logout } = useAuth();
 
   const handleLogout = async () => {
     await logout();
     window.location.href = "/";
+  };
+
+  const openTab = (tab: string) => {
+    if (privacyConsentRequired && tab !== "records") return;
+    setActiveTab(tab);
   };
 
   return (
@@ -83,43 +95,43 @@ export default function PatientDashboard() {
           <nav className="patient-nav">
             <button
               className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
-              onClick={() => setActiveTab("overview")}
+              onClick={() => openTab("overview")}
             >
               Overview
             </button>
             <button
               className={`nav-item ${activeTab === "visits" ? "active" : ""}`}
-              onClick={() => setActiveTab("visits")}
+              onClick={() => openTab("visits")}
             >
               Visits
             </button>
             <button
               className={`nav-item ${activeTab === "medications" ? "active" : ""}`}
-              onClick={() => setActiveTab("medications")}
+              onClick={() => openTab("medications")}
             >
               Medications
             </button>
             <button
               className={`nav-item ${activeTab === "health" ? "active" : ""}`}
-              onClick={() => setActiveTab("health")}
+              onClick={() => openTab("health")}
             >
               Health
             </button>
             <button
               className={`nav-item ${activeTab === "records" ? "active" : ""}`}
-              onClick={() => setActiveTab("records")}
+              onClick={() => openTab("records")}
             >
               Records
             </button>
             <button
               className={`nav-item ${activeTab === "messages" ? "active" : ""}`}
-              onClick={() => setActiveTab("messages")}
+              onClick={() => openTab("messages")}
             >
               Messages
             </button>
             <button
               className={`nav-item ${activeTab === "family" ? "active" : ""}`}
-              onClick={() => setActiveTab("family")}
+              onClick={() => openTab("family")}
             >
               Family
             </button>
@@ -148,16 +160,26 @@ export default function PatientDashboard() {
 
       {/* Main Content */}
       <main className="patient-main">
+        {privacyConsentRequired ? (
+          <div className="privacy-global-warning">
+            Please click Re-consent in Records → Privacy & consent to continue using other sections.
+          </div>
+        ) : null}
         {activeTab === "overview" && (
           <OverviewTab
-            onNavigateToVisits={() => setActiveTab("visits")}
-            onNavigateToRecords={() => setActiveTab("records")}
+            onNavigateToVisits={() => openTab("visits")}
+            onNavigateToRecords={() => openTab("records")}
           />
         )}
         {activeTab === "visits" && <UpcomingVisits />}
         {activeTab === "medications" && <MedicationsSupplies />}
         {activeTab === "health" && <HealthSummary />}
-        {activeTab === "records" && <PatientCareRecordsPanel patientId={user?.id ?? null} />}
+        {activeTab === "records" && (
+          <>
+            <PrivacyConsentCard onPendingChange={setPrivacyConsentRequired} />
+            {!privacyConsentRequired ? <PatientCareRecordsPanel patientId={user?.id ?? null} /> : null}
+          </>
+        )}
         {activeTab === "messages" && (
           <SimpleMessages
             pendingConversation={pendingConversation}
@@ -166,6 +188,166 @@ export default function PatientDashboard() {
         )}
         {activeTab === "family" && <FamilyAccessPanel />}
       </main>
+    </div>
+  );
+}
+
+function PrivacyConsentCard({ onPendingChange }: { onPendingChange?: (pending: boolean) => void }) {
+  const [settings, setSettings] = useState<ApiPrivacySettings | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string>("");
+  const [pendingConsentMsg, setPendingConsentMsg] = useState("");
+  const [privacyChangedSinceConsent, setPrivacyChangedSinceConsent] = useState(false);
+  const [consentBaseline, setConsentBaseline] = useState<{
+    shareDocumentsWithCaregivers: boolean;
+    carePlanVisibleToCaregivers: boolean;
+  } | null>(null);
+
+  const refresh = useCallback(() => {
+    getMyPrivacySettings()
+      .then((s) => {
+        setSettings(s);
+        const baseline = s.consentRecordedAt
+          ? {
+              shareDocumentsWithCaregivers: s.shareDocumentsWithCaregivers,
+              carePlanVisibleToCaregivers: s.carePlanVisibleToCaregivers,
+            }
+          : null;
+        setConsentBaseline(baseline);
+        setPrivacyChangedSinceConsent(false);
+        setPendingConsentMsg("");
+      })
+      .catch(() => setSettings(null));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    onPendingChange?.(privacyChangedSinceConsent);
+  }, [privacyChangedSinceConsent, onPendingChange]);
+
+  const saveToggle = async (
+    key: "shareDocumentsWithCaregivers" | "carePlanVisibleToCaregivers",
+    value: boolean
+  ) => {
+    setSaving(true);
+    setMsg("");
+    try {
+      const updated = await updateMyPrivacySettings({ [key]: value });
+      setSettings(updated);
+      if (updated.consentRecordedAt && consentBaseline) {
+        const changed =
+          updated.shareDocumentsWithCaregivers !== consentBaseline.shareDocumentsWithCaregivers ||
+          updated.carePlanVisibleToCaregivers !== consentBaseline.carePlanVisibleToCaregivers;
+        setPrivacyChangedSinceConsent(changed);
+        setPendingConsentMsg(changed ? "Please click Re-consent to apply your privacy preference changes." : "");
+      } else {
+        setPrivacyChangedSinceConsent(false);
+        setPendingConsentMsg("");
+      }
+      setMsg("Privacy settings saved.");
+    } catch {
+      setMsg("Could not save privacy setting.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const recordConsent = async () => {
+    setSaving(true);
+    setMsg("");
+    try {
+      const updated = await updateMyPrivacySettings({
+        recordConsent: true,
+        consentVersion: "feature1-privacy-v1",
+      });
+      setSettings(updated);
+      setConsentBaseline({
+        shareDocumentsWithCaregivers: updated.shareDocumentsWithCaregivers,
+        carePlanVisibleToCaregivers: updated.carePlanVisibleToCaregivers,
+      });
+      setPrivacyChangedSinceConsent(false);
+      setPendingConsentMsg("");
+      setMsg("Consent recorded.");
+    } catch {
+      setMsg("Could not record consent.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="patient-content">
+      <div
+        className="overview-card privacy-card"
+        onClickCapture={(e) => {
+          if (!privacyChangedSinceConsent) return;
+          const target = e.target as HTMLElement | null;
+          if (!target) return;
+          const consentBtn = target.closest("button");
+          if (consentBtn && consentBtn.textContent?.toLowerCase().includes("re-consent")) return;
+          setPendingConsentMsg("Please click Re-consent to apply your privacy preference changes.");
+        }}
+      >
+        <h3 className="card-title">Privacy &amp; consent</h3>
+        {settings ? (
+          <>
+            <label className="privacy-row">
+              <input
+                type="checkbox"
+                checked={settings.shareDocumentsWithCaregivers}
+                disabled={saving}
+                onChange={(e) => void saveToggle("shareDocumentsWithCaregivers", e.target.checked)}
+              />
+              <span>Share documents with linked caregivers</span>
+            </label>
+            <label className="privacy-row">
+              <input
+                type="checkbox"
+                checked={settings.carePlanVisibleToCaregivers}
+                disabled={saving}
+                onChange={(e) => void saveToggle("carePlanVisibleToCaregivers", e.target.checked)}
+              />
+              <span>Allow linked caregivers to view care plans</span>
+            </label>
+            <div className="privacy-consent-row">
+              <div className="privacy-consent-meta">
+                {settings.consentRecordedAt
+                  ? `Consent recorded on ${new Date(settings.consentRecordedAt).toLocaleString()} (${settings.consentVersion ?? "v1"})`
+                  : "Consent not recorded yet."}
+              </div>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => void recordConsent()}
+                disabled={saving || (Boolean(settings.consentRecordedAt) && !privacyChangedSinceConsent)}
+              >
+                {settings.consentRecordedAt ? "Re-consent" : "I agree"}
+              </button>
+            </div>
+            {settings.consentRecordedAt && !privacyChangedSinceConsent ? (
+              <p style={{ margin: "0.45rem 0 0", fontSize: "0.82rem", color: "#6b7280" }}>
+                Re-consent becomes available after you change a privacy option.
+              </p>
+            ) : null}
+            {privacyChangedSinceConsent ? (
+              <p
+                className="privacy-warning"
+                onClick={() =>
+                  setPendingConsentMsg("Please click Re-consent to apply your privacy preference changes.")
+                }
+              >
+                {pendingConsentMsg || "Please click Re-consent to apply your privacy preference changes."}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p style={{ margin: 0, color: "#6b7280" }}>Could not load privacy settings.</p>
+        )}
+        {msg ? <p className="privacy-msg">{msg}</p> : null}
+      </div>
     </div>
   );
 }
@@ -262,6 +444,7 @@ function OverviewTab({
                         ? ` — ${v.clinician.clinicianProfile.specialization}`
                         : ` — ${visitTypeLabel(v.visitType)}`}
                     </div>
+                    <VisitStructuredSummaryPanel visit={v} variant="compact" />
                   </div>
                 );
               })
@@ -339,12 +522,15 @@ function OverviewTab({
                     {clinicianVisits.slice(0, 5).map((v) => {
                       const { date, time } = formatVisitDateTime(v.scheduledAt);
                       return (
-                        <div key={v.id} className="history-visit-row">
-                          <div className="history-visit-date">{date}, {time}</div>
-                          <div className="history-visit-type">{visitTypeLabel(v.visitType)}</div>
-                          <span className={`history-visit-status status-${v.status.toLowerCase()}`}>
-                            {v.status.replace("_", " ")}
-                          </span>
+                        <div key={v.id} className="history-visit-row history-visit-row--with-summary">
+                          <div className="history-visit-row-top">
+                            <div className="history-visit-date">{date}, {time}</div>
+                            <div className="history-visit-type">{visitTypeLabel(v.visitType)}</div>
+                            <span className={`history-visit-status status-${v.status.toLowerCase()}`}>
+                              {v.status.replace("_", " ")}
+                            </span>
+                          </div>
+                          <VisitStructuredSummaryPanel visit={v} variant="compact" />
                         </div>
                       );
                     })}
@@ -669,6 +855,7 @@ function UpcomingVisits() {
                     </button>
                   )}
                 </div>
+                <VisitStructuredSummaryPanel visit={visit} />
               </div>
             );
           })
@@ -702,6 +889,7 @@ function UpcomingVisits() {
                       </div>
                     </div>
                   </div>
+                  <VisitStructuredSummaryPanel visit={visit} />
                 </div>
               );
             })}

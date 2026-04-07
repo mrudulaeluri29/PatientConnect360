@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import type { ReactNode } from "react";
 import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
@@ -106,7 +107,13 @@ export default function ClinicianDashboard() {
       </header>
 
       <main className="clinician-main">
-        <div className="clinician-main-layout">
+        <div
+          className={
+            activeTab === "care-records"
+              ? "clinician-main-layout clinician-main-layout--care-records-full"
+              : "clinician-main-layout"
+          }
+        >
           <div className="clinician-main-content">
             {activeTab === "schedule" && <TodaySchedule />}
             {activeTab === "patients" && <PatientSnapshot />}
@@ -126,7 +133,7 @@ export default function ClinicianDashboard() {
             {activeTab === "appointments" && <AppointmentsHub />}
             {activeTab === "contact-staff" && <ContactStaffHub />}
           </div>
-          <AssistantSidebar activeTab={activeTab} />
+          {activeTab !== "care-records" && <AssistantSidebar activeTab={activeTab} />}
         </div>
       </main>
     </div>
@@ -1082,10 +1089,18 @@ function ClinicianCareRecordsTab() {
       .get("/api/simple-messages/assigned-patients")
       .then((r) => {
         const pts = r.data.patients || [];
-        const opts = pts.map((p: { id: string; username?: string; email?: string; profile?: { legalName?: string } }) => ({
-          id: p.id,
-          label: p.profile?.legalName || p.username || p.email || "Patient",
-        }));
+        const opts = pts.map((p: { id: string; username?: string; email?: string; profile?: { legalName?: string } }) => {
+          const un = p.username?.trim() || "";
+          const legal = p.profile?.legalName?.trim() || "";
+          // Show legal name + login username when both help disambiguate (e.g. legal "Patient" vs account patient2)
+          let label: string;
+          if (legal && un && legal !== un) {
+            label = `${legal} (${un})`;
+          } else {
+            label = legal || un || p.email?.trim() || "Patient";
+          }
+          return { id: p.id, label };
+        });
         setOptions(opts);
         setSel((s) => (s && opts.some((o) => o.id === s) ? s : opts[0]?.id || ""));
       })
@@ -1096,13 +1111,11 @@ function ClinicianCareRecordsTab() {
 
   if (options.length === 0) {
     return (
-      <div className="clinician-content">
-        <div className="content-header">
-          <div className="content-header-main">
-            <h2 className="section-title">Care plans &amp; documents</h2>
-          </div>
-        </div>
-        <p style={{ padding: "1rem 1.5rem", color: "#6b7280" }}>
+      <div className="clinician-content care-records-tab">
+        <CareRecordsHeaderRow
+          patientSelect={null}
+        />
+        <p style={{ padding: "0 1.5rem 1rem", color: "#6b7280" }}>
           No assigned patients. An admin must assign patients to you under <strong>Assign Patients</strong> before you
           can create care plans or upload documents.
         </p>
@@ -1111,29 +1124,51 @@ function ClinicianCareRecordsTab() {
   }
 
   return (
-    <div className="clinician-content">
-      <div className="content-header">
-        <div className="content-header-main">
-          <h2 className="section-title">Care plans &amp; documents</h2>
-        </div>
-      </div>
-      <div style={{ padding: "0 1.5rem 1rem" }}>
-        <label style={{ fontSize: "0.95rem" }}>
-          Patient{" "}
-          <select
-            value={sel}
-            onChange={(e) => setSel(e.target.value)}
-            style={{ minWidth: 280, marginLeft: 8, padding: "0.35rem 0.5rem" }}
-          >
-            {options.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+    <div className="clinician-content care-records-tab">
+      <CareRecordsHeaderRow
+        patientSelect={
+          <label className="care-records-patient-label">
+            Patient{" "}
+            <select
+              value={sel}
+              onChange={(e) => setSel(e.target.value)}
+              className="care-records-patient-select"
+            >
+              {options.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        }
+      />
       {sel ? <StaffPatientRecordsEditor patientId={sel} /> : null}
+    </div>
+  );
+}
+
+/** Title + patient row with compact AI tip; editor below uses full main width (no tall right sidebar). */
+function CareRecordsHeaderRow({ patientSelect }: { patientSelect: ReactNode | null }) {
+  return (
+    <div className="care-records-header-row">
+      <div className="care-records-header-main">
+        <div className="content-header care-records-header-title">
+          <div className="content-header-main">
+            <h2 className="section-title">Care plans &amp; documents</h2>
+          </div>
+        </div>
+        {patientSelect ? <div className="care-records-patient-row">{patientSelect}</div> : null}
+      </div>
+      <aside className="assistant-panel care-records-ai-compact" aria-label="Care records tips">
+        <h3 className="panel-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 1 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+          </svg>
+          AI Care Records Assistant
+        </h3>
+        <p className="assistant-subtitle">Document care plans, uploads, and visit summaries consistently.</p>
+      </aside>
     </div>
   );
 }

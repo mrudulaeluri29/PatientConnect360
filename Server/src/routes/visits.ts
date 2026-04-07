@@ -55,6 +55,7 @@ const visitSelect = {
   summaryCareProvided: true,
   summaryPatientResponse: true,
   summaryFollowUp: true,
+  medicationChangesSummary: true,
   summaryUpdatedAt: true,
   summaryUpdatedById: true,
   patient: {
@@ -725,7 +726,7 @@ router.patch("/:id/summary", async (req: Request, res: Response) => {
     const { id } = req.params;
     const existing = await prisma.visit.findUnique({
       where: { id },
-      select: { id: true, patientId: true, clinicianId: true },
+      select: { id: true, patientId: true, clinicianId: true, status: true },
     });
     if (!existing) return res.status(404).json({ error: "Visit not found" });
 
@@ -733,6 +734,18 @@ router.patch("/:id/summary", async (req: Request, res: Response) => {
       if (user.role !== "CLINICIAN" || existing.clinicianId !== user.id) {
         return res.status(403).json({ error: "Forbidden" });
       }
+    }
+
+    const blockedSummaryStatuses: VisitStatus[] = [
+      VisitStatus.REQUESTED,
+      VisitStatus.RESCHEDULE_REQUESTED,
+      VisitStatus.REJECTED,
+      VisitStatus.CANCELLED,
+    ];
+    if (blockedSummaryStatuses.includes(existing.status)) {
+      return res.status(400).json({
+        error: "Visit summary can only be saved after the visit request is approved.",
+      });
     }
 
     const b = req.body || {};
@@ -745,6 +758,7 @@ router.patch("/:id/summary", async (req: Request, res: Response) => {
       "summaryCareProvided",
       "summaryPatientResponse",
       "summaryFollowUp",
+      "medicationChangesSummary",
     ] as const;
     for (const k of fields) {
       if (k in b) data[k] = b[k] === null || b[k] === "" ? null : String(b[k]);
