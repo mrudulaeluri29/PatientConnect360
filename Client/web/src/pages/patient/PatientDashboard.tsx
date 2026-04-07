@@ -6,6 +6,7 @@ import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
 import "./PatientDashboard.css";
 import PatientHEPTab from "./PatientHEPTab";
+import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
 import type { Visit } from "../../types/visit";
 import { mockVisits } from "../../data/mockVisits";
 import {
@@ -119,11 +120,18 @@ export default function PatientDashboard() {
   Family
 </button>
 <button
+  className={`nav-item ${activeTab === "records" ? "active" : ""}`}
+  onClick={() => setActiveTab("records")}
+>
+  Records
+</button>
+<button
   className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
   onClick={() => setActiveTab("exercises")}
 >
   Exercises & Tasks
 </button>
+
 </nav>
         </div>
         <div className="patient-header-right">
@@ -161,6 +169,12 @@ export default function PatientDashboard() {
         )}
         {activeTab === "family" && <FamilyAccessPanel />}
         {activeTab === "exercises" && <PatientHEPTab />}
+        {activeTab === "records" && (
+  <PatientCareRecordsPanel
+    patientId={user?.id || ""}
+    emptyMessage="No care records found."
+  />
+)}
       </main>
     </div>
   );
@@ -438,7 +452,54 @@ function OverviewTab({ onNavigateToVisits }: { onNavigateToVisits: () => void })
   );
 }
 
+// ─── HEP Banner ───────────────────────────────────────────────────────────────
+function HEPBanner() {
+  const [activeCount, setActiveCount] = useState<number | null>(null);
 
+  useEffect(() => {
+    async function load() {
+      try {
+        const { api } = await import("../../lib/axios");
+        const res = await api.get("/api/hep");
+        const assignments = res.data.assignments || [];
+        const active = assignments.filter((a: any) => a.status === "ACTIVE").length;
+        setActiveCount(active);
+      } catch (e) { console.error(e); }
+    }
+    load();
+  }, []);
+
+  if (activeCount === null || activeCount === 0) return null;
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: "0.75rem",
+      padding: "0.75rem 1rem", marginBottom: "1rem",
+      borderRadius: "10px", background: "#f5f3ff",
+      border: "1px solid #c4b5fd",
+    }}>
+      <span style={{ fontSize: "1.5rem" }}>🏋️</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 600, color: "#6E5B9A", fontSize: "0.875rem" }}>
+          You have {activeCount} active home exercise{activeCount !== 1 ? "s" : ""}
+        </div>
+        <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+          Complete your exercises before your next visit
+        </div>
+      </div>
+      
+<button
+        onClick={() => {
+          const btn = document.querySelector('[data-tab="exercises"]') as HTMLElement;
+          if (btn) btn.click();
+        }}
+        style={{ fontSize: "0.75rem", color: "#6E5B9A", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}
+      >
+        View Exercises
+      </button>
+    </div>
+  );
+}
 // Upcoming Visits Component
 function UpcomingVisits() {
   const { user } = useAuth();
@@ -588,7 +649,7 @@ function UpcomingVisits() {
           Request a Visit
         </button>
       </div>
-
+      <HEPBanner />
       {/* Upcoming */}
       <h3 style={{ fontSize: "1rem", color: "#374151", margin: "1rem 0 0.5rem" }}>Upcoming</h3>
       <div className="visits-container">

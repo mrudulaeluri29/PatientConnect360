@@ -5,9 +5,11 @@ import {
   createHEPAssignment,
   type ExerciseAssignment,
 } from "../../api/hep";
+
 import {
   getVisitPrepTasks,
   createVisitPrepTask,
+  updateVisitPrepTask,
   type VisitPrepTask,
 } from "../../api/visitPrepTasks";
 
@@ -72,19 +74,48 @@ function NeedsDocumentationWorklist() {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [safetyNetVisits, setSafetyNetVisits] = useState<Visit[]>([]);
 
   useEffect(() => {
     async function load() {
       try {
         const res = await api.get("/api/visits");
         const all: Visit[] = res.data.visits || [];
+
+
+    
         // Show visits that are IN_PROGRESS or not yet completed
-        const needsDocs = all.filter(
+       /* const needsDocs = all.filter(
           (v) =>
             ["IN_PROGRESS", "CONFIRMED", "SCHEDULED"].includes(v.status) &&
             (!v.clinicianNotes || v.clinicianNotes.trim().length < 50)
         );
         setVisits(needsDocs);
+        */
+
+        const now = new Date();
+
+// Bucket A: active visits past scheduled time OR in progress, missing notes
+const needsDocs = all.filter(
+  (v) =>
+    ["IN_PROGRESS", "CONFIRMED", "SCHEDULED"].includes(v.status) &&
+    (!v.clinicianNotes || v.clinicianNotes.trim().length < 50) &&
+    (v.status === "IN_PROGRESS" || new Date(v.scheduledAt) < now)
+);
+
+// Bucket B: safety net - completed but notes < 50 (data anomaly)
+const safetyNet = all.filter(
+  (v) =>
+    v.status === "COMPLETED" &&
+    (!v.clinicianNotes || v.clinicianNotes.trim().length < 50)
+);
+
+// Sort bucket A by scheduledAt ascending (oldest first)
+needsDocs.sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+
+setVisits(needsDocs);
+setSafetyNetVisits(safetyNet);
+
       } catch (e) {
         console.error(e);
       } finally {
@@ -232,8 +263,37 @@ function NeedsDocumentationWorklist() {
             </div>
           )}
         </div>
-      )}
-    </div>
+)}
+
+        {safetyNetVisits.length > 0 && (
+          <div style={{ marginTop: "1.5rem" }}>
+            <h4 style={{ color: "#ef4444", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
+              ⚠️ Safety Net — Completed but missing notes ({safetyNetVisits.length})
+            </h4>
+            {safetyNetVisits.map((v) => (
+              <div
+                key={v.id}
+                style={{
+                  padding: "0.75rem",
+                  marginBottom: "0.5rem",
+                  borderRadius: "8px",
+                  border: "2px solid #fee2e2",
+                  background: "#fff5f5",
+                }}
+              >
+                <div style={{ fontWeight: 600, color: "#374151" }}>{v.patient.username}</div>
+                <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+                  {new Date(v.scheduledAt).toLocaleDateString()} — {v.status}
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "#ef4444", marginTop: "0.25rem" }}>
+                  ⚠️ Completed without sufficient notes
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
   );
 }
 
@@ -542,7 +602,9 @@ function PrepTasksPanel() {
               No prep tasks yet — add one above!
             </div>
           ) : (
-            tasks.map((t) => (
+
+
+          /*  tasks.map((t) => (
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem", marginBottom: "0.5rem", borderRadius: "8px", border: "1px solid #e5e7eb", background: t.isDone ? "#f0fdf4" : "white" }}>
                 <span style={{ fontSize: "1.25rem" }}>{t.isDone ? "✅" : "⬜"}</span>
                 <div style={{ flex: 1 }}>
@@ -557,9 +619,77 @@ function PrepTasksPanel() {
                 </div>
               </div>
             ))
+
+            */
+
+            tasks.map((t) => (
+  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem", marginBottom: "0.5rem", borderRadius: "8px", border: "1px solid #e5e7eb", background: t.isDone ? "#f0fdf4" : "white" }}>
+    <span style={{ fontSize: "1.25rem" }}>{t.isDone ? "✅" : "⬜"}</span>
+    <div style={{ flex: 1 }}>
+      <div style={{ fontWeight: 500, textDecoration: t.isDone ? "line-through" : "none", color: t.isDone ? "#6b7280" : "#374151" }}>
+        {t.text}
+      </div>
+      {t.isDone && t.doneByUser && (
+        <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+          Done by {t.doneByUser.username}
+        </div>
+      )}
+    </div>
+    <EditTaskButton task={t} onUpdated={async () => {
+      if (selectedVisit) {
+        const data = await getVisitPrepTasks(selectedVisit.id);
+        setTasks(data);
+      }
+    }} />
+  </div>
+))
           )}
         </div>
       )}
     </div>
   );
+  // ─── Edit Task Button ─────────────────────────────────────────────────────────
+function EditTaskButton({ task, onUpdated }: { task: VisitPrepTask; onUpdated: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(task.text);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!text.trim()) return;
+    setSaving(true);
+    try {
+      await updateVisitPrepTask(task.id, { text: text.trim() });
+      setEditing(false);
+      onUpdated();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  };
+
+  if (editing) {
+    return (
+      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "1px solid #6E5B9A", fontSize: "0.875rem" }}
+        />
+        <button onClick={handleSave} disabled={saving} style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "none", background: "#6E5B9A", color: "white", cursor: "pointer", fontSize: "0.75rem" }}>
+          {saving ? "..." : "Save"}
+        </button>
+        <button onClick={() => { setEditing(false); setText(task.text); }} style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "1px solid #e5e7eb", background: "white", cursor: "pointer", fontSize: "0.75rem" }}>
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "1px solid #e5e7eb", background: "white", cursor: "pointer", fontSize: "0.75rem", color: "#6b7280" }}
+    >
+      ✏️ Edit
+    </button>
+  );
+}
 }
