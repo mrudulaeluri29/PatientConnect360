@@ -23,6 +23,7 @@ import caregiverSafetyRoutes from "./routes/caregiverSafety";
 import familyFeedbackRoutes from "./routes/familyFeedback";
 import carePlanRoutes from "./routes/carePlans";
 import patientDocumentRoutes from "./routes/patientDocuments";
+import patientPrivacyRoutes from "./routes/patientPrivacy";
 
 // Feature 2 imports
 import notificationRoutes from "./routes/notifications";
@@ -108,6 +109,7 @@ app.use("/api/family-feedback", familyFeedbackRoutes);
 // Feature 1 — health records / care plans / patient documents
 app.use("/api/care-plans", carePlanRoutes);
 app.use("/api/patient-documents", patientDocumentRoutes);
+app.use("/api/patients", patientPrivacyRoutes);
 
 // Feature 2 routes
 app.use("/api/notifications", notificationRoutes);

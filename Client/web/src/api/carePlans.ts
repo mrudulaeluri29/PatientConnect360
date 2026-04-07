@@ -56,8 +56,13 @@ export interface ApiCarePlan {
 
 // ─── API calls ───────────────────────────────────────────────────────────────
 
-export async function getCarePlans(patientId: string): Promise<ApiCarePlan[]> {
-  const res = await api.get("/api/care-plans", { params: { patientId } });
+export async function getCarePlans(
+  patientId: string,
+  options?: { includeInactive?: boolean }
+): Promise<ApiCarePlan[]> {
+  const params: Record<string, string> = { patientId };
+  if (options?.includeInactive) params.includeInactive = "1";
+  const res = await api.get("/api/care-plans", { params });
   return res.data.carePlans;
 }
 

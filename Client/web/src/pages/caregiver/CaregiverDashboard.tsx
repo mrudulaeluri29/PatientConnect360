@@ -12,6 +12,7 @@ import {
   visitTypeLabel,
   type ApiVisit,
 } from "../../api/visits";
+import { VisitStructuredSummaryPanel } from "../../components/visits/VisitStructuredSummaryPanel";
 import {
   getMedications,
   daysUntilRefill,
@@ -1385,14 +1386,16 @@ function CaregiverSchedule() {
   const refreshVisits = useCallback(async (silent = false) => {
     if (!silent) setLoadingVisits(true);
     try {
-      const data = await getVisits();
+      const data = await getVisits(
+        selectedPatientId ? { patientId: selectedPatientId } : undefined
+      );
       setVisits(data);
     } catch {
       setVisits([]);
     } finally {
       if (!silent) setLoadingVisits(false);
     }
-  }, []);
+  }, [selectedPatientId]);
 
   useRefetchOnIntervalAndFocus(() => void refreshVisits(true), 25000);
 
@@ -1555,44 +1558,47 @@ function CaregiverSchedule() {
               {upcoming.slice(0, 10).map((v) => {
                 const { date, time } = formatVisitDateTime(v.scheduledAt);
                 return (
-                  <div key={v.id} className="cg-visit-row">
-                    <span className={`cg-pill ${v.status.toLowerCase()}`}>{v.status}</span>
-                    <div className="cg-visit-row-main">
-                      <div className="cg-visit-row-title">{visitTypeLabel(v.visitType)}</div>
-                      <div className="cg-visit-row-sub">
-                        {date} · {time} · {v.clinician.username}
-                        {v.clinician.clinicianProfile?.specialization ? ` · ${v.clinician.clinicianProfile.specialization}` : ""}
+                  <div key={v.id} className="cg-visit-row-wrap">
+                    <div className="cg-visit-row">
+                      <span className={`cg-pill ${v.status.toLowerCase()}`}>{v.status}</span>
+                      <div className="cg-visit-row-main">
+                        <div className="cg-visit-row-title">{visitTypeLabel(v.visitType)}</div>
+                        <div className="cg-visit-row-sub">
+                          {date} · {time} · {v.clinician.username}
+                          {v.clinician.clinicianProfile?.specialization ? ` · ${v.clinician.clinicianProfile.specialization}` : ""}
+                        </div>
+                      </div>
+                      <div className="cg-visit-actions">
+                        {v.status === "SCHEDULED" && (
+                          <button
+                            className="cg-btn cg-btn-confirm"
+                            onClick={() => handleConfirm(v)}
+                            disabled={actionId === v.id}
+                          >
+                            {actionId === v.id ? "..." : "Confirm"}
+                          </button>
+                        )}
+                        {(v.status === "SCHEDULED" || v.status === "CONFIRMED") && (
+                          <>
+                            <button
+                              className="cg-btn cg-btn-resched"
+                              onClick={() => openReschedule(v)}
+                              disabled={actionId === v.id}
+                            >
+                              Request Reschedule
+                            </button>
+                            <button
+                              className="cg-btn cg-btn-cancel"
+                              onClick={() => handleCancel(v)}
+                              disabled={actionId === v.id}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <div className="cg-visit-actions">
-                      {v.status === "SCHEDULED" && (
-                        <button
-                          className="cg-btn cg-btn-confirm"
-                          onClick={() => handleConfirm(v)}
-                          disabled={actionId === v.id}
-                        >
-                          {actionId === v.id ? "..." : "Confirm"}
-                        </button>
-                      )}
-                      {(v.status === "SCHEDULED" || v.status === "CONFIRMED") && (
-                        <>
-                          <button
-                            className="cg-btn cg-btn-resched"
-                            onClick={() => openReschedule(v)}
-                            disabled={actionId === v.id}
-                          >
-                            Request Reschedule
-                          </button>
-                          <button
-                            className="cg-btn cg-btn-cancel"
-                            onClick={() => handleCancel(v)}
-                            disabled={actionId === v.id}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    <VisitStructuredSummaryPanel visit={v} variant="compact" />
                   </div>
                 );
               })}
@@ -1613,14 +1619,17 @@ function CaregiverSchedule() {
               {history.slice(0, 10).map((v) => {
                 const { date, time } = formatVisitDateTime(v.scheduledAt);
                 return (
-                  <div key={v.id} className="cg-visit-row">
-                    <span className={`cg-pill ${v.status.toLowerCase()}`}>{v.status}</span>
-                    <div className="cg-visit-row-main">
-                      <div className="cg-visit-row-title">{visitTypeLabel(v.visitType)}</div>
-                      <div className="cg-visit-row-sub">
-                        {date} · {time} · {v.clinician.username}
+                  <div key={v.id} className="cg-visit-row-wrap">
+                    <div className="cg-visit-row">
+                      <span className={`cg-pill ${v.status.toLowerCase()}`}>{v.status}</span>
+                      <div className="cg-visit-row-main">
+                        <div className="cg-visit-row-title">{visitTypeLabel(v.visitType)}</div>
+                        <div className="cg-visit-row-sub">
+                          {date} · {time} · {v.clinician.username}
+                        </div>
                       </div>
                     </div>
+                    <VisitStructuredSummaryPanel visit={v} variant="compact" />
                   </div>
                 );
               })}

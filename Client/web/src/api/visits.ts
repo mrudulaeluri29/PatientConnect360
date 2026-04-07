@@ -63,6 +63,7 @@ export interface ApiVisit {
   summaryCareProvided?: string | null;
   summaryPatientResponse?: string | null;
   summaryFollowUp?: string | null;
+  medicationChangesSummary?: string | null;
   summaryUpdatedAt?: string | null;
   summaryUpdatedById?: string | null;
   patient: {
@@ -231,6 +232,7 @@ export async function updateVisitSummary(
     summaryCareProvided: string | null;
     summaryPatientResponse: string | null;
     summaryFollowUp: string | null;
+    medicationChangesSummary: string | null;
   }>
 ): Promise<ApiVisit> {
   const res = await api.patch(`/api/visits/${visitId}/summary`, body);

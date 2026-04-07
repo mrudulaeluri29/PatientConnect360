@@ -74,6 +74,7 @@ export async function getLatestVitals(
 }
 
 export async function getVitals(params?: {
+  visitId?: string;
   type?: VitalType;
   from?: string;
   to?: string;
@@ -81,4 +82,32 @@ export async function getVitals(params?: {
 }): Promise<ApiVital[]> {
   const res = await api.get("/api/vitals", { params });
   return res.data.vitals;
+}
+
+export async function createVital(data: {
+  patientId: string;
+  visitId?: string;
+  type: VitalType;
+  value: string;
+  unit?: string;
+  trend?: VitalTrend;
+  notes?: string | null;
+  recordedAt?: string;
+}): Promise<{ vital: ApiVital; warning?: string }> {
+  const res = await api.post("/api/vitals", data);
+  return res.data;
+}
+
+export async function updateVital(
+  vitalId: string,
+  data: {
+    value?: string;
+    unit?: string | null;
+    trend?: VitalTrend;
+    notes?: string | null;
+    recordedAt?: string;
+  }
+): Promise<{ vital: ApiVital; warning?: string }> {
+  const res = await api.patch(`/api/vitals/${vitalId}`, data);
+  return res.data;
 }
