@@ -117,22 +117,22 @@ export default function PatientDashboard() {
               onClick={() => setActiveTab("family")}
             >
 
-  Family
-</button>
-<button
-  className={`nav-item ${activeTab === "records" ? "active" : ""}`}
-  onClick={() => setActiveTab("records")}
->
-  Records
-</button>
-<button
-  className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
-  onClick={() => setActiveTab("exercises")}
->
-  Exercises & Tasks
-</button>
+            Family
+          </button>
+          <button
+            className={`nav-item ${activeTab === "records" ? "active" : ""}`}
+            onClick={() => setActiveTab("records")}
+          >
+            Records
+          </button>
+          <button
+            className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
+            onClick={() => setActiveTab("exercises")}
+          >
+            Exercises & Tasks
+          </button>
 
-</nav>
+          </nav>
         </div>
         <div className="patient-header-right">
           <NotificationBell
@@ -488,7 +488,7 @@ function HEPBanner() {
         </div>
       </div>
       
-<button
+      <button
         onClick={() => {
           const btn = document.querySelector('[data-tab="exercises"]') as HTMLElement;
           if (btn) btn.click();
