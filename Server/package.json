@@ -17,7 +17,8 @@
     "test:activity-dau": "ts-node scripts/testActivityDAU.ts",
     "test:audit-pagination": "ts-node scripts/testAuditPagination.ts",
     "test:date-range": "ts-node scripts/testDateRangeFilter.ts",
-    "test:additional-audit": "ts-node scripts/testAdditionalAudit.ts"
+    "test:additional-audit": "ts-node scripts/testAdditionalAudit.ts",
+    "seed:feature4": "ts-node src/scripts/seedFeature4.ts"
   },
   "keywords": [],
   "author": "",
