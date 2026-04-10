@@ -446,7 +446,7 @@ router.post("/login", async (req: Request, res: Response) => {
     }
 
     const user = await prisma.user.findFirst({
-      where: { OR: [{ email: emailOrUsername }, { username: emailOrUsername }] }
+      where: { OR: [{ email: emailOrUsername }, { username: emailOrUsername }] },
     });
 
     // If user does not exist, return generic invalid credentials (don't reveal which)

@@ -6,8 +6,9 @@ const envUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/
 // Setting VITE_API_URL to the local API host bypasses the proxy (cross-origin 5173→4000) and can
 // cause POST requests to lose the session cookie (401 Unauthorized) while GET still appears to work.
 // In dev, omit VITE_API_URL or point it at a remote API only. Production: set VITE_API_URL to your API host.
-const isLocalDevApi =
-  envUrl === "http://localhost:4000" || envUrl === "http://127.0.0.1:4000";
+const isLocalDevApi = Boolean(
+  envUrl && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(envUrl)
+);
 
 const API_URL = import.meta.env.DEV
   ? envUrl && !isLocalDevApi
