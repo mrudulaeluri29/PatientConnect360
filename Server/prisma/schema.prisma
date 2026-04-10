@@ -47,16 +47,13 @@ model User {
   reminderPreference    VisitReminderPreference?
   vitals                VitalSign[]               @relation("PatientVitals")
   recordedVitals        VitalSign[]               @relation("RecordedVitals")
-  // Feature 1 — health records / care plans
-  patientCarePlans           CarePlan[]             @relation("PatientCarePlans")
-  clinicianCreatedCarePlans  CarePlan[]             @relation("ClinicianCarePlans")
-  adminCreatedCarePlans      CarePlan[]             @relation("AdminCarePlans")
-  carePlanProgressAsPatient  CarePlanItemProgress[] @relation("CarePlanProgressPatient")
-  carePlanProgressUpdates    CarePlanItemProgress[] @relation("CarePlanProgressUpdater")
-  carePlanCheckInsSubmitted  CarePlanCheckIn[]      @relation("CarePlanCheckInAuthor")
-  patientDocuments           PatientDocument[]      @relation("PatientDocumentsPatient")
-  uploadedPatientDocuments   PatientDocument[]      @relation("PatientDocumentUploader")
-  visitSummariesAuthored     Visit[]                @relation("VisitSummaryAuthor")
+  createdExercises      Exercise[]             @relation("CreatedExercises")
+  hepAssignments        ExerciseAssignment[]   @relation("PatientAssignments_HEP")
+  hepAssigned           ExerciseAssignment[]   @relation("ClinicianAssignments_HEP")
+  hepCompletions        ExerciseCompletion[]   @relation("HEPCompletions")
+  clinicianPrepTasks    VisitPrepTask[]        @relation("ClinicianPrepTasks")
+  prepTasksDone         VisitPrepTask[]        @relation("PrepTaskCompletions")
+  visitSummariesAuthored Visit[]               @relation("VisitSummaryAuthor")
 }
 
 model AgencySettings {
@@ -249,8 +246,9 @@ model Visit {
   clinician                 User             @relation("ClinicianVisits", fields: [clinicianId], references: [id], onDelete: Cascade)
   originalVisit             Visit?           @relation("VisitRescheduleChain", fields: [originalVisitId], references: [id])
   rescheduleChildren        Visit[]          @relation("VisitRescheduleChain")
+  hepAssignments            ExerciseAssignment[]
+  prepTasks                 VisitPrepTask[]
   patient                   User             @relation("PatientVisits", fields: [patientId], references: [id], onDelete: Cascade)
-  // Feature 1 — structured visit summary (clinician/admin edit; patient/caregiver read via visit GET)
   summaryDiagnosis       String?
   summaryCareProvided    String?
   summaryPatientResponse String?
@@ -266,94 +264,6 @@ model Visit {
   @@index([status])
   @@index([originalVisitId])
   @@index([requestType])
-}
-
-// ─── Feature 1: Care plans & patient documents ───────────────────────────────
-
-model CarePlan {
-  id                   String         @id @default(cuid())
-  patientId            String
-  createdByClinicianId String?
-  createdByAdminId     String?
-  status               CarePlanStatus @default(ACTIVE)
-  reviewBy             DateTime?
-  version              Int            @default(1)
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
-  patient              User           @relation("PatientCarePlans", fields: [patientId], references: [id], onDelete: Cascade)
-  createdByClinician   User?          @relation("ClinicianCarePlans", fields: [createdByClinicianId], references: [id], onDelete: SetNull)
-  createdByAdmin       User?          @relation("AdminCarePlans", fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  items                CarePlanItem[]
-  checkIns             CarePlanCheckIn[]
-
-  @@index([patientId])
-  @@index([status])
-}
-
-model CarePlanItem {
-  id         String           @id @default(cuid())
-  carePlanId String
-  type       CarePlanItemType
-  title      String
-  details    String?
-  sortOrder  Int              @default(0)
-  isActive   Boolean          @default(true)
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  carePlan   CarePlan         @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
-  progress   CarePlanItemProgress[]
-
-  @@index([carePlanId])
-}
-
-model CarePlanItemProgress {
-  id              String                     @id @default(cuid())
-  carePlanItemId  String
-  patientId       String
-  updatedByUserId String
-  status          CarePlanItemProgressStatus @default(NOT_STARTED)
-  note            String?
-  createdAt       DateTime                   @default(now())
-  updatedAt       DateTime                   @updatedAt
-  carePlanItem   CarePlanItem @relation(fields: [carePlanItemId], references: [id], onDelete: Cascade)
-  patient        User         @relation("CarePlanProgressPatient", fields: [patientId], references: [id], onDelete: Cascade)
-  updatedBy      User         @relation("CarePlanProgressUpdater", fields: [updatedByUserId], references: [id], onDelete: Cascade)
-
-  @@unique([carePlanItemId, patientId])
-  @@index([patientId])
-}
-
-model CarePlanCheckIn {
-  id              String                @id @default(cuid())
-  carePlanId      String
-  updatedByUserId String
-  status          CarePlanCheckInStatus @default(OK)
-  note            String?
-  createdAt       DateTime              @default(now())
-  carePlan  CarePlan @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
-  updatedBy User     @relation("CarePlanCheckInAuthor", fields: [updatedByUserId], references: [id], onDelete: Cascade)
-
-  @@index([carePlanId])
-}
-
-model PatientDocument {
-  id               String   @id @default(cuid())
-  patientId        String
-  uploadedByUserId String
-  docType          String
-  filename         String
-  contentType      String
-  blobUrl          String
-  blobPath         String
-  blobContainer    String   @default("patient-documents")
-  isHidden         Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  patient          User     @relation("PatientDocumentsPatient", fields: [patientId], references: [id], onDelete: Cascade)
-  uploadedBy       User     @relation("PatientDocumentUploader", fields: [uploadedByUserId], references: [id], onDelete: Cascade)
-
-  @@index([patientId])
-  @@index([isHidden])
 }
 
 model Medication {
@@ -671,30 +581,72 @@ enum OutboundStatus {
   FAILED
   CANCELLED
 }
+// ─── Feature 4: HEP + Visit Prep Tasks ──────────────────────────────────────
 
-// ─── Feature 1 enums ────────────────────────────────────────────────────────
+model Exercise {
+  id                   String               @id @default(cuid())
+  name                 String
+  instructions         String
+  createdByClinicianId String
+  createdAt            DateTime             @default(now())
+  createdByClinician   User                 @relation("CreatedExercises", fields: [createdByClinicianId], references: [id], onDelete: Cascade)
+  assignments          ExerciseAssignment[]
+}
 
-enum CarePlanStatus {
+model ExerciseAssignment {
+  id                    String               @id @default(cuid())
+  patientId             String
+  assignedByClinicianId String
+  exerciseId            String
+  frequencyPerWeek      Int
+  startDate             DateTime
+  endDate               DateTime?
+  status                HEPStatus            @default(ACTIVE)
+  visitId               String?
+  createdAt             DateTime             @default(now())
+  patient               User                 @relation("PatientAssignments_HEP", fields: [patientId], references: [id], onDelete: Cascade)
+  assignedByClinician   User                 @relation("ClinicianAssignments_HEP", fields: [assignedByClinicianId], references: [id], onDelete: Cascade)
+  exercise              Exercise             @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  visit                 Visit?               @relation(fields: [visitId], references: [id])
+  completions           ExerciseCompletion[]
+
+  @@index([patientId])
+  @@index([assignedByClinicianId])
+  @@index([exerciseId])
+}
+
+model ExerciseCompletion {
+  id                String             @id @default(cuid())
+  assignmentId      String
+  completedByUserId String
+  completedAt       DateTime           @default(now())
+  comment           String?
+  assignment        ExerciseAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  completedByUser   User               @relation("HEPCompletions", fields: [completedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@index([completedByUserId])
+}
+
+model VisitPrepTask {
+  id                   String    @id @default(cuid())
+  visitId              String
+  text                 String
+  createdByClinicianId String
+  isDone               Boolean   @default(false)
+  doneByUserId         String?
+  doneAt               DateTime?
+  createdAt            DateTime  @default(now())
+  visit                Visit     @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  createdByClinician   User      @relation("ClinicianPrepTasks", fields: [createdByClinicianId], references: [id], onDelete: Cascade)
+  doneByUser           User?     @relation("PrepTaskCompletions", fields: [doneByUserId], references: [id])
+
+  @@index([visitId])
+  @@index([createdByClinicianId])
+}
+
+enum HEPStatus {
   ACTIVE
-  ON_HOLD
+  PAUSED
   COMPLETED
-  ARCHIVED
-}
-
-enum CarePlanItemType {
-  PROBLEM
-  GOAL
-  INTERVENTION
-}
-
-enum CarePlanItemProgressStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  COMPLETED
-}
-
-enum CarePlanCheckInStatus {
-  OK
-  FAIR
-  NEEDS_ATTENTION
 }

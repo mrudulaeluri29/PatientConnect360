@@ -855,24 +855,51 @@ router.patch("/:id", async (req: Request, res: Response) => {
         data.clinicianId = clinicianId;
       }
 
+   /* } else if (user.role === "CLINICIAN") {
+  const { status, clinicianNotes } = req.body || {};
+  if (clinicianNotes !== undefined) data.clinicianNotes = clinicianNotes;
+  if (status) {
+    // ← WE ADD OUR 50-CHAR CHECK RIGHT HERE
+    if (status === VisitStatus.COMPLETED) data.completedAt = new Date();
+  }
+} */
+
     } else if (user.role === "CLINICIAN") {
-      const { status, clinicianNotes } = req.body || {};
+  const { status, clinicianNotes } = req.body || {};
 
-      if (clinicianNotes !== undefined) data.clinicianNotes = clinicianNotes;
+  if (clinicianNotes !== undefined) data.clinicianNotes = clinicianNotes;
 
-      if (status) {
-        const allowed: VisitStatus[] = [VisitStatus.IN_PROGRESS, VisitStatus.COMPLETED, VisitStatus.MISSED];
-        if (!allowed.includes(status)) {
-          return res.status(403).json({
-            error: `Clinicians can only set status to: ${allowed.join(", ")}`,
-          });
-        }
-        data.status = status;
-        if (status === VisitStatus.IN_PROGRESS) data.checkedInAt  = new Date();
-        if (status === VisitStatus.COMPLETED)   data.completedAt  = new Date();
+  if (status) {
+    const allowed: VisitStatus[] = [VisitStatus.IN_PROGRESS, VisitStatus.COMPLETED, VisitStatus.MISSED];
+    if (!allowed.includes(status)) {
+      return res.status(403).json({
+        error: `Clinicians can only set status to: ${allowed.join(", ")}`,
+      });
+    }
+
+    // ── Feature 4: Documentation gating ──
+    // Clinician cannot complete a visit without at least 50 chars of notes.
+    if (status === VisitStatus.COMPLETED) {
+      const existingVisit = await prisma.visit.findUnique({
+        where: { id },
+        select: { clinicianNotes: true },
+      });
+      const finalNotes = clinicianNotes ?? existingVisit?.clinicianNotes ?? "";
+      if (String(finalNotes).trim().length < 50) {
+        return res.status(400).json({
+          error: "Cannot complete visit: clinical notes must be at least 50 characters. Please document your findings before completing.",
+        });
       }
+    }
+    // ── End Feature 4 gating ──
 
-    } else if (user.role === "PATIENT") {
+    data.status = status;
+    if (status === VisitStatus.IN_PROGRESS) data.checkedInAt = new Date();
+    if (status === VisitStatus.COMPLETED)   data.completedAt = new Date();
+  }
+}
+
+    else if (user.role === "PATIENT") {
       const { status, cancelReason } = req.body || {};
 
       if (status) {

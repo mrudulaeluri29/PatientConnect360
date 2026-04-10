@@ -1,3 +1,4 @@
+import ClinicianWorklistTab from "./ClinicianWorklistTab";
 import { useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
@@ -6,6 +7,7 @@ import { useFeedback } from "../../contexts/FeedbackContext";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
 import "./ClinicianDashboard.css";
+import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
 import {
   getVisits,
   updateVisitStatus,
@@ -22,7 +24,6 @@ import {
   type ApiAvailability,
   type AvailabilityStatus,
 } from "../../api/availability";
-import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
 
 export default function ClinicianDashboard() {
   const [activeTab, setActiveTab] = useState("schedule");
@@ -124,12 +125,7 @@ export default function ClinicianDashboard() {
                 onConversationOpened={() => setPendingConversation(null)}
               />
             )}
-            {activeTab === "tasks" && (
-              <FlaggedTasks
-                onNavigateToMessages={() => setActiveTab("messages")}
-                onNavigateToPatients={() => setActiveTab("patients")}
-              />
-            )}
+{activeTab === "tasks" && <ClinicianWorklistTab />}
             {activeTab === "appointments" && <AppointmentsHub />}
             {activeTab === "contact-staff" && <ContactStaffHub />}
           </div>
@@ -1092,7 +1088,6 @@ function ClinicianCareRecordsTab() {
         const opts = pts.map((p: { id: string; username?: string; email?: string; profile?: { legalName?: string } }) => {
           const un = p.username?.trim() || "";
           const legal = p.profile?.legalName?.trim() || "";
-          // Show legal name + login username when both help disambiguate (e.g. legal "Patient" vs account patient2)
           let label: string;
           if (legal && un && legal !== un) {
             label = `${legal} (${un})`;
@@ -1148,7 +1143,6 @@ function ClinicianCareRecordsTab() {
   );
 }
 
-/** Title + patient row with compact AI tip; editor below uses full main width (no tall right sidebar). */
 function CareRecordsHeaderRow({ patientSelect }: { patientSelect: ReactNode | null }) {
   return (
     <div className="care-records-header-row">
@@ -1367,6 +1361,7 @@ function PatientSnapshot() {
                 </span>
               </div>
             </div>
+            <HEPSummaryBadge patientId={selectedPatientData.id} />
           </div>
 
           {selectedPatientData.alerts.length > 0 && (
@@ -2187,3 +2182,39 @@ function FlaggedTasks({ onNavigateToMessages, onNavigateToPatients }: FlaggedTas
     </div>
   );
 }
+  // ─── HEP Summary Badge for Patient Snapshot ──────────────────────────────────
+function HEPSummaryBadge({ patientId }: { patientId: string }) {
+  const [activeCount, setActiveCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await api.get(`/api/hep?patientId=${patientId}`);
+        const assignments = res.data.assignments || [];
+        const active = assignments.filter((a: any) => a.status === "ACTIVE").length;
+        setActiveCount(active);
+      } catch (e) { console.error(e); }
+    }
+    load();
+  }, [patientId]);
+
+  if (activeCount === null) return null;
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: "0.5rem",
+      padding: "0.5rem 0.75rem", borderRadius: "8px",
+      background: activeCount > 0 ? "#f5f3ff" : "#f9fafb",
+      border: `1px solid ${activeCount > 0 ? "#c4b5fd" : "#e5e7eb"}`,
+      fontSize: "0.8rem", color: activeCount > 0 ? "#6E5B9A" : "#6b7280",
+    }}>
+      <span>🏋️</span>
+      <span style={{ fontWeight: 600 }}>
+        {activeCount > 0
+          ? `${activeCount} active exercise${activeCount !== 1 ? "s" : ""}`
+          : "No active exercises"}
+      </span>
+    </div>
+  );
+}
+
