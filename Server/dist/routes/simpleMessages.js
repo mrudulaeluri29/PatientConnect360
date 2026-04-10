@@ -9,6 +9,7 @@ const db_1 = require("../db");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const client_1 = require("@prisma/client");
 const audit_1 = require("../lib/audit");
+const activityRollup_1 = require("../lib/activityRollup");
 const router = (0, express_1.Router)();
 async function getCaregiverLinkedPatientIds(caregiverId) {
     const links = await db_1.prisma.caregiverPatientLink.findMany({
@@ -289,6 +290,7 @@ router.post("/send", async (req, res) => {
                 messageLength: body.length,
             },
         });
+        (0, activityRollup_1.recordDailyActivity)(user.uid).catch(() => { });
         // Update conversation timestamp
         await db_1.prisma.conversation.update({
             where: { id: conversation.id },

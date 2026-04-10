@@ -128,72 +128,44 @@ async function buildAdminAnalytics() {
 }
 // ── Feature 5: Build DAU and Daily Appointment Analytics ──
 async function buildDailyAnalytics(fromDate, toDate) {
-    // Generate date buckets for the range
     const dayBuckets = [];
+    const bucketMap = new Map();
     const currentDate = new Date(fromDate);
     while (currentDate <= toDate) {
-        dayBuckets.push({
-            date: currentDate.toISOString().split('T')[0],
+        const key = currentDate.toISOString().split('T')[0];
+        const entry = {
+            date: key,
             loginBasedDAU: 0,
             activityBasedDAU: 0,
             appointmentsApproved: 0,
             appointmentsFulfilled: 0,
             appointmentsCancelled: 0,
             appointmentsRescheduled: 0,
-        });
+        };
+        dayBuckets.push(entry);
+        bucketMap.set(key, entry);
         currentDate.setUTCDate(currentDate.getUTCDate() + 1);
     }
-    // Login-based DAU: count distinct users with lastLogin on each day
-    const usersWithLogins = await db_1.prisma.user.findMany({
-        where: {
-            lastLogin: {
-                gte: fromDate,
-                lte: toDate,
-            },
-        },
-        select: {
-            id: true,
-            lastLogin: true,
-        },
+    // ── DAU from UserActivityDaily rollups (accurate per-day) ──
+    const rollups = await db_1.prisma.userActivityDaily.findMany({
+        where: { day: { gte: fromDate, lte: toDate } },
+        select: { userId: true, day: true },
     });
-    for (const user of usersWithLogins) {
-        if (user.lastLogin) {
-            const dateKey = user.lastLogin.toISOString().split('T')[0];
-            const bucket = dayBuckets.find(b => b.date === dateKey);
-            if (bucket)
-                bucket.loginBasedDAU += 1;
-        }
+    const dauByDay = new Map();
+    for (const r of rollups) {
+        const dateKey = r.day.toISOString().split('T')[0];
+        if (!dauByDay.has(dateKey))
+            dauByDay.set(dateKey, new Set());
+        dauByDay.get(dateKey).add(r.userId);
     }
-    // Activity-based DAU: count distinct users with audit log activity on each day
-    const auditLogs = await db_1.prisma.auditLog.findMany({
-        where: {
-            createdAt: {
-                gte: fromDate,
-                lte: toDate,
-            },
-            actorId: { not: null },
-        },
-        select: {
-            actorId: true,
-            createdAt: true,
-        },
-    });
-    const activityByDay = new Map();
-    for (const log of auditLogs) {
-        if (log.actorId) {
-            const dateKey = log.createdAt.toISOString().split('T')[0];
-            if (!activityByDay.has(dateKey)) {
-                activityByDay.set(dateKey, new Set());
-            }
-            activityByDay.get(dateKey).add(log.actorId);
-        }
-    }
-    for (const [dateKey, userIds] of activityByDay.entries()) {
-        const bucket = dayBuckets.find(b => b.date === dateKey);
-        if (bucket)
+    for (const [dateKey, userIds] of dauByDay.entries()) {
+        const bucket = bucketMap.get(dateKey);
+        if (bucket) {
+            bucket.loginBasedDAU = userIds.size;
             bucket.activityBasedDAU = userIds.size;
+        }
     }
-    // Daily appointment outcomes
+    // ── Daily appointment outcomes (approved, fulfilled, cancelled) ──
     const visits = await db_1.prisma.visit.findMany({
         where: {
             OR: [
@@ -212,34 +184,34 @@ async function buildDailyAnalytics(fromDate, toDate) {
         },
     });
     for (const visit of visits) {
-        // Approved/Confirmed on this day
         if (visit.reviewedAt && visit.status === client_1.VisitStatus.CONFIRMED) {
-            const dateKey = visit.reviewedAt.toISOString().split('T')[0];
-            const bucket = dayBuckets.find(b => b.date === dateKey);
+            const bucket = bucketMap.get(visit.reviewedAt.toISOString().split('T')[0]);
             if (bucket)
                 bucket.appointmentsApproved += 1;
         }
-        // Fulfilled/Completed on this day
         if (visit.completedAt && visit.status === client_1.VisitStatus.COMPLETED) {
-            const dateKey = visit.completedAt.toISOString().split('T')[0];
-            const bucket = dayBuckets.find(b => b.date === dateKey);
+            const bucket = bucketMap.get(visit.completedAt.toISOString().split('T')[0]);
             if (bucket)
                 bucket.appointmentsFulfilled += 1;
         }
-        // Cancelled on this day
         if (visit.cancelledAt && visit.status === client_1.VisitStatus.CANCELLED) {
-            const dateKey = visit.cancelledAt.toISOString().split('T')[0];
-            const bucket = dayBuckets.find(b => b.date === dateKey);
+            const bucket = bucketMap.get(visit.cancelledAt.toISOString().split('T')[0]);
             if (bucket)
                 bucket.appointmentsCancelled += 1;
         }
-        // Rescheduled on this day
-        if (visit.reviewedAt && visit.status === client_1.VisitStatus.RESCHEDULED) {
-            const dateKey = visit.reviewedAt.toISOString().split('T')[0];
-            const bucket = dayBuckets.find(b => b.date === dateKey);
-            if (bucket)
-                bucket.appointmentsRescheduled += 1;
-        }
+    }
+    // ── Rescheduled: count from AuditLog VISIT_RESCHEDULE_APPROVED events ──
+    const rescheduleAuditLogs = await db_1.prisma.auditLog.findMany({
+        where: {
+            actionType: client_1.AuditActionType.VISIT_RESCHEDULE_APPROVED,
+            createdAt: { gte: fromDate, lte: toDate },
+        },
+        select: { createdAt: true },
+    });
+    for (const log of rescheduleAuditLogs) {
+        const bucket = bucketMap.get(log.createdAt.toISOString().split('T')[0]);
+        if (bucket)
+            bucket.appointmentsRescheduled += 1;
     }
     return dayBuckets;
 }

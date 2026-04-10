@@ -12,6 +12,7 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const client_1 = require("@prisma/client");
 const twilio_1 = require("./twilio");
 const audit_1 = require("./lib/audit");
+const activityRollup_1 = require("./lib/activityRollup");
 //express router 
 const router = (0, express_1.Router)();
 const COOKIE_NAME = "auth";
@@ -479,6 +480,8 @@ router.post("/login", async (req, res) => {
                 description: `User ${user.username} logged in successfully`,
                 metadata: { success: true, rememberMe: Boolean(rememberMe) },
             });
+            // Feature 5: record daily activity rollup for DAU tracking
+            (0, activityRollup_1.recordDailyActivity)(user.id).catch(() => { });
         }
         catch (e) {
             console.error("Failed to update login metadata:", e);

@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import jwt from "jsonwebtoken";
 import { AuditActionType } from "@prisma/client";
 import { logAuditEvent } from "../lib/audit";
+import { recordDailyActivity } from "../lib/activityRollup";
 
 const router = Router();
 
@@ -305,6 +306,7 @@ router.post("/send", async (req: Request, res: Response) => {
         messageLength: body.length,
       },
     });
+    recordDailyActivity(user.uid).catch(() => {});
 
     // Update conversation timestamp
     await (prisma as any).conversation.update({

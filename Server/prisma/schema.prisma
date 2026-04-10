@@ -62,6 +62,7 @@ model User {
   patientDocuments      PatientDocument[]      @relation("PatientDocumentsPatient")
   uploadedPatientDocuments PatientDocument[]   @relation("PatientDocumentUploader")
   visitSummariesAuthored Visit[]               @relation("VisitSummaryAuthor")
+  activityRollups       UserActivityDaily[]    @relation("UserActivityRollups")
 }
 
 model AgencySettings {
@@ -762,6 +763,19 @@ model VisitPrepTask {
 
   @@index([visitId])
   @@index([createdByClinicianId])
+}
+
+model UserActivityDaily {
+  id         String   @id @default(cuid())
+  userId     String
+  day        DateTime
+  lastSeenAt DateTime @default(now())
+  eventCount Int      @default(1)
+  user       User     @relation("UserActivityRollups", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@index([day])
+  @@index([userId])
 }
 
 enum HEPStatus {

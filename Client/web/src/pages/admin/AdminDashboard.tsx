@@ -700,11 +700,27 @@ function AuditLogPanel() {
             <label>Action</label>
             <select value={actionType} onChange={(e) => setActionType(e.target.value)} className="filter-select" style={{ width: "100%" }}>
               <option value="">All actions</option>
-              <option value="LOGIN">LOGIN</option>
-              <option value="APPOINTMENT_APPROVED">APPOINTMENT_APPROVED</option>
-              <option value="MED_CHANGED">MED_CHANGED</option>
-              <option value="CAREGIVER_LINK_UPDATED">CAREGIVER_LINK_UPDATED</option>
-              <option value="SETTINGS_UPDATED">SETTINGS_UPDATED</option>
+              <option value="LOGIN">Login</option>
+              <option value="APPOINTMENT_CREATED">Appointment Created</option>
+              <option value="APPOINTMENT_APPROVED">Appointment Approved</option>
+              <option value="APPOINTMENT_REJECTED">Appointment Rejected</option>
+              <option value="APPOINTMENT_CANCELLED">Appointment Cancelled</option>
+              <option value="VISIT_RESCHEDULE_REQUESTED">Reschedule Requested</option>
+              <option value="VISIT_RESCHEDULE_APPROVED">Reschedule Approved</option>
+              <option value="AVAILABILITY_SUBMITTED">Availability Submitted</option>
+              <option value="AVAILABILITY_REVIEWED">Availability Reviewed</option>
+              <option value="MESSAGE_SENT">Message Sent</option>
+              <option value="CONVERSATION_CREATED">Conversation Created</option>
+              <option value="MED_CREATED">Medication Created</option>
+              <option value="MED_CHANGED">Medication Changed</option>
+              <option value="MED_REMOVED">Medication Removed</option>
+              <option value="CAREGIVER_INVITATION_CREATED">Caregiver Invitation Created</option>
+              <option value="CAREGIVER_INVITATION_REVOKED">Caregiver Invitation Revoked</option>
+              <option value="CAREGIVER_LINK_CREATED">Caregiver Link Created</option>
+              <option value="CAREGIVER_LINK_UPDATED">Caregiver Link Updated</option>
+              <option value="ASSIGNMENT_UPDATED">Assignment Updated</option>
+              <option value="BRANDING_UPDATED">Branding Updated</option>
+              <option value="SETTINGS_UPDATED">Settings Updated</option>
             </select>
           </div>
           <div className="form-group">
