@@ -15,6 +15,12 @@ interface AddressSuggestion {
   place_id?: string;
 }
 
+/** Minimal Nominatim search result fields we use */
+interface NominatimSearchItem {
+  display_name: string;
+  place_id?: string | number;
+}
+
 export default function AddressAutocomplete({
   value,
   onChange,
@@ -60,11 +66,11 @@ export default function AddressAutocomplete({
       );
 
       if (response.ok) {
-        const data = await response.json();
+        const data = (await response.json()) as NominatimSearchItem[];
         // Format the addresses for display
-        const formattedAddresses: AddressSuggestion[] = data.map((item: any) => ({
+        const formattedAddresses: AddressSuggestion[] = data.map((item) => ({
           display_name: item.display_name,
-          place_id: item.place_id,
+          place_id: item.place_id !== undefined ? String(item.place_id) : undefined,
         }));
         setSuggestions(formattedAddresses);
         setShowSuggestions(formattedAddresses.length > 0);

@@ -82,8 +82,8 @@ export default function AdminSignup() {
       // After successful registration, user should be ADMIN
       // Navigate to admin dashboard
       navigate("/admin/dashboard");
-    } catch (err: any) {
-      setErrors({ submit: err.message || "Registration failed. Please try again." });
+    } catch (err: unknown) {
+      setErrors({ submit: (err instanceof Error ? err.message : null) || "Registration failed. Please try again." });
       setLoading(false);
     }
   };
@@ -209,7 +209,7 @@ export default function AdminSignup() {
                       <li className={/[a-z]/.test(formData.password) ? "met" : ""}>
                         One lowercase letter
                       </li>
-                      <li className={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password) ? "met" : ""}>
+                      <li className={/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(formData.password) ? "met" : ""}>
                         One special character
                       </li>
                     </ul>

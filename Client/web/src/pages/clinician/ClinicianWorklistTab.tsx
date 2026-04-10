@@ -28,22 +28,37 @@ interface Patient {
   email: string;
 }
 
+type ClinicianWorklistSection = "worklist" | "hep" | "prep";
+
+function getApiErrorMessage(err: unknown, fallback: string): string {
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const data = (err as { response?: { data?: unknown } }).response?.data;
+    if (data && typeof data === "object" && data !== null && "error" in data) {
+      const e = (data as { error: unknown }).error;
+      if (typeof e === "string") return e;
+    }
+  }
+  return fallback;
+}
+
+const CLINICIAN_WORKLIST_SECTIONS: { key: ClinicianWorklistSection; label: string }[] = [
+  { key: "worklist", label: "📋 Needs Documentation" },
+  { key: "hep", label: "🏋️ Assign Exercises (HEP)" },
+  { key: "prep", label: "📝 Visit Prep Tasks" },
+];
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ClinicianWorklistTab() {
-  const [activeSection, setActiveSection] = useState<"worklist" | "hep" | "prep">("worklist");
+  const [activeSection, setActiveSection] = useState<ClinicianWorklistSection>("worklist");
 
   return (
     <div className="clinician-content">
       {/* Section switcher */}
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0.5rem" }}>
-        {[
-          { key: "worklist", label: "📋 Needs Documentation" },
-          { key: "hep", label: "🏋️ Assign Exercises (HEP)" },
-          { key: "prep", label: "📝 Visit Prep Tasks" },
-        ].map((s) => (
+        {CLINICIAN_WORKLIST_SECTIONS.map((s) => (
           <button
             key={s.key}
-            onClick={() => setActiveSection(s.key as any)}
+            onClick={() => setActiveSection(s.key)}
             style={{
               padding: "0.5rem 1rem",
               borderRadius: "8px",
@@ -81,18 +96,6 @@ function NeedsDocumentationWorklist() {
       try {
         const res = await api.get("/api/visits");
         const all: Visit[] = res.data.visits || [];
-
-
-    
-        // Show visits that are IN_PROGRESS or not yet completed
-       /* const needsDocs = all.filter(
-          (v) =>
-            ["IN_PROGRESS", "CONFIRMED", "SCHEDULED"].includes(v.status) &&
-            (!v.clinicianNotes || v.clinicianNotes.trim().length < 50)
-        );
-        setVisits(needsDocs);
-        */
-
         const now = new Date();
 
 // Bucket A: active visits past scheduled time OR in progress, missing notes
@@ -142,8 +145,8 @@ setSafetyNetVisits(safetyNet);
       setVisits((prev) => prev.filter((v) => v.id !== selectedVisit.id));
       setSelectedVisit(null);
       setNotes("");
-    } catch (e: any) {
-      setMessage(`❌ ${e.response?.data?.error || "Failed to complete visit"}`);
+    } catch (err: unknown) {
+      setMessage(`❌ ${getApiErrorMessage(err, "Failed to complete visit")}`);
     } finally {
       setSaving(false);
     }
@@ -158,8 +161,8 @@ setSafetyNetVisits(safetyNet);
         clinicianNotes: notes,
       });
       setMessage("✅ Notes saved!");
-    } catch (e: any) {
-      setMessage(`❌ ${e.response?.data?.error || "Failed to save notes"}`);
+    } catch (err: unknown) {
+      setMessage(`❌ ${getApiErrorMessage(err, "Failed to save notes")}`);
     } finally {
       setSaving(false);
     }
@@ -346,8 +349,8 @@ function HEPAssignmentPanel() {
       setForm({ exerciseName: "", instructions: "", frequencyPerWeek: 3, startDate: new Date().toISOString().split("T")[0], endDate: "" });
       const data = await getHEPAssignments(selectedPatient);
       setAssignments(data);
-    } catch (e: any) {
-      setMessage(`❌ ${e.response?.data?.error || "Failed to assign exercise"}`);
+    } catch (err: unknown) {
+      setMessage(`❌ ${getApiErrorMessage(err, "Failed to assign exercise")}`);
     } finally {
       setSaving(false);
     }
@@ -525,8 +528,8 @@ function PrepTasksPanel() {
       setNewTaskText("");
       const data = await getVisitPrepTasks(selectedVisit.id);
       setTasks(data);
-    } catch (e: any) {
-      setMessage(`❌ ${e.response?.data?.error || "Failed to add task"}`);
+    } catch (err: unknown) {
+      setMessage(`❌ ${getApiErrorMessage(err, "Failed to add task")}`);
     } finally {
       setSaving(false);
     }
@@ -602,26 +605,6 @@ function PrepTasksPanel() {
               No prep tasks yet — add one above!
             </div>
           ) : (
-
-
-          /*  tasks.map((t) => (
-              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem", marginBottom: "0.5rem", borderRadius: "8px", border: "1px solid #e5e7eb", background: t.isDone ? "#f0fdf4" : "white" }}>
-                <span style={{ fontSize: "1.25rem" }}>{t.isDone ? "✅" : "⬜"}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, textDecoration: t.isDone ? "line-through" : "none", color: t.isDone ? "#6b7280" : "#374151" }}>
-                    {t.text}
-                  </div>
-                  {t.isDone && t.doneByUser && (
-                    <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-                      Done by {t.doneByUser.username}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
-
-            */
-
             tasks.map((t) => (
   <div key={t.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem", marginBottom: "0.5rem", borderRadius: "8px", border: "1px solid #e5e7eb", background: t.isDone ? "#f0fdf4" : "white" }}>
     <span style={{ fontSize: "1.25rem" }}>{t.isDone ? "✅" : "⬜"}</span>
@@ -653,32 +636,40 @@ function EditTaskButton({ task, onUpdated }: { task: VisitPrepTask; onUpdated: (
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(task.text);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSave = async () => {
     if (!text.trim()) return;
     setSaving(true);
+    setError("");
     try {
       await updateVisitPrepTask(task.id, { text: text.trim() });
       setEditing(false);
       onUpdated();
-    } catch (e) { console.error(e); }
-    finally { setSaving(false); }
+    } catch (e) {
+      setError(getApiErrorMessage(e, "Failed to update task"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (editing) {
     return (
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "1px solid #6E5B9A", fontSize: "0.875rem" }}
-        />
-        <button onClick={handleSave} disabled={saving} style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "none", background: "#6E5B9A", color: "white", cursor: "pointer", fontSize: "0.75rem" }}>
-          {saving ? "..." : "Save"}
-        </button>
-        <button onClick={() => { setEditing(false); setText(task.text); }} style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "1px solid #e5e7eb", background: "white", cursor: "pointer", fontSize: "0.75rem" }}>
-          Cancel
-        </button>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "1px solid #6E5B9A", fontSize: "0.875rem" }}
+          />
+          <button onClick={handleSave} disabled={saving} style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "none", background: "#6E5B9A", color: "white", cursor: "pointer", fontSize: "0.75rem" }}>
+            {saving ? "..." : "Save"}
+          </button>
+          <button onClick={() => { setEditing(false); setText(task.text); setError(""); }} style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "1px solid #e5e7eb", background: "white", cursor: "pointer", fontSize: "0.75rem" }}>
+            Cancel
+          </button>
+        </div>
+        {error && <span style={{ color: "#991b1b", fontSize: "0.75rem" }}>{error}</span>}
       </div>
     );
   }

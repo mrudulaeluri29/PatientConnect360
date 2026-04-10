@@ -3,6 +3,26 @@ import { useAuth } from "../auth/AuthContext";
 import { api } from "../lib/axios";
 import "./NotificationBell.css";
 
+interface InAppNotificationApi {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  isRead: boolean;
+  createdAt: string;
+  meta?: unknown;
+}
+
+interface InboxConversationApi {
+  id: string;
+  unread?: boolean;
+  from?: string;
+  preview?: string;
+  subject?: string;
+  time?: string;
+  conversationId?: string;
+}
+
 interface NotificationItem {
   id: string;
   type: string;
@@ -10,7 +30,7 @@ interface NotificationItem {
   body: string;
   isRead: boolean;
   createdAt: string;
-  meta?: any;
+  meta?: unknown;
   // For message-based notifications (legacy)
   messageId?: string;
   conversationId?: string;
@@ -42,26 +62,28 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
         api.get("/api/simple-messages/inbox").catch(() => ({ data: { conversations: [] } })),
       ]);
 
-      const inAppNotifs: NotificationItem[] = (notifRes.data.notifications || []).map((n: any) => ({
-        id: n.id,
-        type: n.type,
-        title: n.title,
-        body: n.body,
-        isRead: n.isRead,
-        createdAt: n.createdAt,
-        meta: n.meta,
-      }));
+      const inAppNotifs: NotificationItem[] = (notifRes.data.notifications || []).map(
+        (n: InAppNotificationApi) => ({
+          id: n.id,
+          type: n.type,
+          title: n.title,
+          body: n.body,
+          isRead: n.isRead,
+          createdAt: n.createdAt,
+          meta: n.meta,
+        })
+      );
 
       // Convert unread messages to notification items (legacy compatibility)
       const messageNotifs: NotificationItem[] = (msgRes.data.conversations || [])
-        .filter((conv: any) => conv.unread)
-        .map((conv: any) => ({
+        .filter((conv: InboxConversationApi) => conv.unread)
+        .map((conv: InboxConversationApi) => ({
           id: `msg-${conv.id}`,
           type: "MESSAGE",
           title: `Message from ${conv.from || "Unknown"}`,
           body: conv.preview || conv.subject || "New message",
           isRead: false,
-          createdAt: conv.time,
+          createdAt: conv.time ?? "",
           messageId: conv.id,
           conversationId: conv.conversationId,
           senderName: conv.from,
@@ -92,7 +114,8 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
       ]);
 
       const inAppUnread = notifRes.data.unreadCount || 0;
-      const msgUnread = (msgRes.data.conversations || []).filter((c: any) => c.unread).length;
+      const msgUnread = (msgRes.data.conversations || []).filter((c: InboxConversationApi) => c.unread)
+        .length;
       setTotalUnread(inAppUnread + msgUnread);
     } catch (error) {
       console.error("Failed to fetch unread count:", error);
@@ -117,7 +140,8 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
   };
 
   useEffect(() => {
-    (window as any).refreshNotifications = refreshNotifications;
+    const w = window as Window & { refreshNotifications?: () => void };
+    w.refreshNotifications = refreshNotifications;
 
     const handleMessageRead = () => {
       fetchUnreadCount();
@@ -126,9 +150,10 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
     window.addEventListener("messageRead", handleMessageRead);
 
     return () => {
-      delete (window as any).refreshNotifications;
+      delete w.refreshNotifications;
       window.removeEventListener("messageRead", handleMessageRead);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDropdownOpen]);
 
   useEffect(() => {

@@ -99,7 +99,7 @@ export async function getAuditLogs(params?: {
 }
 
 export async function getDailyAnalytics(from?: string, to?: string) {
-  const params: any = {};
+  const params: Record<string, string> = {};
   if (from) params.from = from;
   if (to) params.to = to;
   const res = await api.get("/api/admin/daily-analytics", { params });

@@ -11,6 +11,7 @@ const notificationHelpers_1 = require("../helpers/notificationHelpers");
 const visitReminders_1 = require("../jobs/visitReminders");
 // Feature 5 — audit logging
 const audit_1 = require("../lib/audit");
+const activityRollup_1 = require("../lib/activityRollup");
 const router = (0, express_1.Router)();
 // All routes require authentication
 router.use(requireAuth_1.requireAuth);
@@ -403,6 +404,7 @@ router.post("/", async (req, res) => {
             targetId: visit.id,
             description: `${user.role} created ${createStatus} appointment for patient ${patientId} with clinician ${clinician.username}`,
         });
+        (0, activityRollup_1.recordDailyActivity)(user.id).catch(() => { });
         res.status(201).json({ visit });
     }
     catch (e) {
@@ -489,6 +491,7 @@ router.post("/:id/reschedule-request", async (req, res) => {
             description: `${user.role} requested reschedule for visit`,
             metadata: { originalVisitId: original.id, newScheduledAt: nextDate.toISOString(), reason: String(reason).trim() },
         });
+        (0, activityRollup_1.recordDailyActivity)(user.id).catch(() => { });
         res.status(201).json({ visit: requestVisit });
     }
     catch (e) {
@@ -582,7 +585,7 @@ router.post("/:id/review", requireRole_1.requireAdmin, async (req, res) => {
             // ── Feature 2: Notify that reschedule was approved ──
             (0, notificationHelpers_1.onVisitApproved)(existing.patient.id, existing.requestedById, existing.id, existing.clinician.username, nextScheduledAt);
             // Cancel any pending reminders for the original visit
-            (0, visitReminders_1.cancelPendingReminders)(existing.originalVisitId);
+            await (0, visitReminders_1.cancelPendingReminders)(existing.originalVisitId);
             // ── Feature 5: Audit log for reschedule approval ──
             await (0, audit_1.logAuditEvent)({
                 actorId: user.id,
@@ -870,7 +873,7 @@ router.patch("/:id", async (req, res) => {
                 select: { username: true },
             });
             (0, notificationHelpers_1.onVisitCancelled)(existing.patientId, existing.clinicianId, existing.id, data.cancelReason || null, cancellingUser?.username || "A user");
-            (0, visitReminders_1.cancelPendingReminders)(existing.id);
+            await (0, visitReminders_1.cancelPendingReminders)(existing.id);
             // ── Feature 5: Audit log for appointment cancellation ──
             await (0, audit_1.logAuditEvent)({
                 actorId: user.id,

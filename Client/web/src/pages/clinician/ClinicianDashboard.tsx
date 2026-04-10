@@ -4,8 +4,10 @@ import type { ReactNode } from "react";
 import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
+import { isAxiosError } from "axios";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
+import NotificationCenter from "../../components/notifications/NotificationCenter";
 import "./ClinicianDashboard.css";
 import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
 import {
@@ -23,6 +25,21 @@ import {
   formatAvailabilityDate,
   type ApiAvailability,
 } from "../../api/availability";
+
+function refreshNotificationsGlobally(): void {
+  const w = window as Window & { refreshNotifications?: () => void };
+  w.refreshNotifications?.();
+}
+
+function axiosResponseErrorMessage(err: unknown): string | undefined {
+  if (!isAxiosError(err)) return undefined;
+  const data = err.response?.data;
+  if (data && typeof data === "object" && "error" in data) {
+    const msg = (data as { error?: unknown }).error;
+    return typeof msg === "string" ? msg : undefined;
+  }
+  return undefined;
+}
 
 export default function ClinicianDashboard() {
   const [activeTab, setActiveTab] = useState("schedule");
@@ -90,6 +107,12 @@ export default function ClinicianDashboard() {
             >
               Contact Staff
             </button>
+            <button
+              className={`nav-item ${activeTab === "notifications" ? "active" : ""}`}
+              onClick={() => setActiveTab("notifications")}
+            >
+              Notifications
+            </button>
           </nav>
         </div>
         <div className="clinician-header-right">
@@ -127,6 +150,7 @@ export default function ClinicianDashboard() {
 {activeTab === "tasks" && <ClinicianWorklistTab />}
             {activeTab === "appointments" && <AppointmentsHub />}
             {activeTab === "contact-staff" && <ContactStaffHub />}
+            {activeTab === "notifications" && <NotificationCenter />}
           </div>
           {activeTab !== "care-records" && <AssistantSidebar activeTab={activeTab} />}
         </div>
@@ -530,8 +554,8 @@ function AppointmentsHub() {
       // Refresh the submissions list
       const refreshed = await getMyAvailability();
       setSubmissions(refreshed);
-    } catch (err: any) {
-      setSubmitMessage(err.response?.data?.error || "Failed to submit availability.");
+    } catch (err: unknown) {
+      setSubmitMessage(axiosResponseErrorMessage(err) || "Failed to submit availability.");
     } finally {
       setSubmitting(false);
     }
@@ -542,8 +566,8 @@ function AppointmentsHub() {
     try {
       await deleteAvailability(id);
       setSubmissions((prev) => prev.filter((s) => s.id !== id));
-    } catch (err: any) {
-      showToast(err.response?.data?.error || "Failed to delete submission.", "error");
+    } catch (err: unknown) {
+      showToast(axiosResponseErrorMessage(err) || "Failed to delete submission.", "error");
     } finally {
       setDeletingId(null);
     }
@@ -1163,6 +1187,26 @@ function CareRecordsHeaderRow({ patientSelect }: { patientSelect: ReactNode | nu
   );
 }
 
+type AssignedPatientProfileApi = {
+  dateOfBirth?: string | null;
+  legalName?: string | null;
+  insuranceProvider?: string | null;
+  insurancePolicyNumber?: string | null;
+  preferredPharmacyName?: string | null;
+  phoneNumber?: string | null;
+  homeAddress?: string | null;
+  apartmentSuite?: string | null;
+  pharmacyAddress?: string | null;
+  pharmacyPhoneNumber?: string | null;
+};
+
+type AssignedPatientApiRow = {
+  id: string;
+  username?: string | null;
+  email?: string | null;
+  profile?: AssignedPatientProfileApi | null;
+};
+
 // Patient Snapshot Panel Component
 function PatientSnapshot() {
   type PatientSnapshotItem = {
@@ -1207,8 +1251,8 @@ function PatientSnapshot() {
       setLoadingPatients(true);
       try {
         const res = await api.get("/api/simple-messages/assigned-patients");
-        const fetchedPatients = (res.data.patients || []).map((patient: any) => {
-          const profile = patient.profile || {};
+        const fetchedPatients = ((res.data.patients as AssignedPatientApiRow[] | undefined) ?? []).map((patient) => {
+          const profile: AssignedPatientProfileApi = patient.profile ?? {};
           const age = calculateAge(profile.dateOfBirth);
           const dob = profile.dateOfBirth && !Number.isNaN(new Date(profile.dateOfBirth).getTime())
             ? new Date(profile.dateOfBirth).toLocaleDateString()
@@ -1252,7 +1296,7 @@ function PatientSnapshot() {
         if (fetchedPatients.length > 0) {
           setSelectedPatient((prev) => prev || fetchedPatients[0].id);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error("Failed to fetch assigned patient details:", e);
         setPatients([]);
       } finally {
@@ -1426,6 +1470,48 @@ function PatientSnapshot() {
   );
 }
 
+interface SimpleMessageUser {
+  id?: string;
+  username?: string;
+  email?: string;
+}
+
+interface SimpleMessageParticipant {
+  userId?: string;
+  user?: SimpleMessageUser;
+}
+
+interface SimpleConversationMessage {
+  id: string;
+  isRead?: boolean;
+  senderId?: string;
+  content?: string;
+  createdAt: string;
+  sender: { username: string; email: string };
+}
+
+interface SimpleConversationDetail {
+  id?: string;
+  subject?: string;
+  messages?: SimpleConversationMessage[];
+  participants?: SimpleMessageParticipant[];
+}
+
+interface InboxListConversation {
+  id: string;
+  conversationId?: string;
+  unread?: boolean;
+  from?: string;
+  subject?: string;
+  preview?: string;
+  time?: string | number | Date;
+  to?: string;
+}
+
+interface ConversationWithId {
+  id: string;
+}
+
 interface SimpleMessagesProps {
   pendingConversation: { convId: string; messageId?: string } | null;
   onConversationOpened: () => void;
@@ -1434,9 +1520,9 @@ interface SimpleMessagesProps {
 function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMessagesProps) {
   const { user } = useAuth();
   const { showToast } = useFeedback();
-  const [conversations, setConversations] = useState<any[]>([]);
-  const [sentConversations, setSentConversations] = useState<any[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<any | null>(null);
+  const [conversations, setConversations] = useState<InboxListConversation[]>([]);
+  const [sentConversations, setSentConversations] = useState<InboxListConversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<SimpleConversationDetail | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -1448,6 +1534,32 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
   const [subject, setSubject] = useState<string>("");
   const [messageBody, setMessageBody] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
+  const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
+  const [filterStarred, setFilterStarred] = useState(false);
+  const [roleFilter, setRoleFilter] = useState<string>("");
+
+  const fetchStarredStatus = async () => {
+    try {
+      const res = await api.get("/api/simple-messages/conversations?starred=true");
+      const starredList = (res.data.conversations as ConversationWithId[] | undefined) ?? [];
+      const ids = new Set(starredList.map((c) => c.id));
+      setStarredIds(ids);
+    } catch { /* ignore */ }
+  };
+
+  const toggleStar = async (conversationId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isCurrentlyStarred = starredIds.has(conversationId);
+    try {
+      if (isCurrentlyStarred) {
+        await api.delete(`/api/simple-messages/conversations/${conversationId}/star`);
+        setStarredIds(prev => { const next = new Set(prev); next.delete(conversationId); return next; });
+      } else {
+        await api.post(`/api/simple-messages/conversations/${conversationId}/star`);
+        setStarredIds(prev => new Set(prev).add(conversationId));
+      }
+    } catch { /* ignore */ }
+  };
 
   // Fetch inbox
   useEffect(() => {
@@ -1455,27 +1567,17 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       setLoading(true);
       try {
         const res = await api.get("/api/simple-messages/inbox");
-        console.log("📥 CLINICIAN INBOX API Response:", res.data);
-        const conversations = res.data.conversations || [];
-        // Debug: Check if any messages are from current user (shouldn't be in inbox)
-        conversations.forEach((conv: any) => {
-          if (conv.from === user?.username) {
-            console.warn("⚠️ FOUND SENT MESSAGE IN INBOX:", conv);
-          }
-        });
+        const conversations = (res.data.conversations as InboxListConversation[] | undefined) ?? [];
         setConversations(conversations);
-        
-        // Refresh notification bell count after loading inbox
-        if ((window as any).refreshNotifications) {
-          (window as any).refreshNotifications();
-        }
-      } catch (e: any) {
+        refreshNotificationsGlobally();
+      } catch (e: unknown) {
         console.error("Failed to fetch inbox:", e);
       } finally {
         setLoading(false);
       }
     }
     fetchInbox();
+    fetchStarredStatus();
   }, []);
 
   // Handle pending conversation from notification click
@@ -1484,14 +1586,15 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       handleSelectConversation(pendingConversation.convId, pendingConversation.messageId);
       onConversationOpened();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingConversation]);
 
   const fetchSent = async () => {
     setSentLoading(true);
     try {
       const res = await api.get("/api/simple-messages/sent");
-      setSentConversations(res.data.conversations || []);
-    } catch (e: any) {
+      setSentConversations((res.data.conversations as InboxListConversation[] | undefined) ?? []);
+    } catch (e: unknown) {
       console.error("Failed to fetch sent:", e);
     } finally {
       setSentLoading(false);
@@ -1502,6 +1605,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
     if (activeFolder === "sent" && sentConversations.length === 0 && !sentLoading) {
       fetchSent();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFolder]);
 
   // Fetch assigned patients when opening compose or once on mount
@@ -1509,8 +1613,10 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
     async function fetchAssignedPatients() {
       try {
         const res = await api.get("/api/simple-messages/assigned-patients");
-        setAssignedPatients(res.data.patients || []);
-      } catch (e: any) {
+        setAssignedPatients(
+          (res.data.patients as { id: string; username: string; email: string }[] | undefined) ?? [],
+        );
+      } catch (e: unknown) {
         console.error("Failed to fetch assigned patients:", e);
       }
     }
@@ -1538,7 +1644,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       const res = await api.get(`/api/simple-messages/conversation/${convId}`);
       console.log("🔍 CLINICIAN: Conversation API response:", res.data);
 
-      setSelectedConversation(res.data.conversation);
+      setSelectedConversation((res.data.conversation as SimpleConversationDetail | undefined) ?? null);
       console.log("🔍 CLINICIAN: Set selectedConversation to:", res.data.conversation?.id, "with", res.data.conversation?.messages?.length, "messages");
 
       // Only mark specific message as read if messageId provided AND it's intentional
@@ -1555,9 +1661,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
           window.dispatchEvent(new CustomEvent('messageRead', { detail: { messageId, convId } }));
           
           // Also call the refresh function as backup
-          if ((window as any).refreshNotifications) {
-            (window as any).refreshNotifications();
-          }
+          refreshNotificationsGlobally();
         } catch (markError) {
           console.error("Failed to mark message as read:", markError);
         }
@@ -1567,10 +1671,12 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
       // Refresh inbox to update unread count
       const inboxRes = await api.get("/api/simple-messages/inbox");
-      setConversations(inboxRes.data.conversations || []);
-    } catch (e: any) {
+      setConversations((inboxRes.data.conversations as InboxListConversation[] | undefined) ?? []);
+    } catch (e: unknown) {
       console.error("🚨 CLINICIAN: Failed to fetch conversation:", e);
-      console.error("🚨 CLINICIAN: Error details:", e.response?.data, e.response?.status);
+      if (isAxiosError(e)) {
+        console.error("🚨 CLINICIAN: Error details:", e.response?.data, e.response?.status);
+      }
     }
   };
 
@@ -1581,8 +1687,8 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
     try {
       // Get all unread message IDs that are not from current user
       const unreadMessageIds = selectedConversation.messages
-        ?.filter((msg: any) => !msg.isRead && msg.senderId !== user?.id)
-        .map((msg: any) => msg.id) || [];
+        ?.filter((msg) => !msg.isRead && msg.senderId !== user?.id)
+        .map((msg) => msg.id) || [];
 
       if (unreadMessageIds.length > 0) {
         await api.post("/api/simple-messages/mark-read", {
@@ -1596,14 +1702,12 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
         // Refresh conversation and inbox
         const res = await api.get(`/api/simple-messages/conversation/${convId}`);
-        setSelectedConversation(res.data.conversation);
+        setSelectedConversation((res.data.conversation as SimpleConversationDetail | undefined) ?? null);
         const inboxRes = await api.get("/api/simple-messages/inbox");
-        setConversations(inboxRes.data.conversations || []);
-        
+        setConversations((inboxRes.data.conversations as InboxListConversation[] | undefined) ?? []);
+
         // Refresh notification bell count
-        if ((window as any).refreshNotifications) {
-          (window as any).refreshNotifications();
-        }
+        refreshNotificationsGlobally();
       }
     } catch (error) {
       console.error("Failed to mark all messages as read:", error);
@@ -1623,15 +1727,13 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       window.dispatchEvent(new CustomEvent('messageRead', { detail: { messageId, convId } }));
       
       // Also call the refresh function as backup
-      if ((window as any).refreshNotifications) {
-        (window as any).refreshNotifications();
-      }
+      refreshNotificationsGlobally();
 
       // Refresh conversation and inbox
       const res = await api.get(`/api/simple-messages/conversation/${convId}`);
-      setSelectedConversation(res.data.conversation);
+      setSelectedConversation((res.data.conversation as SimpleConversationDetail | undefined) ?? null);
       const inboxRes = await api.get("/api/simple-messages/inbox");
-      setConversations(inboxRes.data.conversations || []); 
+      setConversations((inboxRes.data.conversations as InboxListConversation[] | undefined) ?? []); 
     } catch (error) {
       console.error("Failed to mark message as read:", error);
     }
@@ -1656,8 +1758,8 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       // Refresh Sent
       await fetchSent();
       showToast("Message sent.", "success");
-    } catch (e: any) {
-      showToast(e.response?.data?.error || "Failed to send message", "error");
+    } catch (e: unknown) {
+      showToast(axiosResponseErrorMessage(e) || "Failed to send message", "error");
     } finally {
       setSending(false);
     }
@@ -1665,7 +1767,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
   const handleReply = () => {
     if (!selectedConversation) return;
-    const recipient = selectedConversation.participants?.find((p: any) => p.userId !== user?.id)?.user;
+    const recipient = selectedConversation.participants?.find((p) => p.userId !== user?.id)?.user;
     if (!recipient?.id) {
       showToast("Unable to determine reply recipient for this conversation.", "error");
       return;
@@ -1687,8 +1789,8 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
             className={`folder-tab ${activeFolder === "inbox" ? "active" : ""}`}
             onClick={() => setActiveFolder("inbox")}
           >
-            Inbox {conversations.some((c: any) => c.unread) && (
-              <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c: any) => c.unread).length}</span>
+            Inbox {conversations.some((c) => c.unread) && (
+              <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c) => c.unread).length}</span>
             )}
           </button>
           <button
@@ -1706,6 +1808,27 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
               New Message
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      {!selectedMessage && activeFolder === "inbox" && (
+        <div style={{ display: "flex", gap: 8, padding: "0.5rem 0", flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            className={`btn-secondary`}
+            style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred && !roleFilter ? "#6E5B9A" : undefined, color: !filterStarred && !roleFilter ? "#fff" : undefined }}
+            onClick={() => { setFilterStarred(false); setRoleFilter(""); }}
+          >All</button>
+          <button
+            className={`btn-secondary`}
+            style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }}
+            onClick={() => setFilterStarred(!filterStarred)}
+          >Starred</button>
+          <button
+            className={`btn-secondary`}
+            style={{ fontSize: "0.8rem", padding: "4px 12px", background: roleFilter === "family" ? "#6E5B9A" : undefined, color: roleFilter === "family" ? "#fff" : undefined }}
+            onClick={() => setRoleFilter(roleFilter === "family" ? "" : "family")}
+          >Family</button>
         </div>
       )}
 
@@ -1753,26 +1876,26 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
               <div className="message-detail-subject">
                 <h2>{selectedConversation.subject}</h2>
                 <div className="message-detail-meta">
-                  From: <strong>{selectedConversation.participants?.find((p: any) => p.userId !== selectedConversation.id)?.user?.username || "Unknown"}</strong>
+                  From: <strong>{selectedConversation.participants?.find((p) => p.userId !== selectedConversation.id)?.user?.username || "Unknown"}</strong>
                 </div>
               </div>
 
               <div className="message-thread">
                 {selectedConversation.messages
-                  ?.filter((msg: any) => {
+                  ?.filter((msg) => {
                     // If we have a specific messageId, show only that message
                     if (selectedMessageId) {
                       return msg.id === selectedMessageId;
                     }
                     // If selectedMessage matches a message ID, show only that message
-                    const messageExists = selectedConversation.messages.some((m: any) => m.id === selectedMessage);
+                    const messageExists = selectedConversation.messages.some((m) => m.id === selectedMessage);
                     if (messageExists) {
                       return msg.id === selectedMessage;
                     }
                     // Otherwise show all messages (fallback)
                     return true;
                   })
-                  .map((msg: any) => (
+                  .map((msg) => (
                     <div
                       key={msg.id}
                       className={`message-bubble ${!msg.isRead && msg.senderId !== user?.id ? 'unread-message' : ''}`}
@@ -1830,25 +1953,39 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
                 <p>No messages yet</p>
               </div>
             )}
-            {!loading && conversations.map((conv: any) => (
-              <div
-                key={conv.id}
-                className={`inbox-row ${conv.unread ? "unread" : ""}`}
-                onClick={() => handleSelectConversation(conv.conversationId || conv.id, conv.id)}
-              >
-                <div className="inbox-row-left">
-                  {conv.unread && <span className="unread-dot"></span>}
-                  <div className="inbox-from">{conv.from}</div>
-                </div>
-                <div className="inbox-row-middle">
-                  <span className="inbox-subject">{conv.subject}</span>
-                  <span className="inbox-preview"> - {conv.preview}</span>
-                </div>
-                <div className="inbox-row-right">
-                  <span className="inbox-time">{formatTime(conv.time)}</span>
-                </div>
-              </div>
-            ))}
+            {!loading && conversations
+              .filter((conv) => {
+                const cid = conv.conversationId || conv.id;
+                if (filterStarred && !starredIds.has(cid)) return false;
+                return true;
+              })
+              .map((conv) => {
+                const cid = conv.conversationId || conv.id;
+                return (
+                  <div
+                    key={conv.id}
+                    className={`inbox-row ${conv.unread ? "unread" : ""}`}
+                    onClick={() => handleSelectConversation(cid, conv.id)}
+                  >
+                    <div className="inbox-row-left" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span
+                        onClick={(e) => toggleStar(cid, e)}
+                        style={{ cursor: "pointer", fontSize: "1.1rem", color: starredIds.has(cid) ? "#f59e0b" : "#d1d5db", flexShrink: 0 }}
+                        title={starredIds.has(cid) ? "Unstar" : "Star"}
+                      >{starredIds.has(cid) ? "\u2605" : "\u2606"}</span>
+                      {conv.unread && <span className="unread-dot"></span>}
+                      <div className="inbox-from">{conv.from}</div>
+                    </div>
+                    <div className="inbox-row-middle">
+                      <span className="inbox-subject">{conv.subject}</span>
+                      <span className="inbox-preview"> - {conv.preview}</span>
+                    </div>
+                    <div className="inbox-row-right">
+                      <span className="inbox-time">{formatTime(conv.time)}</span>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </>
       ) : !selectedMessage && activeFolder === "sent" ? (
@@ -1864,7 +2001,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
                 <p>No sent messages</p>
               </div>
             )}
-            {!sentLoading && sentConversations.map((conv: any) => (
+            {!sentLoading && sentConversations.map((conv) => (
               <div
                 key={conv.id}
                 className={`inbox-row`}
@@ -2179,6 +2316,10 @@ export function FlaggedTasks({ onNavigateToMessages, onNavigateToPatients }: Fla
   );
 }
   // ─── HEP Summary Badge for Patient Snapshot ──────────────────────────────────
+interface HepAssignmentListItem {
+  status?: string;
+}
+
 function HEPSummaryBadge({ patientId }: { patientId: string }) {
   const [activeCount, setActiveCount] = useState<number | null>(null);
 
@@ -2186,8 +2327,8 @@ function HEPSummaryBadge({ patientId }: { patientId: string }) {
     async function load() {
       try {
         const res = await api.get(`/api/hep?patientId=${patientId}`);
-        const assignments = res.data.assignments || [];
-        const active = assignments.filter((a: any) => a.status === "ACTIVE").length;
+        const assignments = (res.data.assignments as HepAssignmentListItem[] | undefined) ?? [];
+        const active = assignments.filter((a) => a.status === "ACTIVE").length;
         setActiveCount(active);
       } catch (e) { console.error(e); }
     }

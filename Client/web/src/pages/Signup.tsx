@@ -210,12 +210,15 @@ export default function Signup() {
 
       // Navigate to OTP verification page
       navigate("/verify-email", { state: { email: formData.email } });
-    } catch (err: any) {
-      // try to pull message from server response (axios error)
-      const msg =
-        err?.response?.data?.error ||
-        err?.message ||
-        "Registration failed. Please try again.";
+    } catch (err: unknown) {
+      let msg = "Registration failed. Please try again.";
+      if (err && typeof err === "object" && "response" in err) {
+        const apiMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+        if (typeof apiMsg === "string" && apiMsg) msg = apiMsg;
+        else if (err instanceof Error && err.message) msg = err.message;
+      } else if (err instanceof Error && err.message) {
+        msg = err.message;
+      }
       setErrors({ submit: msg });
       setLoading(false);
     }
@@ -531,7 +534,7 @@ export default function Signup() {
                       <li className={/[a-z]/.test(formData.password) ? "met" : ""}>
                         One lowercase letter
                       </li>
-                      <li className={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password) ? "met" : ""}>
+                      <li className={/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(formData.password) ? "met" : ""}>
                         One special character
                       </li>
                     </ul>

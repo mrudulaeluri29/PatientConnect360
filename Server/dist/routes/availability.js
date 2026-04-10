@@ -6,6 +6,7 @@ const requireAuth_1 = require("../middleware/requireAuth");
 const requireRole_1 = require("../middleware/requireRole");
 const client_1 = require("@prisma/client");
 const audit_1 = require("../lib/audit");
+const activityRollup_1 = require("../lib/activityRollup");
 const router = (0, express_1.Router)();
 router.use(requireAuth_1.requireAuth);
 // ─── Shared select shape ────────────────────────────────────────────────────
@@ -276,7 +277,6 @@ router.post("/batch", async (req, res) => {
         })));
         res.status(201).json({ availability: results, count: results.length });
         // ── Feature 5: Audit log for availability submission ──
-        // req.user from JWT is only { id, role } — actor display name comes from AuditLog.actor relation in the UI.
         await (0, audit_1.logAuditEvent)({
             actorId: user.id,
             actorRole: user.role,
@@ -286,6 +286,7 @@ router.post("/batch", async (req, res) => {
             description: `${user.role} submitted ${results.length} availability day(s)`,
             metadata: { daysCount: results.length, clinicianId: targetClinicianId },
         });
+        (0, activityRollup_1.recordDailyActivity)(user.id).catch(() => { });
     }
     catch (e) {
         console.error("POST /api/availability/batch failed:", e);
@@ -342,6 +343,7 @@ router.patch("/:id/review", requireRole_1.requireAdmin, async (req, res) => {
                 clinicianId: availability.clinician.id,
             },
         });
+        (0, activityRollup_1.recordDailyActivity)(admin.id).catch(() => { });
         res.json({ availability });
     }
     catch (e) {

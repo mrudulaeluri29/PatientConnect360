@@ -106,8 +106,10 @@ export default function SignupClinician() {
       
       // After successful registration, navigate to clinician dashboard
       navigate("/clinician/dashboard");
-    } catch (err: any) {
-      setErrors({ submit: err.message || "Registration failed. Please try again." });
+    } catch (err: unknown) {
+      setErrors({
+        submit: err instanceof Error ? err.message : "Registration failed. Please try again.",
+      });
       setLoading(false);
     }
   };
@@ -292,7 +294,7 @@ export default function SignupClinician() {
                       <li className={/[a-z]/.test(formData.password) ? "met" : ""}>
                         One lowercase letter
                       </li>
-                      <li className={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password) ? "met" : ""}>
+                      <li className={/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(formData.password) ? "met" : ""}>
                         One special character
                       </li>
                     </ul>

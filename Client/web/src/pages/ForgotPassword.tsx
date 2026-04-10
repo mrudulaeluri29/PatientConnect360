@@ -5,6 +5,14 @@ import "./Login.css";
 
 type ForgotPasswordStep = "email" | "otp" | "newPassword" | "success";
 
+function apiErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === "object" && "response" in err) {
+    const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+    if (typeof msg === "string" && msg) return msg;
+  }
+  return fallback;
+}
+
 export default function ForgotPassword() {
   const navigate = useNavigate();
 
@@ -37,8 +45,8 @@ export default function ForgotPassword() {
       setSuccess(response.data.message || "Reset code sent! Check your email for the 6-digit code.");
       setLoading(false);
       setStep("otp");
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.error || "Failed to send reset code. Please try again.";
+    } catch (err: unknown) {
+      const errorMessage = apiErrorMessage(err, "Failed to send reset code. Please try again.");
       setError(errorMessage);
       setLoading(false);
     }
@@ -59,8 +67,8 @@ export default function ForgotPassword() {
       }
       setSuccess("Code verified! Now create your new password.");
       setStep("newPassword");
-    } catch (err: any) {
-      setOtpError(err.response?.data?.error || "Failed to verify code.");
+    } catch (err: unknown) {
+      setOtpError(apiErrorMessage(err, "Failed to verify code."));
     } finally {
       setLoading(false);
     }
@@ -102,8 +110,8 @@ export default function ForgotPassword() {
 
       setSuccess(response.data.message || "Password updated successfully!");
       setStep("success");
-    } catch (err: any) {
-      setPasswordError(err.response?.data?.error || "Failed to reset password. Please try again.");
+    } catch (err: unknown) {
+      setPasswordError(apiErrorMessage(err, "Failed to reset password. Please try again."));
     } finally {
       setLoading(false);
     }

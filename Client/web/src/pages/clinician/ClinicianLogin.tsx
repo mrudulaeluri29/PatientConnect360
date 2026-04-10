@@ -8,6 +8,7 @@ export default function ClinicianLogin() {
   const [emailOrUsername, setEmailOrUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export default function ClinicianLogin() {
     setLoading(true);
 
     try {
-      const userData = await login(emailOrUsername, password);
+      const userData = await login(emailOrUsername, password, rememberMe);
       
       // In dev mode, check if user is clinician
       // In production, verify role is CLINICIAN
@@ -32,8 +33,8 @@ export default function ClinicianLogin() {
       
       // User is clinician, navigate to dashboard
       navigate('/clinician/dashboard');
-    } catch (err: any) {
-      setError(err.message || "Invalid credentials. Please try again.");
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : null) || "Invalid credentials. Please try again.");
       setLoading(false);
     }
   };
@@ -132,7 +133,11 @@ export default function ClinicianLogin() {
 
               <div className="form-options">
                 <label className="checkbox-label">
-                  <input type="checkbox" />
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                  />
                   <span>Remember me</span>
                 </label>
                 <Link to="/forgot-password" className="forgot-password">

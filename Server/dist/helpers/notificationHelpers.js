@@ -6,6 +6,7 @@ exports.getLinkedCaregiverIds = getLinkedCaregiverIds;
 exports.onVisitRequestCreated = onVisitRequestCreated;
 exports.onVisitApproved = onVisitApproved;
 exports.onVisitDenied = onVisitDenied;
+exports.onCarePlanUpdated = onCarePlanUpdated;
 exports.onVisitCancelled = onVisitCancelled;
 // Feature 2 — Phase B3: Notification generation helpers
 // Called from visit route hooks to create in-app Notification rows.
@@ -83,6 +84,17 @@ async function onVisitDenied(patientId, requestedById, visitId, clinicianName, r
         meta: { visitId },
     });
     void (0, appointmentEmail_1.sendVisitStatusEmailsToUserIds)(recipients, "PatientConnect360 — Appointment not approved", `${body}\n\nVisit ID: ${visitId}`);
+}
+/** Care plan updated/created — notify patient + linked caregivers. */
+async function onCarePlanUpdated(patientId, carePlanId, updatedByName) {
+    const caregiverIds = await getLinkedCaregiverIds(patientId);
+    const recipients = [...new Set([patientId, ...caregiverIds])];
+    await notifyMany(recipients, {
+        type: "CAREPLAN_UPDATED",
+        title: "Care Plan Updated",
+        body: `Your care plan has been updated by ${updatedByName}.`,
+        meta: { carePlanId },
+    });
 }
 /** Visit cancelled — notify admin(s) + clinician + patient + linked caregivers. */
 async function onVisitCancelled(patientId, clinicianId, visitId, cancelReason, cancelledByName) {

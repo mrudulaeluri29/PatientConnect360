@@ -7,6 +7,7 @@ export default function OtpInput({ length = 6, value, onChange, error }: { lengt
     // focus first empty
     const idx = value.length < length ? value.length : length - 1;
     inputs.current[idx]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {

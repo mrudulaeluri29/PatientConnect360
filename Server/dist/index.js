@@ -24,6 +24,7 @@ const caregiverProgress_1 = __importDefault(require("./routes/caregiverProgress"
 const caregiverAlerts_1 = __importDefault(require("./routes/caregiverAlerts"));
 const caregiverAccess_1 = __importDefault(require("./routes/caregiverAccess"));
 const caregiverSafety_1 = __importDefault(require("./routes/caregiverSafety"));
+const caregiverPatients_1 = __importDefault(require("./routes/caregiverPatients"));
 const familyFeedback_1 = __importDefault(require("./routes/familyFeedback"));
 const carePlans_1 = __importDefault(require("./routes/carePlans"));
 const patientDocuments_1 = __importDefault(require("./routes/patientDocuments"));
@@ -101,6 +102,7 @@ app.use("/api/caregiver/progress", caregiverProgress_1.default);
 app.use("/api/caregiver/alerts", caregiverAlerts_1.default);
 app.use("/api/caregiver/access", caregiverAccess_1.default);
 app.use("/api/caregiver/safety", caregiverSafety_1.default);
+app.use("/api/caregiver/patients", caregiverPatients_1.default);
 // Feature 3 routes
 app.use("/api/family-feedback", familyFeedback_1.default);
 // Feature 1 — health records / care plans / patient documents

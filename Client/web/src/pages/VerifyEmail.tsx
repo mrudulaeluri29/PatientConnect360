@@ -4,10 +4,20 @@ import OtpInput from "../components/OtpInput";
 import { verifyOtp, resendOtp } from "../api/auth";
 import "./Signup.css";
 
+type VerifyEmailNavState = { email?: string };
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === "object" && "response" in err) {
+    const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+    if (typeof msg === "string" && msg) return msg;
+  }
+  return fallback;
+}
+
 export default function VerifyEmail() {
   const nav = useNavigate();
   const loc = useLocation();
-  const email = (loc.state as any)?.email || "";
+  const email = (loc.state as VerifyEmailNavState | null | undefined)?.email ?? "";
 
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,8 +44,8 @@ export default function VerifyEmail() {
       setTimeout(() => {
         nav("/login");
       }, 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Invalid code. Please try again.");
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "Invalid code. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -47,8 +57,8 @@ export default function VerifyEmail() {
     try {
       await resendOtp(email);
       setResendCooldown(60);
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to resend code");
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, "Failed to resend code"));
     } finally {
       setLoading(false);
     }

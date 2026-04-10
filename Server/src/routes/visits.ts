@@ -18,6 +18,7 @@ import {
 import { cancelPendingReminders } from "../jobs/visitReminders";
 // Feature 5 — audit logging
 import { logAuditEvent } from "../lib/audit";
+import { recordDailyActivity } from "../lib/activityRollup";
 
 const router = Router();
 
@@ -459,6 +460,7 @@ router.post("/", async (req: Request, res: Response) => {
       targetId: visit.id,
       description: `${user.role} created ${createStatus} appointment for patient ${patientId} with clinician ${clinician.username}`,
     });
+    recordDailyActivity(user.id).catch(() => {});
 
     res.status(201).json({ visit });
   } catch (e) {
@@ -549,6 +551,7 @@ router.post("/:id/reschedule-request", async (req: Request, res: Response) => {
       description: `${user.role} requested reschedule for visit`,
       metadata: { originalVisitId: original.id, newScheduledAt: nextDate.toISOString(), reason: String(reason).trim() },
     });
+    recordDailyActivity(user.id).catch(() => {});
 
     res.status(201).json({ visit: requestVisit });
   } catch (e) {
@@ -662,7 +665,7 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
         nextScheduledAt
       );
       // Cancel any pending reminders for the original visit
-      cancelPendingReminders(existing.originalVisitId!);
+      await cancelPendingReminders(existing.originalVisitId!);
 
       // ── Feature 5: Audit log for reschedule approval ──
       await logAuditEvent({
@@ -974,7 +977,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
         data.cancelReason || null,
         cancellingUser?.username || "A user"
       );
-      cancelPendingReminders(existing.id);
+      await cancelPendingReminders(existing.id);
 
       // ── Feature 5: Audit log for appointment cancellation ──
       await logAuditEvent({

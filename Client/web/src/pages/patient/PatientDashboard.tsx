@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
+import NotificationCenter from "../../components/notifications/NotificationCenter";
 import "./PatientDashboard.css";
 import PatientHEPTab from "./PatientHEPTab";
 import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
@@ -62,6 +63,61 @@ import {
   updateMyPrivacySettings,
   type ApiPrivacySettings,
 } from "../../api/privacy";
+
+declare global {
+  interface Window {
+    refreshNotifications?: () => void;
+  }
+}
+
+type AssignedClinicianApiRow = {
+  id: string;
+  username: string;
+  specialization?: string | null;
+};
+
+type HepAssignmentSummary = { status?: string };
+
+function axiosResponseErrorMessage(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null || !("response" in err)) return undefined;
+  const response = (err as { response?: { data?: unknown } }).response;
+  const data = response?.data;
+  if (typeof data !== "object" || data === null || !("error" in data)) return undefined;
+  const errorVal = (data as { error?: unknown }).error;
+  return typeof errorVal === "string" ? errorVal : undefined;
+}
+
+type SimpleMessageListRow = {
+  id: string;
+  conversationId?: string;
+  unread?: boolean;
+  from?: string;
+  to?: string;
+  subject?: string;
+  preview?: string;
+  time?: string | number;
+};
+
+type SimpleMessageParticipant = {
+  userId: string;
+  user?: { id: string; username: string; email: string };
+};
+
+type SimpleThreadMessage = {
+  id: string;
+  isRead?: boolean;
+  senderId?: string;
+  content?: string;
+  createdAt: string;
+  sender: { username: string; email: string };
+};
+
+type SimpleConversationDetail = {
+  id?: string;
+  subject?: string;
+  messages?: SimpleThreadMessage[];
+  participants?: SimpleMessageParticipant[];
+};
 
 const datetimeLocalToIso = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -168,6 +224,12 @@ export default function PatientDashboard() {
             >
               Exercises & Tasks
             </button>
+            <button
+              className={`nav-item ${activeTab === "notifications" ? "active" : ""}`}
+              onClick={() => openTab("notifications")}
+            >
+              Notifications
+            </button>
           </nav>
         </div>
         <div className="patient-header-right">
@@ -221,6 +283,7 @@ export default function PatientDashboard() {
         )}
         {activeTab === "family" && <FamilyAccessPanel />}
         {activeTab === "exercises" && <PatientHEPTab />}
+        {activeTab === "notifications" && <NotificationCenter />}
       </main>
     </div>
   );
@@ -425,10 +488,11 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
     // Fetch assigned clinicians from actual PatientAssignment records
     api.get("/api/simple-messages/assigned-clinicians")
       .then((res) => {
-        const clinicians = (res.data.clinicians || []).map((c: any) => ({
+        const raw = (res.data as { clinicians?: AssignedClinicianApiRow[] }).clinicians ?? [];
+        const clinicians = raw.map((c) => ({
           id: c.id,
           username: c.username,
-          specialization: (c.specialization as string) ?? null,
+          specialization: c.specialization ?? null,
         }));
         setCareTeam(clinicians);
       })
@@ -719,10 +783,12 @@ function HEPBanner() {
       try {
         const { api } = await import("../../lib/axios");
         const res = await api.get("/api/hep");
-        const assignments = res.data.assignments || [];
-        const active = assignments.filter((a: any) => a.status === "ACTIVE").length;
+        const assignments = (res.data as { assignments?: HepAssignmentSummary[] }).assignments ?? [];
+        const active = assignments.filter((a) => a.status === "ACTIVE").length;
         setActiveCount(active);
-      } catch (e) { console.error(e); }
+      } catch (e: unknown) {
+        console.error(e);
+      }
     }
     load();
   }, []);
@@ -791,10 +857,11 @@ function UpcomingVisits() {
     // Fetch assigned clinicians from actual PatientAssignment records
     api.get("/api/simple-messages/assigned-clinicians")
       .then((res) => {
-        const clinicians = (res.data.clinicians || []).map((c: any) => ({
+        const raw = (res.data as { clinicians?: AssignedClinicianApiRow[] }).clinicians ?? [];
+        const clinicians = raw.map((c) => ({
           id: c.id,
           username: c.username,
-          specialization: (c.specialization as string) ?? null,
+          specialization: c.specialization ?? null,
         }));
         setCareTeam(clinicians);
       })
@@ -838,8 +905,8 @@ function UpcomingVisits() {
       setVisits((prev) => prev.map((v) => (v.id === id ? updated : v)));
       fetchVisits(true);
       showToast("Visit cancelled.", "success");
-    } catch (err: any) {
-      showToast(err.response?.data?.error || "Failed to cancel visit", "error");
+    } catch (err: unknown) {
+      showToast(axiosResponseErrorMessage(err) ?? "Failed to cancel visit", "error");
     } finally {
       setCancelling(null);
     }
@@ -878,8 +945,8 @@ function UpcomingVisits() {
       setShowRescheduleModal(null);
       showToast("Reschedule request submitted for admin review.", "success");
       await fetchVisits(true);
-    } catch (err: any) {
-      setRescheduleError(err?.response?.data?.error || "Failed to submit reschedule request.");
+    } catch (err: unknown) {
+      setRescheduleError(axiosResponseErrorMessage(err) ?? "Failed to submit reschedule request.");
     } finally {
       setRescheduleSubmitting(false);
     }
@@ -1412,9 +1479,9 @@ interface SimpleMessagesProps {
 function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMessagesProps) {
   const { user } = useAuth();
   const { showToast } = useFeedback();
-  const [conversations, setConversations] = useState<any[]>([]);
-  const [sentConversations, setSentConversations] = useState<any[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<any | null>(null);
+  const [conversations, setConversations] = useState<SimpleMessageListRow[]>([]);
+  const [sentConversations, setSentConversations] = useState<SimpleMessageListRow[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<SimpleConversationDetail | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [inboxLoading, setInboxLoading] = useState<boolean>(true);
@@ -1426,6 +1493,32 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
   const [subject, setSubject] = useState<string>("");
   const [messageBody, setMessageBody] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
+  const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
+  const [filterStarred, setFilterStarred] = useState(false);
+  const [roleFilter, setRoleFilter] = useState<string>("");
+
+  const fetchStarredStatus = async () => {
+    try {
+      const res = await api.get("/api/simple-messages/conversations?starred=true");
+      const rows = (res.data as { conversations?: { id: string }[] }).conversations ?? [];
+      const ids = new Set(rows.map((c) => c.id));
+      setStarredIds(ids);
+    } catch { /* ignore */ }
+  };
+
+  const toggleStar = async (conversationId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isCurrentlyStarred = starredIds.has(conversationId);
+    try {
+      if (isCurrentlyStarred) {
+        await api.delete(`/api/simple-messages/conversations/${conversationId}/star`);
+        setStarredIds(prev => { const next = new Set(prev); next.delete(conversationId); return next; });
+      } else {
+        await api.post(`/api/simple-messages/conversations/${conversationId}/star`);
+        setStarredIds(prev => new Set(prev).add(conversationId));
+      }
+    } catch { /* ignore */ }
+  };
 
   // Fetch inbox
   useEffect(() => {
@@ -1433,27 +1526,18 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       setInboxLoading(true);
       try {
         const res = await api.get("/api/simple-messages/inbox");
-        console.log("📥 PATIENT INBOX API Response:", res.data);
-        const conversations = res.data.conversations || [];
-        // Debug: Check if any messages are from current user (shouldn't be in inbox)
-        conversations.forEach((conv: any) => {
-          if (conv.from === user?.username) {
-            console.warn("⚠️ FOUND SENT MESSAGE IN INBOX:", conv);
-          }
-        });
+        const conversations =
+          (res.data as { conversations?: SimpleMessageListRow[] }).conversations ?? [];
         setConversations(conversations);
-        
-        // Refresh notification bell count after loading inbox
-        if ((window as any).refreshNotifications) {
-          (window as any).refreshNotifications();
-        }
-      } catch (e: any) {
+        window.refreshNotifications?.();
+      } catch (e: unknown) {
         console.error("Failed to fetch inbox:", e);
       } finally {
         setInboxLoading(false);
       }
     }
     fetchInbox();
+    fetchStarredStatus();
   }, []);
 
   // Handle pending conversation from notification click
@@ -1462,14 +1546,17 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       handleSelectConversation(pendingConversation.convId, pendingConversation.messageId);
       onConversationOpened();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingConversation]);
 
   const fetchSent = async () => {
     setSentLoading(true);
     try {
       const res = await api.get("/api/simple-messages/sent");
-      setSentConversations(res.data.conversations || []);
-    } catch (e: any) {
+      setSentConversations(
+        (res.data as { conversations?: SimpleMessageListRow[] }).conversations ?? []
+      );
+    } catch (e: unknown) {
       console.error("Failed to fetch sent:", e);
     } finally {
       setSentLoading(false);
@@ -1480,6 +1567,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
     if (activeFolder === "sent" && sentConversations.length === 0 && !sentLoading) {
       fetchSent();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFolder]);
 
   // Fetch assigned clinicians
@@ -1488,8 +1576,11 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       try {
         // Note: Assuming this endpoint exists for patients to get their clinicians
         const res = await api.get("/api/simple-messages/assigned-clinicians");
-        setAssignedClinicians(res.data.clinicians || []);
-      } catch (e: any) {
+        setAssignedClinicians(
+          (res.data as { clinicians?: { id: string; username: string; email: string }[] }).clinicians ??
+            []
+        );
+      } catch (e: unknown) {
         console.error("Failed to fetch assigned clinicians:", e);
       }
     }
@@ -1509,7 +1600,9 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
     try {
       const res = await api.get(`/api/simple-messages/conversation/${convId}`);
-      setSelectedConversation(res.data.conversation);
+      setSelectedConversation(
+        (res.data as { conversation?: SimpleConversationDetail }).conversation ?? null
+      );
 
       if (messageId) {
         try {
@@ -1522,9 +1615,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
           window.dispatchEvent(new CustomEvent('messageRead', { detail: { messageId, convId } }));
           
           // Also call the refresh function as backup
-          if ((window as any).refreshNotifications) {
-            (window as any).refreshNotifications();
-          }
+          window.refreshNotifications?.();
         } catch (markError) {
           console.error("Failed to mark message as read:", markError);
         }
@@ -1532,8 +1623,10 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
       // Refresh inbox
       const inboxRes = await api.get("/api/simple-messages/inbox");
-      setConversations(inboxRes.data.conversations || []);
-    } catch (e: any) {
+      setConversations(
+        (inboxRes.data as { conversations?: SimpleMessageListRow[] }).conversations ?? []
+      );
+    } catch (e: unknown) {
       console.error("Failed to fetch conversation:", e);
     }
   };
@@ -1543,8 +1636,8 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
     try {
       const unreadMessageIds = selectedConversation.messages
-        ?.filter((msg: any) => !msg.isRead && msg.senderId !== user?.id)
-        .map((msg: any) => msg.id) || [];
+        ?.filter((msg) => !msg.isRead && msg.senderId !== user?.id)
+        .map((msg) => msg.id) || [];
 
       if (unreadMessageIds.length > 0) {
         await api.post("/api/simple-messages/mark-read", {
@@ -1556,14 +1649,16 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
         window.dispatchEvent(new CustomEvent('messageRead', { detail: { messageIds: unreadMessageIds, convId } }));
 
         const res = await api.get(`/api/simple-messages/conversation/${convId}`);
-        setSelectedConversation(res.data.conversation);
+        setSelectedConversation(
+          (res.data as { conversation?: SimpleConversationDetail }).conversation ?? null
+        );
         const inboxRes = await api.get("/api/simple-messages/inbox");
-        setConversations(inboxRes.data.conversations || []);
+        setConversations(
+          (inboxRes.data as { conversations?: SimpleMessageListRow[] }).conversations ?? []
+        );
         
         // Refresh notification bell count
-        if ((window as any).refreshNotifications) {
-          (window as any).refreshNotifications();
-        }
+        window.refreshNotifications?.();
       }
     } catch (error) {
       console.error("Failed to mark all messages as read:", error);
@@ -1581,14 +1676,16 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       window.dispatchEvent(new CustomEvent('messageRead', { detail: { messageId, convId } }));
 
       const res = await api.get(`/api/simple-messages/conversation/${convId}`);
-      setSelectedConversation(res.data.conversation);
+      setSelectedConversation(
+        (res.data as { conversation?: SimpleConversationDetail }).conversation ?? null
+      );
       const inboxRes = await api.get("/api/simple-messages/inbox");
-      setConversations(inboxRes.data.conversations || []);
+      setConversations(
+        (inboxRes.data as { conversations?: SimpleMessageListRow[] }).conversations ?? []
+      );
       
       // Refresh notification bell count
-      if ((window as any).refreshNotifications) {
-        (window as any).refreshNotifications();
-      }
+      window.refreshNotifications?.();
     } catch (error) {
       console.error("Failed to mark message as read:", error);
     }
@@ -1615,13 +1712,15 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
       try {
         const inboxRes = await api.get("/api/simple-messages/inbox");
-        setConversations(inboxRes.data.conversations || []);
+        setConversations(
+          (inboxRes.data as { conversations?: SimpleMessageListRow[] }).conversations ?? []
+        );
         await fetchSent();
       } catch (refreshError) {
         console.error("Failed to refresh after sending:", refreshError);
       }
-    } catch (e: any) {
-      showToast(e.response?.data?.error || "Failed to send message", "error");
+    } catch (e: unknown) {
+      showToast(axiosResponseErrorMessage(e) ?? "Failed to send message", "error");
     } finally {
       setLoading(false);
     }
@@ -1629,7 +1728,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
   const handleReply = () => {
     if (!selectedConversation) return;
-    const recipient = selectedConversation.participants?.find((p: any) => p.userId !== user?.id)?.user;
+    const recipient = selectedConversation.participants?.find((p) => p.userId !== user?.id)?.user;
     if (!recipient?.id) {
       showToast("Unable to determine reply recipient for this conversation.", "error");
       return;
@@ -1728,8 +1827,8 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
             className={`folder-tab-patient ${activeFolder === "inbox" ? "active" : ""}`}
             onClick={() => setActiveFolder("inbox")}
           >
-            Inbox {conversations.some((c: any) => c.unread) && (
-              <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c: any) => c.unread).length}</span>
+            Inbox {conversations.some((c) => c.unread) && (
+              <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c) => c.unread).length}</span>
             )}
           </button>
           <button
@@ -1738,6 +1837,27 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
           >
             Sent
           </button>
+        </div>
+      )}
+
+      {/* Filters */}
+      {!selectedMessage && activeFolder === "inbox" && (
+        <div style={{ display: "flex", gap: 8, padding: "0.5rem 0", flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            className={`btn-secondary${!filterStarred && !roleFilter ? " active" : ""}`}
+            style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred && !roleFilter ? "#6E5B9A" : undefined, color: !filterStarred && !roleFilter ? "#fff" : undefined }}
+            onClick={() => { setFilterStarred(false); setRoleFilter(""); }}
+          >All</button>
+          <button
+            className={`btn-secondary${filterStarred ? " active" : ""}`}
+            style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }}
+            onClick={() => setFilterStarred(!filterStarred)}
+          >Starred</button>
+          <button
+            className={`btn-secondary${roleFilter === "clinician" ? " active" : ""}`}
+            style={{ fontSize: "0.8rem", padding: "4px 12px", background: roleFilter === "clinician" ? "#6E5B9A" : undefined, color: roleFilter === "clinician" ? "#fff" : undefined }}
+            onClick={() => setRoleFilter(roleFilter === "clinician" ? "" : "clinician")}
+          >Clinician</button>
         </div>
       )}
 
@@ -1775,26 +1895,26 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
               <div className="message-detail-subject-patient">
                 <h2>{selectedConversation.subject}</h2>
                 <div className="message-detail-meta-patient">
-                  From: <strong>{selectedConversation.participants?.find((p: any) => p.userId !== selectedConversation.id)?.user?.username || "Unknown"}</strong>
+                  From: <strong>{selectedConversation.participants?.find((p) => p.userId !== selectedConversation.id)?.user?.username || "Unknown"}</strong>
                 </div>
               </div>
 
               <div className="message-thread-patient">
                 {selectedConversation.messages
-                  ?.filter((msg: any) => {
+                  ?.filter((msg) => {
                     // If we have a specific messageId, show only that message
                     if (selectedMessageId) {
                       return msg.id === selectedMessageId;
                     }
                     // If selectedMessage matches a message ID, show only that message
-                    const messageExists = selectedConversation.messages.some((m: any) => m.id === selectedMessage);
+                    const messageExists = selectedConversation.messages.some((m) => m.id === selectedMessage);
                     if (messageExists) {
                       return msg.id === selectedMessage;
                     }
                     // Otherwise show all messages (fallback)
                     return true;
                   })
-                  .map((msg: any) => (
+                  .map((msg) => (
                     <div
                       key={msg.id}
                       className={`message-bubble-patient ${!msg.isRead && msg.senderId !== user?.id ? 'unread-message' : ''}`}
@@ -1803,9 +1923,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
                           markMessageAsRead(msg.id, selectedMessage!);
                           // Immediate notification refresh when clicking message bubble
                           setTimeout(() => {
-                            if ((window as any).refreshNotifications) {
-                              (window as any).refreshNotifications();
-                            }
+                            window.refreshNotifications?.();
                           }, 100);
                         }
                       }}
@@ -1859,25 +1977,39 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
                 <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Send a message to your clinician to get started</p>
               </div>
             )}
-            {!inboxLoading && conversations.map((conv: any) => (
-              <div
-                key={conv.id}
-                className={`inbox-row-patient ${conv.unread ? "unread" : ""}`}
-                onClick={() => handleSelectConversation(conv.conversationId || conv.id, conv.id)}
-              >
-                <div className="inbox-row-left-patient">
-                  {conv.unread && <span className="unread-dot-patient"></span>}
-                  <div className="inbox-from-patient">{conv.from}</div>
-                </div>
-                <div className="inbox-row-middle-patient">
-                  <span className="inbox-subject-patient">{conv.subject}</span>
-                  <span className="inbox-preview-patient"> - {conv.preview}</span>
-                </div>
-                <div className="inbox-row-right-patient">
-                  <span className="inbox-time-patient">{formatTime(conv.time)}</span>
-                </div>
-              </div>
-            ))}
+            {!inboxLoading && conversations
+              .filter((conv) => {
+                const cid = conv.conversationId || conv.id;
+                if (filterStarred && !starredIds.has(cid)) return false;
+                return true;
+              })
+              .map((conv) => {
+                const cid = conv.conversationId || conv.id;
+                return (
+                  <div
+                    key={conv.id}
+                    className={`inbox-row-patient ${conv.unread ? "unread" : ""}`}
+                    onClick={() => handleSelectConversation(cid, conv.id)}
+                  >
+                    <div className="inbox-row-left-patient" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span
+                        onClick={(e) => toggleStar(cid, e)}
+                        style={{ cursor: "pointer", fontSize: "1.1rem", color: starredIds.has(cid) ? "#f59e0b" : "#d1d5db", flexShrink: 0 }}
+                        title={starredIds.has(cid) ? "Unstar" : "Star"}
+                      >{starredIds.has(cid) ? "\u2605" : "\u2606"}</span>
+                      {conv.unread && <span className="unread-dot-patient"></span>}
+                      <div className="inbox-from-patient">{conv.from}</div>
+                    </div>
+                    <div className="inbox-row-middle-patient">
+                      <span className="inbox-subject-patient">{conv.subject}</span>
+                      <span className="inbox-preview-patient"> - {conv.preview}</span>
+                    </div>
+                    <div className="inbox-row-right-patient">
+                      <span className="inbox-time-patient">{formatTime(conv.time)}</span>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </>
       ) : activeFolder === "sent" ? (
@@ -1894,7 +2026,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
                 <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Compose a new message to contact your clinician</p>
               </div>
             )}
-            {!sentLoading && sentConversations.map((conv: any) => (
+            {!sentLoading && sentConversations.map((conv) => (
               <div
                 key={conv.id}
                 className={`inbox-row-patient`}
@@ -2261,8 +2393,8 @@ function AddCaregiverModal({ onClose, onCreated }: { onClose: () => void; onCrea
         phoneNumber: phoneNumber.trim(),
       });
       onCreated(inv);
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to create invitation.");
+    } catch (err: unknown) {
+      setError(axiosResponseErrorMessage(err) ?? "Failed to create invitation.");
     } finally {
       setSubmitting(false);
     }
@@ -2402,8 +2534,8 @@ function VisitRequestModal({ clinician, careTeam, onClose, onCreated }: VisitReq
         notes: notes || undefined,
       });
       onCreated();
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to submit visit request.");
+    } catch (err: unknown) {
+      setError(axiosResponseErrorMessage(err) ?? "Failed to submit visit request.");
     } finally {
       setSubmitting(false);
     }

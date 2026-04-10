@@ -16,17 +16,42 @@ interface LinkedPatient {
   email: string;
 }
 
+/** Shape of each item in GET /api/caregiver/patients `patients` array */
+interface CaregiverPatientsApiRow {
+  id: string;
+  username?: string;
+  email: string;
+}
+
+type CaregiverHEPSection = "exercises" | "prep";
+
+function getApiErrorMessage(err: unknown, fallback: string): string {
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const data = (err as { response?: { data?: unknown } }).response?.data;
+    if (data && typeof data === "object" && data !== null && "error" in data) {
+      const e = (data as { error: unknown }).error;
+      if (typeof e === "string") return e;
+    }
+  }
+  return fallback;
+}
+
+const CAREGIVER_HEP_SECTIONS: { key: CaregiverHEPSection; label: string }[] = [
+  { key: "exercises", label: "🏋️ Home Exercises" },
+  { key: "prep", label: "📋 Visit Prep Tasks" },
+];
+
 export default function CaregiverHEPTab() {
   const [patients, setPatients] = useState<LinkedPatient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>("");
-  const [activeSection, setActiveSection] = useState<"exercises" | "prep">("exercises");
+  const [activeSection, setActiveSection] = useState<CaregiverHEPSection>("exercises");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await api.get("/api/caregiver/overview");
-        const pts = (res.data?.patients || []).map((p: any) => ({
+        const res = await api.get("/api/caregiver/patients");
+        const pts = (res.data?.patients || []).map((p: CaregiverPatientsApiRow) => ({
           id: p.id,
           username: p.username || p.email,
           email: p.email,
@@ -80,13 +105,10 @@ export default function CaregiverHEPTab() {
 
       {/* Section switcher */}
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0.5rem" }}>
-        {[
-          { key: "exercises", label: "🏋️ Home Exercises" },
-          { key: "prep", label: "📋 Visit Prep Tasks" },
-        ].map((s) => (
+        {CAREGIVER_HEP_SECTIONS.map((s) => (
           <button
             key={s.key}
-            onClick={() => setActiveSection(s.key as any)}
+            onClick={() => setActiveSection(s.key)}
             style={{
               padding: "0.5rem 1rem",
               borderRadius: "8px",
@@ -144,8 +166,11 @@ function CaregiverExercises({ patientId }: { patientId: string }) {
       setShowLog({ ...showLog, [assignmentId]: false });
       const data = await getHEPAssignments(patientId);
       setAssignments(data);
-    } catch (e: any) {
-      setMessage({ ...message, [assignmentId]: `❌ ${e.response?.data?.error || "Failed"}` });
+    } catch (err: unknown) {
+      setMessage({
+        ...message,
+        [assignmentId]: `❌ ${getApiErrorMessage(err, "Failed")}`,
+      });
     } finally {
       setCompleting(null);
     }
@@ -264,6 +289,7 @@ function CaregiverPrepTasks({ patientId }: { patientId: string }) {
   const [tasks, setTasks] = useState<VisitPrepTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -289,22 +315,29 @@ function CaregiverPrepTasks({ patientId }: { patientId: string }) {
 
   const handleSelectVisit = async (visit: Visit) => {
     setSelectedVisit(visit);
+    setError("");
     try {
       const data = await getVisitPrepTasks(visit.id);
       setTasks(data);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      setError(getApiErrorMessage(e, "Could not load prep tasks"));
+    }
   };
 
   const handleToggleDone = async (task: VisitPrepTask) => {
     setToggling(task.id);
+    setError("");
     try {
       await updateVisitPrepTask(task.id, { isDone: !task.isDone });
       if (selectedVisit) {
         const data = await getVisitPrepTasks(selectedVisit.id);
         setTasks(data);
       }
-    } catch (e) { console.error(e); }
-    finally { setToggling(null); }
+    } catch (e) {
+      setError(getApiErrorMessage(e, "Could not update task"));
+    } finally {
+      setToggling(null);
+    }
   };
 
   if (loading) return <p>Loading prep tasks...</p>;
@@ -353,6 +386,12 @@ function CaregiverPrepTasks({ patientId }: { patientId: string }) {
                     <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>{doneTasks}/{tasks.length} completed</span>
                   )}
                 </div>
+
+                {error && (
+                  <div style={{ marginBottom: "1rem", padding: "0.75rem", borderRadius: "8px", background: "#fee2e2", color: "#991b1b", fontSize: "0.875rem" }}>
+                    {error}
+                  </div>
+                )}
 
                 {tasks.length > 0 && (
                   <div style={{ background: "#f3f4f6", borderRadius: "9999px", height: "8px", marginBottom: "1.5rem" }}>

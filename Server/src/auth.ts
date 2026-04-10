@@ -8,6 +8,7 @@ import jwt from "jsonwebtoken";
 import { AuditActionType } from "@prisma/client";
 import { twilioClient, twilioServiceSid } from "./twilio";
 import { logAuditEvent } from "./lib/audit";
+import { recordDailyActivity } from "./lib/activityRollup";
 
 //express router 
 const router = Router();
@@ -445,7 +446,7 @@ router.post("/login", async (req: Request, res: Response) => {
     }
 
     const user = await prisma.user.findFirst({
-      where: { OR: [{ email: emailOrUsername }, { username: emailOrUsername }] }
+      where: { OR: [{ email: emailOrUsername }, { username: emailOrUsername }] },
     });
 
     // If user does not exist, return generic invalid credentials (don't reveal which)
@@ -516,6 +517,9 @@ router.post("/login", async (req: Request, res: Response) => {
         description: `User ${user.username} logged in successfully`,
         metadata: { success: true, rememberMe: Boolean(rememberMe) },
       });
+
+      // Feature 5: record daily activity rollup for DAU tracking
+      recordDailyActivity(user.id).catch(() => {});
     } catch (e) {
       console.error("Failed to update login metadata:", e);
     }

@@ -9,6 +9,7 @@ const db_1 = require("../db");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const client_1 = require("@prisma/client");
 const audit_1 = require("../lib/audit");
+const activityRollup_1 = require("../lib/activityRollup");
 const router = (0, express_1.Router)();
 async function getCaregiverLinkedPatientIds(caregiverId) {
     const links = await db_1.prisma.caregiverPatientLink.findMany({
@@ -289,6 +290,7 @@ router.post("/send", async (req, res) => {
                 messageLength: body.length,
             },
         });
+        (0, activityRollup_1.recordDailyActivity)(user.uid).catch(() => { });
         // Update conversation timestamp
         await db_1.prisma.conversation.update({
             where: { id: conversation.id },
@@ -767,6 +769,145 @@ router.get("/notifications", async (req, res) => {
     }
     catch (error) {
         console.error("Error fetching notifications:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// GET /api/simple-messages/conversations
+// List conversations for the current user with star status and optional filters.
+// Query params: starred=true, filter=clinician|admin|family
+router.get("/conversations", async (req, res) => {
+    try {
+        const user = getCurrentUser(req);
+        if (!user)
+            return res.status(401).json({ error: "Unauthorized" });
+        const starredOnly = req.query.starred === "true";
+        const roleFilter = req.query.filter;
+        const participations = await db_1.prisma.conversationParticipant.findMany({
+            where: { userId: user.uid },
+            select: { conversationId: true, unreadCount: true },
+        });
+        if (!participations.length)
+            return res.json({ conversations: [] });
+        const conversationIds = participations.map((p) => p.conversationId);
+        const unreadMap = new Map(participations.map((p) => [p.conversationId, p.unreadCount]));
+        const stars = await db_1.prisma.conversationStar.findMany({
+            where: { userId: user.uid, conversationId: { in: conversationIds } },
+            select: { conversationId: true },
+        });
+        const starredIds = new Set(stars.map((s) => s.conversationId));
+        let filteredIds = starredOnly
+            ? conversationIds.filter((id) => starredIds.has(id))
+            : conversationIds;
+        if (roleFilter) {
+            const roleMap = {
+                clinician: "CLINICIAN",
+                admin: "ADMIN",
+                family: "CAREGIVER",
+            };
+            const targetRole = roleMap[roleFilter.toLowerCase()];
+            if (targetRole) {
+                const matchingParticipants = await db_1.prisma.conversationParticipant.findMany({
+                    where: {
+                        conversationId: { in: filteredIds },
+                        user: { role: targetRole },
+                        userId: { not: user.uid },
+                    },
+                    select: { conversationId: true },
+                });
+                const matchingIds = new Set(matchingParticipants.map((p) => p.conversationId));
+                filteredIds = filteredIds.filter((id) => matchingIds.has(id));
+            }
+        }
+        if (!filteredIds.length)
+            return res.json({ conversations: [] });
+        const conversations = await db_1.prisma.conversation.findMany({
+            where: { id: { in: filteredIds } },
+            include: {
+                participants: {
+                    include: {
+                        user: { select: { id: true, username: true, role: true } },
+                    },
+                },
+                messages: {
+                    orderBy: { createdAt: "desc" },
+                    take: 1,
+                    select: {
+                        id: true,
+                        content: true,
+                        createdAt: true,
+                        sender: { select: { username: true } },
+                    },
+                },
+            },
+            orderBy: { updatedAt: "desc" },
+        });
+        const result = conversations.map((conv) => ({
+            id: conv.id,
+            subject: conv.subject,
+            updatedAt: conv.updatedAt,
+            isStarred: starredIds.has(conv.id),
+            unreadCount: unreadMap.get(conv.id) || 0,
+            participants: conv.participants
+                .filter((p) => p.userId !== user.uid)
+                .map((p) => ({
+                id: p.user.id,
+                username: p.user.username,
+                role: p.user.role,
+            })),
+            lastMessage: conv.messages[0]
+                ? {
+                    id: conv.messages[0].id,
+                    preview: conv.messages[0].content.slice(0, 100),
+                    senderName: conv.messages[0].sender.username,
+                    createdAt: conv.messages[0].createdAt,
+                }
+                : null,
+        }));
+        res.json({ conversations: result });
+    }
+    catch (error) {
+        console.error("Error fetching conversations:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// POST /api/simple-messages/conversations/:id/star
+router.post("/conversations/:id/star", async (req, res) => {
+    try {
+        const user = getCurrentUser(req);
+        if (!user)
+            return res.status(401).json({ error: "Unauthorized" });
+        const conversationId = req.params.id;
+        const participant = await db_1.prisma.conversationParticipant.findFirst({
+            where: { conversationId, userId: user.uid },
+        });
+        if (!participant)
+            return res.status(403).json({ error: "Not a participant in this conversation" });
+        await db_1.prisma.conversationStar.upsert({
+            where: { conversationId_userId: { conversationId, userId: user.uid } },
+            update: {},
+            create: { conversationId, userId: user.uid },
+        });
+        res.json({ starred: true });
+    }
+    catch (error) {
+        console.error("Error starring conversation:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// DELETE /api/simple-messages/conversations/:id/star
+router.delete("/conversations/:id/star", async (req, res) => {
+    try {
+        const user = getCurrentUser(req);
+        if (!user)
+            return res.status(401).json({ error: "Unauthorized" });
+        const conversationId = req.params.id;
+        await db_1.prisma.conversationStar.deleteMany({
+            where: { conversationId, userId: user.uid },
+        });
+        res.json({ starred: false });
+    }
+    catch (error) {
+        console.error("Error unstarring conversation:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
