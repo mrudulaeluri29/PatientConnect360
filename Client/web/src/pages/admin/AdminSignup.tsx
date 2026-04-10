@@ -77,7 +77,7 @@ export default function AdminSignup() {
     setLoading(true);
 
     try {
-      const userData = await register(formData.email, formData.username, formData.password, "ADMIN");
+      await register(formData.email, formData.username, formData.password, "ADMIN");
       
       // After successful registration, user should be ADMIN
       // Navigate to admin dashboard

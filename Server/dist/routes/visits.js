@@ -41,6 +41,13 @@ const visitSelect = {
     cancelReason: true,
     createdAt: true,
     updatedAt: true,
+    summaryDiagnosis: true,
+    summaryCareProvided: true,
+    summaryPatientResponse: true,
+    summaryFollowUp: true,
+    medicationChangesSummary: true,
+    summaryUpdatedAt: true,
+    summaryUpdatedById: true,
     patient: {
         select: {
             id: true,
@@ -619,6 +626,62 @@ router.post("/:id/review", requireRole_1.requireAdmin, async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 });
+// PATCH /api/visits/:id/summary
+// Structured visit summary — clinician on the visit or admin only.
+router.patch("/:id/summary", async (req, res) => {
+    try {
+        const user = getUser(req);
+        const { id } = req.params;
+        const existing = await db_1.prisma.visit.findUnique({
+            where: { id },
+            select: { id: true, patientId: true, clinicianId: true, status: true },
+        });
+        if (!existing)
+            return res.status(404).json({ error: "Visit not found" });
+        if (user.role !== "ADMIN") {
+            if (user.role !== "CLINICIAN" || existing.clinicianId !== user.id) {
+                return res.status(403).json({ error: "Forbidden" });
+            }
+        }
+        const blockedSummaryStatuses = [
+            client_1.VisitStatus.REQUESTED,
+            client_1.VisitStatus.RESCHEDULE_REQUESTED,
+            client_1.VisitStatus.REJECTED,
+            client_1.VisitStatus.CANCELLED,
+        ];
+        if (blockedSummaryStatuses.includes(existing.status)) {
+            return res.status(400).json({
+                error: "Visit summary can only be saved after the visit request is approved.",
+            });
+        }
+        const b = req.body || {};
+        const data = {
+            summaryUpdatedAt: new Date(),
+            summaryUpdatedById: user.id,
+        };
+        const fields = [
+            "summaryDiagnosis",
+            "summaryCareProvided",
+            "summaryPatientResponse",
+            "summaryFollowUp",
+            "medicationChangesSummary",
+        ];
+        for (const k of fields) {
+            if (k in b)
+                data[k] = b[k] === null || b[k] === "" ? null : String(b[k]);
+        }
+        const visit = await db_1.prisma.visit.update({
+            where: { id },
+            data,
+            select: visitSelect,
+        });
+        res.json({ visit });
+    }
+    catch (e) {
+        console.error("PATCH /api/visits/:id/summary failed:", e);
+        res.status(500).json({ error: "Server error" });
+    }
+});
 // PATCH /api/visits/:id
 // Role-based partial update:
 //
@@ -700,6 +763,14 @@ router.patch("/:id", async (req, res) => {
                     return res.status(400).json({ error: "Invalid clinicianId" });
                 data.clinicianId = clinicianId;
             }
+            /* } else if (user.role === "CLINICIAN") {
+           const { status, clinicianNotes } = req.body || {};
+           if (clinicianNotes !== undefined) data.clinicianNotes = clinicianNotes;
+           if (status) {
+             // ← WE ADD OUR 50-CHAR CHECK RIGHT HERE
+             if (status === VisitStatus.COMPLETED) data.completedAt = new Date();
+           }
+         } */
         }
         else if (user.role === "CLINICIAN") {
             const { status, clinicianNotes } = req.body || {};
@@ -712,6 +783,21 @@ router.patch("/:id", async (req, res) => {
                         error: `Clinicians can only set status to: ${allowed.join(", ")}`,
                     });
                 }
+                // ── Feature 4: Documentation gating ──
+                // Clinician cannot complete a visit without at least 50 chars of notes.
+                if (status === client_1.VisitStatus.COMPLETED) {
+                    const existingVisit = await db_1.prisma.visit.findUnique({
+                        where: { id },
+                        select: { clinicianNotes: true },
+                    });
+                    const finalNotes = clinicianNotes ?? existingVisit?.clinicianNotes ?? "";
+                    if (String(finalNotes).trim().length < 50) {
+                        return res.status(400).json({
+                            error: "Cannot complete visit: clinical notes must be at least 50 characters. Please document your findings before completing.",
+                        });
+                    }
+                }
+                // ── End Feature 4 gating ──
                 data.status = status;
                 if (status === client_1.VisitStatus.IN_PROGRESS)
                     data.checkedInAt = new Date();

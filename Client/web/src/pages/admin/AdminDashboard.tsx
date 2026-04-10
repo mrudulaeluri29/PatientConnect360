@@ -194,7 +194,7 @@ function AdminPatientRecordsTab() {
       .get("/api/admin/users")
       .then((r) => {
         const users = (r.data.users || []).filter((u: { role: string }) => u.role === "PATIENT");
-        const opts = users.map((u: { id: string; username: string; email: string }) => ({
+        const opts: { id: string; label: string }[] = users.map((u: { id: string; username: string; email: string }) => ({
           id: u.id,
           label: `${u.username} (${u.email})`,
         }));

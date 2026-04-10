@@ -87,11 +87,11 @@ function getExampleValue(type) {
 // CLINICIAN → vitals for their assigned patients
 // PATIENT   → their own vitals
 //
-// Query params: patientId (admin/clinician), type, from, to, limit (default 50)
+// Query params: patientId (admin/clinician), visitId, type, from, to, limit (default 50)
 router.get("/", async (req, res) => {
     try {
         const user = getUser(req);
-        const { patientId, type, from, to, limit } = req.query;
+        const { patientId, visitId, type, from, to, limit } = req.query;
         const where = {};
         const take = Math.min(Number(limit ?? 50), 200); // cap at 200
         if (user.role === "PATIENT") {
@@ -117,6 +117,22 @@ router.get("/", async (req, res) => {
             if (patientId)
                 where.patientId = patientId;
         }
+        else if (user.role === "CAREGIVER") {
+            const links = await db_1.prisma.caregiverPatientLink.findMany({
+                where: { caregiverId: user.id, isActive: true },
+                select: { patientId: true },
+            });
+            const linkedIds = links.map((l) => l.patientId);
+            if (patientId) {
+                if (!linkedIds.includes(patientId)) {
+                    return res.status(403).json({ error: "Patient not linked to you" });
+                }
+                where.patientId = patientId;
+            }
+            else {
+                where.patientId = { in: linkedIds };
+            }
+        }
         else {
             return res.json({ vitals: [] });
         }
@@ -133,6 +149,9 @@ router.get("/", async (req, res) => {
                 where.recordedAt.gte = new Date(from);
             if (to)
                 where.recordedAt.lte = new Date(to);
+        }
+        if (visitId) {
+            where.visitId = String(visitId);
         }
         const vitals = await db_1.prisma.vitalSign.findMany({
             where,
@@ -390,8 +409,8 @@ router.post("/batch", async (req, res) => {
     }
 });
 // ─── PATCH /api/vitals/:id ───────────────────────────────────────────────────
-// ADMIN or the clinician who recorded it can update trend/notes.
-// Value and type are immutable after creation — create a new record instead.
+// ADMIN or the clinician who recorded it can update the existing entry.
+// Type remains immutable. Value/unit/trend/notes/recordedAt are editable.
 router.patch("/:id", async (req, res) => {
     try {
         const user = getUser(req);
@@ -400,7 +419,7 @@ router.patch("/:id", async (req, res) => {
         }
         const existing = await db_1.prisma.vitalSign.findUnique({
             where: { id: req.params.id },
-            select: { id: true, patientId: true, recordedBy: true },
+            select: { id: true, patientId: true, recordedBy: true, type: true },
         });
         if (!existing)
             return res.status(404).json({ error: "Vital sign not found" });
@@ -408,8 +427,17 @@ router.patch("/:id", async (req, res) => {
         if (user.role === "CLINICIAN" && existing.recordedBy !== user.id) {
             return res.status(403).json({ error: "You can only edit vitals you recorded" });
         }
-        const { trend, notes } = req.body || {};
+        const { value, unit, trend, notes, recordedAt } = req.body || {};
         const data = {};
+        if (value !== undefined) {
+            const normalizedValue = String(value).trim();
+            if (!normalizedValue) {
+                return res.status(400).json({ error: "value cannot be empty" });
+            }
+            data.value = normalizedValue;
+        }
+        if (unit !== undefined)
+            data.unit = unit;
         if (trend !== undefined) {
             const upperTrend = trend.toUpperCase();
             if (!VALID_TRENDS.includes(upperTrend)) {
@@ -419,15 +447,28 @@ router.patch("/:id", async (req, res) => {
         }
         if (notes !== undefined)
             data.notes = notes;
-        if (Object.keys(data).length === 0) {
-            return res.status(400).json({ error: "Only trend and notes can be updated" });
+        if (recordedAt !== undefined) {
+            const d = new Date(recordedAt);
+            if (Number.isNaN(d.getTime())) {
+                return res.status(400).json({ error: "Invalid recordedAt date" });
+            }
+            data.recordedAt = d;
         }
+        if (Object.keys(data).length === 0) {
+            return res.status(400).json({ error: "Nothing to update" });
+        }
+        const formatWarning = data.value !== undefined
+            ? validateVitalValue(existing.type, String(data.value))
+            : null;
         const vital = await db_1.prisma.vitalSign.update({
             where: { id: req.params.id },
             data,
             select: vitalSelect,
         });
-        res.json({ vital });
+        res.json({
+            vital,
+            ...(formatWarning ? { warning: formatWarning } : {}),
+        });
     }
     catch (e) {
         console.error("PATCH /api/vitals/:id failed:", e);

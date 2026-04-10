@@ -4,7 +4,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.twilioServiceSid = exports.twilioClient = void 0;
-require("dotenv/config");
 const twilio_1 = __importDefault(require("twilio"));
 exports.twilioClient = null;
 exports.twilioServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID || "";

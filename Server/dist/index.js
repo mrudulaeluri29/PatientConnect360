@@ -25,6 +25,11 @@ const caregiverAlerts_1 = __importDefault(require("./routes/caregiverAlerts"));
 const caregiverAccess_1 = __importDefault(require("./routes/caregiverAccess"));
 const caregiverSafety_1 = __importDefault(require("./routes/caregiverSafety"));
 const familyFeedback_1 = __importDefault(require("./routes/familyFeedback"));
+const carePlans_1 = __importDefault(require("./routes/carePlans"));
+const patientDocuments_1 = __importDefault(require("./routes/patientDocuments"));
+const patientPrivacy_1 = __importDefault(require("./routes/patientPrivacy"));
+const hep_1 = __importDefault(require("./routes/hep"));
+const visitPrepTasks_1 = __importDefault(require("./routes/visitPrepTasks"));
 // Feature 2 imports
 const notifications_1 = __importDefault(require("./routes/notifications"));
 const messageUpgrades_1 = __importDefault(require("./routes/messageUpgrades"));
@@ -79,6 +84,7 @@ app.get("/db/ping", async (_req, res) => {
         res.status(500).json({ db: "error", message: "Cannot reach database" });
     }
 });
+app.use("/api/visits", visitPrepTasks_1.default);
 app.use("/api/auth", auth_1.default);
 app.use("/api/password-reset", passwordReset_1.default);
 app.use("/api/admin", admin_1.default);
@@ -97,10 +103,15 @@ app.use("/api/caregiver/access", caregiverAccess_1.default);
 app.use("/api/caregiver/safety", caregiverSafety_1.default);
 // Feature 3 routes
 app.use("/api/family-feedback", familyFeedback_1.default);
+// Feature 1 — health records / care plans / patient documents
+app.use("/api/care-plans", carePlans_1.default);
+app.use("/api/patient-documents", patientDocuments_1.default);
+app.use("/api/patients", patientPrivacy_1.default);
 // Feature 2 routes
 app.use("/api/notifications", notifications_1.default);
 // Message upgrades merged into existing messages routes to avoid collision
 app.use("/api/messages-v2", messageUpgrades_1.default);
+app.use("/api/hep", hep_1.default);
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 // Start server immediately (no email dependency)
 app.listen(PORT, () => {

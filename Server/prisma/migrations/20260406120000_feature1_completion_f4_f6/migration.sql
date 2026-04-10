@@ -1,2 +1,11 @@
--- Restored placeholder migration file to fix Prisma P3015.
--- This migration directory existed without a migration.sql.
+-- Feature 1/4/6 completion verification migration.
+--
+-- No additional DDL is required here:
+-- - Feature 1 care plan/document/visit-summary DDL is covered by
+--   20260405120000_feature1_care_plans_documents.
+-- - Feature 4 HEP/prep-task DDL is covered by
+--   20260402171747_add_hep_and_prep_tasks.
+-- - Visit.medicationChangesSummary is covered by
+--   20260406123000_f4_visit_medication_changes_summary.
+-- - PatientPrivacySettings is intentionally managed by raw SQL and the
+--   20260406160000_f6_privacy_consent migration, not by schema.prisma.
