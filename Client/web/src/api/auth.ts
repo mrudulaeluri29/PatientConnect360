@@ -1,6 +1,12 @@
 import { api } from "../lib/axios";
 
-export async function sendOtp(data: { email: string; username: string; password: string; role?: string; profileData?: any }) {
+export async function sendOtp(data: {
+  email: string;
+  username: string;
+  password: string;
+  role?: string;
+  profileData?: Record<string, unknown>;
+}) {
   return api.post("/api/auth/send-otp", data);
 }
 

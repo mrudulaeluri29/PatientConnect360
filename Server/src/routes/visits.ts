@@ -662,7 +662,7 @@ router.post("/:id/review", requireAdmin, async (req: Request, res: Response) => 
         nextScheduledAt
       );
       // Cancel any pending reminders for the original visit
-      cancelPendingReminders(existing.originalVisitId!);
+      await cancelPendingReminders(existing.originalVisitId!);
 
       // ── Feature 5: Audit log for reschedule approval ──
       await logAuditEvent({
@@ -974,7 +974,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
         data.cancelReason || null,
         cancellingUser?.username || "A user"
       );
-      cancelPendingReminders(existing.id);
+      await cancelPendingReminders(existing.id);
 
       // ── Feature 5: Audit log for appointment cancellation ──
       await logAuditEvent({

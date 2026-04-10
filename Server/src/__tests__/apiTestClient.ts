@@ -2,6 +2,12 @@ import request from "supertest";
 
 export const BASE_URL = process.env.FEATURE_TEST_BASE_URL || "http://localhost:4000";
 
+/**
+ * When FEATURE_TEST_FAIL_FAST is truthy, suites fail instead of silently
+ * skipping when credentials are missing.  CI should always set this.
+ */
+const FAIL_FAST = Boolean(process.env.FEATURE_TEST_FAIL_FAST);
+
 export type TestRole = "patient" | "clinician" | "admin" | "caregiver";
 
 export type LoginSession = {
@@ -21,13 +27,47 @@ export function hasRoleCredentials(roles: TestRole[]): boolean {
   });
 }
 
+export function missingCredentialNames(roles: TestRole[]): string[] {
+  const missing: string[] = [];
+  for (const role of roles) {
+    const key = role.toUpperCase();
+    if (!process.env[`FEATURE_TEST_${key}_LOGIN`]) missing.push(`FEATURE_TEST_${key}_LOGIN`);
+    if (!process.env[`FEATURE_TEST_${key}_PASSWORD`]) missing.push(`FEATURE_TEST_${key}_PASSWORD`);
+  }
+  return missing;
+}
+
+/**
+ * Wraps `describe` with credential checks.
+ *
+ * - Default: skips the suite when creds are absent (preserves legacy behavior).
+ * - When `FEATURE_TEST_FAIL_FAST=1`: throws so CI never silently skips.
+ */
 export function describeWithRoleCredentials(
   name: string,
   roles: TestRole[],
   fn: () => void
 ): void {
-  const runner = hasRoleCredentials(roles) ? describe : describe.skip;
-  runner(name, fn);
+  if (hasRoleCredentials(roles)) {
+    describe(name, fn);
+    return;
+  }
+
+  const missing = missingCredentialNames(roles);
+
+  if (FAIL_FAST) {
+    describe(name, () => {
+      it("should have required credentials", () => {
+        throw new Error(
+          `FEATURE_TEST_FAIL_FAST is set but credentials are missing: ${missing.join(", ")}. ` +
+          `Provide them or unset FEATURE_TEST_FAIL_FAST to allow skipping.`
+        );
+      });
+    });
+    return;
+  }
+
+  describe.skip(`${name} [SKIPPED — missing: ${missing.join(", ")}]`, fn);
 }
 
 export async function loginAs(role: TestRole): Promise<LoginSession> {

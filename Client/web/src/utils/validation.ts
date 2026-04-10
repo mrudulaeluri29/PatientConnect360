@@ -19,7 +19,7 @@ export function validatePassword(password: string): PasswordValidation {
     errors.push('Password must contain at least one lowercase letter');
   }
 
-  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
     errors.push('Password must contain at least one special character');
   }
 

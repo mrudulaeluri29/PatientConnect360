@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import NotificationBell from "../../components/NotificationBell";
+import NotificationCenter from "../../components/notifications/NotificationCenter";
+import { isAxiosError } from "axios";
 import { api } from "../../lib/axios";
 import { useAgencyBranding } from "../../branding/AgencyBranding";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -34,6 +36,50 @@ import {
   type DailyAnalyticsData,
 } from "../../api/admin";
 import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
+
+function getApiErrorMessage(err: unknown, fallback: string): string {
+  if (isAxiosError(err)) {
+    const data = err.response?.data;
+    if (data && typeof data === "object" && data !== null && "error" in data) {
+      const msg = (data as { error: unknown }).error;
+      if (typeof msg === "string") return msg;
+    }
+  }
+  return fallback;
+}
+
+type AssignmentEndUser = { id: string; username: string; email: string };
+
+type AdminAssignmentRow = {
+  id: string;
+  patient: AssignmentEndUser;
+  clinician: AssignmentEndUser;
+  isActive: boolean;
+};
+
+type AdminUsersListItem = { id: string; username: string; email: string; role: string };
+
+type AdminMessageParticipant = {
+  username?: string;
+  email?: string;
+  role?: string;
+};
+
+type AdminMessageListItem = {
+  id: string;
+  subject: string;
+  content?: string;
+  preview?: string;
+  createdAt?: string;
+  timestamp?: string;
+  isRead: boolean;
+  from?: string;
+  to?: string;
+  fromUser?: AdminMessageParticipant;
+  toUser?: AdminMessageParticipant;
+};
+
+type AdminUserFilterOption = { id: string; username?: string; email?: string };
 
 function formatAvailabilityGuidanceBody(hint: AvailabilityHint, durationMinutes: number): string {
   const tz = hint.timeZone.replace(/_/g, " ");
@@ -97,6 +143,9 @@ export default function AdminDashboard() {
             </button>
             <button className={`nav-item ${activeTab === "records" ? "active" : ""}`} onClick={() => setActiveTab("records")}>
               Patient records
+            </button>
+            <button className={`nav-item ${activeTab === "notifications" ? "active" : ""}`} onClick={() => setActiveTab("notifications")}>
+              Notifications
             </button>
           </nav>
         </div>
@@ -178,6 +227,12 @@ export default function AdminDashboard() {
         {activeTab === "records" && (
           <div className="admin-content">
             <AdminPatientRecordsTab />
+          </div>
+        )}
+
+        {activeTab === "notifications" && (
+          <div className="admin-content">
+            <NotificationCenter />
           </div>
         )}
       </main>
@@ -510,8 +565,8 @@ function SystemSettings() {
       setSettings(updated);
       await refresh();
       setNotice("Branding and support details updated.");
-    } catch (error: any) {
-      setNotice(error?.response?.data?.error || "Failed to save settings.");
+    } catch (err: unknown) {
+      setNotice(getApiErrorMessage(err, "Failed to save settings."));
     } finally {
       setSaving(false);
     }
@@ -615,6 +670,7 @@ function AuditLogPanel() {
 
   useEffect(() => {
     loadLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionType, actorRole, page]);
 
   const totalPages = Math.ceil(total / limit);
@@ -760,7 +816,7 @@ function AssignmentManager() {
   const { showToast, confirmDialog } = useFeedback();
   const [patients, setPatients] = useState<{ id: string; username: string; email: string }[]>([]);
   const [clinicians, setClinicians] = useState<{ id: string; username: string; email: string }[]>([]);
-  const [assignments, setAssignments] = useState<{ id: string; patient: any; clinician: any; isActive: boolean }[]>([]);
+  const [assignments, setAssignments] = useState<AdminAssignmentRow[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<string>("");
   const [selectedClinician, setSelectedClinician] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
@@ -778,13 +834,13 @@ function AssignmentManager() {
           api.get("/api/admin/assignments"),
         ]);
         if (!mounted) return;
-        const allUsers: any[] = usersRes.data.users || [];
-        setPatients(allUsers.filter(u => u.role === "PATIENT"));
-        setClinicians(allUsers.filter(u => u.role === "CLINICIAN"));
-        setAssignments(assignRes.data.assignments || []);
-      } catch (e: any) {
+        const allUsers: AdminUsersListItem[] = usersRes.data.users || [];
+        setPatients(allUsers.filter((u) => u.role === "PATIENT"));
+        setClinicians(allUsers.filter((u) => u.role === "CLINICIAN"));
+        setAssignments((assignRes.data.assignments || []) as AdminAssignmentRow[]);
+      } catch (e: unknown) {
         if (!mounted) return;
-        setError(e.response?.data?.error || "Failed to load data");
+        setError(getApiErrorMessage(e, "Failed to load data"));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -802,11 +858,11 @@ function AssignmentManager() {
       });
       // Refresh assignments list
       const refreshed = await api.get("/api/admin/assignments");
-      setAssignments(refreshed.data.assignments || []);
+      setAssignments((refreshed.data.assignments || []) as AdminAssignmentRow[]);
       setSelectedPatient("");
       setSelectedClinician("");
-    } catch (e: any) {
-      showToast(e.response?.data?.error || "Failed to assign", "error");
+    } catch (e: unknown) {
+      showToast(getApiErrorMessage(e, "Failed to assign"), "error");
     }
   };
 
@@ -821,8 +877,8 @@ function AssignmentManager() {
       await api.delete(`/api/admin/assignments/${assignmentId}`);
       setAssignments(prev => prev.filter(a => a.id !== assignmentId));
       showToast("Assignment removed.", "success");
-    } catch (e: any) {
-      showToast(e.response?.data?.error || "Failed to remove assignment", "error");
+    } catch (e: unknown) {
+      showToast(getApiErrorMessage(e, "Failed to remove assignment"), "error");
     }
   };
 
@@ -830,9 +886,9 @@ function AssignmentManager() {
     try {
       await api.patch(`/api/admin/assignments/${assignmentId}`, { isActive: !currentStatus });
       // Update local state
-      setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, isActive: !currentStatus } : a));
-    } catch (e: any) {
-      showToast(e.response?.data?.error || "Failed to update assignment", "error");
+      setAssignments((prev) => prev.map((a) => (a.id === assignmentId ? { ...a, isActive: !currentStatus } : a)));
+    } catch (e: unknown) {
+      showToast(getApiErrorMessage(e, "Failed to update assignment"), "error");
     }
   };
 
@@ -955,7 +1011,7 @@ function AdminMessages() {
   const { user } = useAuth();
   const { showToast, confirmDialog } = useFeedback();
   const [activeView, setActiveView] = useState<"all-messages" | "broadcast">("all-messages");
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<AdminMessageListItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>("");
   
@@ -965,8 +1021,8 @@ function AdminMessages() {
   const [selectedToType, setSelectedToType] = useState<string>("all");
   const [selectedToUser, setSelectedToUser] = useState<string>("all");
 
-  const [fromUsers, setFromUsers] = useState<any[]>([]);
-  const [toUsers, setToUsers] = useState<any[]>([]);
+  const [fromUsers, setFromUsers] = useState<AdminUserFilterOption[]>([]);
+  const [toUsers, setToUsers] = useState<AdminUserFilterOption[]>([]);
 
   // Broadcast states
   const [broadcastRecipients, setBroadcastRecipients] = useState<string[]>([]);
@@ -976,7 +1032,7 @@ function AdminMessages() {
   const [sendingBroadcast, setSendingBroadcast] = useState<boolean>(false);
 
   // Message actions states
-  const [viewingMessage, setViewingMessage] = useState<any>(null);
+  const [viewingMessage, setViewingMessage] = useState<AdminMessageListItem | null>(null);
   const [showMessageModal, setShowMessageModal] = useState<boolean>(false);
 
 
@@ -994,7 +1050,7 @@ function AdminMessages() {
         }
       });
       console.log("Fetched messages:", response.data.messages);
-      setMessages(response.data.messages || []);
+      setMessages((response.data.messages || []) as AdminMessageListItem[]);
     } catch (error) {
       console.error("Failed to fetch messages:", error);
       setMessages([]);
@@ -1006,7 +1062,7 @@ function AdminMessages() {
 
 
   // Fetch users by role for filtering dropdowns
-  const fetchUsersByRole = async (role: string) => {
+  const fetchUsersByRole = async (role: string): Promise<AdminUserFilterOption[]> => {
     try {
       if (!user || user.role !== 'ADMIN') {
         console.log('User is not admin or not logged in:', user);
@@ -1019,10 +1075,10 @@ function AdminMessages() {
       });
       
       console.log(`Found ${response.data.users?.length || 0} ${role} users`);
-      return response.data.users || [];
-    } catch (error: any) {
+      return (response.data.users || []) as AdminUserFilterOption[];
+    } catch (error: unknown) {
       console.error(`Failed to fetch ${role} users:`, error);
-      if (error.response?.status === 404) {
+      if (isAxiosError(error) && error.response?.status === 404) {
         console.error('API endpoint not found - check server routing');
       }
       return [];
@@ -1135,7 +1191,7 @@ function AdminMessages() {
     }
   };
 
-  const handleViewMessage = (message: any) => {
+  const handleViewMessage = (message: AdminMessageListItem) => {
     setViewingMessage(message);
     setShowMessageModal(true);
     if (!message.isRead) {
@@ -1194,9 +1250,13 @@ function AdminMessages() {
       
       console.log("≡ƒÄë Broadcast completed successfully!");
       showToast("Broadcast sent successfully!", "success");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Γ¥î Failed to send broadcast:", error);
-      console.error("Error details:", error.response?.data || error.message);
+      if (isAxiosError(error)) {
+        console.error("Error details:", error.response?.data || error.message);
+      } else if (error instanceof Error) {
+        console.error("Error details:", error.message);
+      }
       showToast("Failed to send broadcast", "error");
     } finally {
       setSendingBroadcast(false);
@@ -1208,6 +1268,7 @@ function AdminMessages() {
     if (user && user.role === 'ADMIN') {
       fetchAllMessages();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFromType, selectedFromUser, selectedToType, selectedToUser, searchTerm, user]);
 
 
@@ -1598,9 +1659,9 @@ function UserManagement() {
         const res = await api.get("/api/admin/users");
         if (!mounted) return;
         setUsers(res.data.users || []);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!mounted) return;
-        setError(e.response?.data?.error || "Failed to load users");
+        setError(getApiErrorMessage(e, "Failed to load users"));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -1627,8 +1688,8 @@ function UserManagement() {
       await api.delete(`/api/admin/users/${userId}`);
       setUsers((prev) => prev.filter((u) => u.id !== userId));
       showToast("User removed.", "success");
-    } catch (e: any) {
-      showToast(e.response?.data?.error || "Failed to remove user", "error");
+    } catch (e: unknown) {
+      showToast(getApiErrorMessage(e, "Failed to remove user"), "error");
     }
   };
 
@@ -1792,9 +1853,12 @@ function AppointmentsReview() {
       });
       await refresh();
       showToast(action === "APPROVE" ? "Request updated." : "Request rejected.", "success");
-    } catch (e: any) {
-      const data = e?.response?.data;
-      const hint = data?.availabilityHint as AvailabilityHint | undefined;
+    } catch (e: unknown) {
+      const data =
+        isAxiosError(e) && e.response?.data && typeof e.response.data === "object"
+          ? (e.response.data as { error?: string; availabilityHint?: AvailabilityHint })
+          : undefined;
+      const hint = data?.availabilityHint;
       if (hint && action === "APPROVE") {
         await infoDialog(
           "Outside clinician availability",
@@ -1971,6 +2035,7 @@ function AvailabilityReview() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchRecords(); }, [statusFilter]);
 
   const pendingCount = allRecords.filter((r) => r.status === "PENDING").length;
@@ -1994,8 +2059,8 @@ function AvailabilityReview() {
       }
       setReviewModalRecord(null);
       setReviewNote("");
-    } catch (err: any) {
-      showToast(err.response?.data?.error || "Review failed", "error");
+    } catch (err: unknown) {
+      showToast(getApiErrorMessage(err, "Review failed"), "error");
     } finally {
       setReviewingId(null);
     }
@@ -2014,8 +2079,8 @@ function AvailabilityReview() {
       setRecords((prev) => prev.filter((r) => r.id !== id));
       setAllRecords((prev) => prev.filter((r) => r.id !== id));
       showToast("Availability deleted.", "success");
-    } catch (err: any) {
-      showToast(err.response?.data?.error || "Delete failed", "error");
+    } catch (err: unknown) {
+      showToast(getApiErrorMessage(err, "Delete failed"), "error");
     } finally {
       setDeletingId(null);
     }
@@ -2216,14 +2281,10 @@ function FamilyFeedbackPanel() {
   const [loading, setLoading] = useState(true);
   const [eventTypeFilter, setEventTypeFilter] = useState<string>("all");
 
-  useEffect(() => {
-    loadFeedback();
-  }, [eventTypeFilter]);
-
   const loadFeedback = async () => {
     setLoading(true);
     try {
-      const params: any = {};
+      const params: { eventType?: string } = {};
       if (eventTypeFilter !== "all") {
         params.eventType = eventTypeFilter;
       }
@@ -2239,6 +2300,11 @@ function FamilyFeedbackPanel() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadFeedback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventTypeFilter]);
 
   const renderStars = (rating: number | null) => {
     if (rating === null) return <span style={{ color: "#9ca3af" }}>—</span>;

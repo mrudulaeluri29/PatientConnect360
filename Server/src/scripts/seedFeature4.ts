@@ -169,6 +169,33 @@ async function main() {
       },
     }));
 
+  // ── "Needs Documentation" visit: past, in-progress, no clinician notes ──
+  // This populates the clinician worklist's Bucket A.
+  const needsDocsVisit = await prisma.visit.findFirst({
+    where: {
+      patientId: patient.id,
+      clinicianId: clinician.id,
+      purpose: "[F4 Demo] Needs documentation — past visit",
+    },
+  });
+  if (!needsDocsVisit) {
+    await prisma.visit.create({
+      data: {
+        patientId: patient.id,
+        clinicianId: clinician.id,
+        scheduledAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        durationMinutes: 45,
+        status: VisitStatus.IN_PROGRESS,
+        visitType: VisitType.HOME_HEALTH,
+        purpose: "[F4 Demo] Needs documentation — past visit",
+        address: "Patient home",
+        createdBy: clinician.id,
+        checkedInAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      },
+    });
+    console.log("  Created 'Needs Documentation' demo visit (past, IN_PROGRESS, no notes).");
+  }
+
   const exerciseSeeds = [
     {
       name: "[F4 Demo] Knee Flexion Stretch",
@@ -273,12 +300,20 @@ async function main() {
     isDone: true,
     doneByUserId: caregiver?.id ?? patient.id,
   });
+  await ensurePrepTask({
+    visitId: visit.id,
+    text: "[F4 Demo] Write down questions for the clinician",
+    createdByClinicianId: clinician.id,
+    isDone: false,
+  });
 
   console.log("Feature 4 seed complete.");
-  console.log(`Clinician: ${clinician.email}`);
-  console.log(`Patient: ${patient.email}`);
-  console.log(`Visit: ${visit.id}`);
-  console.log(`Assignments: ${assignments.length}`);
+  console.log(`  Clinician : ${clinician.email}`);
+  console.log(`  Patient   : ${patient.email}`);
+  console.log(`  Caregiver : ${caregiver?.email ?? "(none)"}`);
+  console.log(`  Visit (upcoming) : ${visit.id}`);
+  console.log(`  Assignments      : ${assignments.length}`);
+  console.log(`  Prep tasks       : 4`);
 }
 
 main()

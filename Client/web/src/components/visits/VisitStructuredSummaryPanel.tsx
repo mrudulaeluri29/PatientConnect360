@@ -8,6 +8,7 @@ function trim(s: string | null | undefined): string {
 }
 
 /** True if any structured summary field has content. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function visitHasStructuredSummary(v: ApiVisit): boolean {
   return [
     v.summaryDiagnosis,

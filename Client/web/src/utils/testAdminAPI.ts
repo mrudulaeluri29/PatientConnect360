@@ -1,6 +1,15 @@
 // Test script to check the admin API endpoints
 import { api } from '../lib/axios';
 
+function testApiErrorDetails(error: unknown): unknown {
+  if (error && typeof error === 'object' && 'response' in error) {
+    const data = (error as { response?: { data?: unknown } }).response?.data;
+    if (data !== undefined) return data;
+  }
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 async function testAdminAPIs() {
   try {
     console.log('🧪 Testing Admin API Endpoints...\n');
@@ -10,8 +19,8 @@ async function testAdminAPIs() {
     try {
       const allUsersResponse = await api.get('/admin/users');
       console.log('✅ All users:', allUsersResponse.data);
-    } catch (error: any) {
-      console.log('❌ All users error:', error.response?.data || error.message);
+    } catch (error: unknown) {
+      console.log('❌ All users error:', testApiErrorDetails(error));
     }
 
     // Test 2: Get patients by role
@@ -21,8 +30,8 @@ async function testAdminAPIs() {
         params: { role: 'patient' }
       });
       console.log('✅ Patients:', patientsResponse.data);
-    } catch (error: any) {
-      console.log('❌ Patients error:', error.response?.data || error.message);
+    } catch (error: unknown) {
+      console.log('❌ Patients error:', testApiErrorDetails(error));
     }
 
     // Test 3: Get clinicians by role
@@ -32,8 +41,8 @@ async function testAdminAPIs() {
         params: { role: 'clinician' }
       });
       console.log('✅ Clinicians:', cliniciansResponse.data);
-    } catch (error: any) {
-      console.log('❌ Clinicians error:', error.response?.data || error.message);
+    } catch (error: unknown) {
+      console.log('❌ Clinicians error:', testApiErrorDetails(error));
     }
 
     // Test 4: Get messages
@@ -41,8 +50,8 @@ async function testAdminAPIs() {
     try {
       const messagesResponse = await api.get('/admin/messages');
       console.log('✅ Messages:', messagesResponse.data);
-    } catch (error: any) {
-      console.log('❌ Messages error:', error.response?.data || error.message);
+    } catch (error: unknown) {
+      console.log('❌ Messages error:', testApiErrorDetails(error));
     }
 
   } catch (error) {
@@ -51,6 +60,7 @@ async function testAdminAPIs() {
 }
 
 // Export for use in console
-(window as any).testAdminAPIs = testAdminAPIs;
+const w = window as Window & { testAdminAPIs?: typeof testAdminAPIs };
+w.testAdminAPIs = testAdminAPIs;
 
 console.log('🛠️ Admin API Tester loaded. Run testAdminAPIs() in console to test.');

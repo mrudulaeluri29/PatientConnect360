@@ -8,6 +8,7 @@ export default function AdminLogin() {
   const [emailOrUsername, setEmailOrUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const userData = await login(emailOrUsername, password);
+      const userData = await login(emailOrUsername, password, rememberMe);
       
       // In dev mode, always create admin user
       // In production, check if user is admin
@@ -32,8 +33,8 @@ export default function AdminLogin() {
       
       // User is admin, navigate to dashboard
       navigate('/admin/dashboard');
-    } catch (err: any) {
-      setError(err.message || "Invalid credentials. Please try again.");
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : null) || "Invalid credentials. Please try again.");
       setLoading(false);
     }
   };
@@ -132,7 +133,11 @@ export default function AdminLogin() {
 
               <div className="form-options">
                 <label className="checkbox-label">
-                  <input type="checkbox" />
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                  />
                   <span>Remember me</span>
                 </label>
                 <Link to="/forgot-password" className="forgot-password">

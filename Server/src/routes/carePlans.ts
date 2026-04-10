@@ -14,6 +14,7 @@ import {
   CarePlanItemProgressStatus,
   CarePlanCheckInStatus,
 } from "@prisma/client";
+import { onCarePlanUpdated } from "../helpers/notificationHelpers";
 
 const router = Router();
 router.use(requireAuth);
@@ -100,6 +101,9 @@ router.post("/", async (req: Request, res: Response) => {
       include: carePlanInclude(false),
     });
 
+    const creatorUser = await prisma.user.findUnique({ where: { id: u.id }, select: { username: true } });
+    void onCarePlanUpdated(patientId, carePlan.id, creatorUser?.username || "your care team");
+
     res.status(201).json({ carePlan });
   } catch (e) {
     console.error("POST /api/care-plans failed:", e);
@@ -133,6 +137,10 @@ router.post("/:id/items", async (req: Request, res: Response) => {
         sortOrder: sortOrder != null ? Number(sortOrder) : 0,
       },
     });
+
+    const updater = await prisma.user.findUnique({ where: { id: u.id }, select: { username: true } });
+    void onCarePlanUpdated(plan.patientId, carePlanId, updater?.username || "your care team");
+
     res.status(201).json({ item });
   } catch (e) {
     console.error("POST /api/care-plans/:id/items failed:", e);
@@ -166,6 +174,10 @@ router.patch("/items/:itemId", async (req: Request, res: Response) => {
     }
 
     const updated = await prisma.carePlanItem.update({ where: { id: itemId }, data });
+
+    const updater = await prisma.user.findUnique({ where: { id: u.id }, select: { username: true } });
+    void onCarePlanUpdated(item.carePlan.patientId, item.carePlan.id, updater?.username || "your care team");
+
     res.json({ item: updated });
   } catch (e) {
     console.error("PATCH /api/care-plans/items/:itemId failed:", e);

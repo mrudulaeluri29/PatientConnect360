@@ -1,11 +1,21 @@
 // Feature 2 — Phase B4: Visit Reminder Scheduler + Twilio Sender
 // Runs on an interval to enqueue and send visit reminders.
-// Environment-gated: only sends if ENABLE_OUTBOUND_REMINDERS=true
+//
+// ENVIRONMENT VARIABLES (required for outbound sending):
+//   ENABLE_OUTBOUND_REMINDERS=true   — master switch; without this, only in-app reminders are created
+//   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER — for SMS
+//   TWILIO_VERIFY_SERVICE_SID — fallback email via Twilio Verify
+//   SENDGRID_API_KEY, SENDGRID_FROM_EMAIL — preferred email transport
+//
+// SINGLE-INSTANCE NOTE:
+//   startReminderScheduler() must only be called once per process. A guard
+//   prevents duplicate scheduler starts within the same process.
 import { prisma } from "../db";
 import { twilioClient } from "../twilio";
 import { isSendGridConfigured, sendTransactionalEmail } from "../lib/sendgridEmail";
 
 const SEND_ENABLED = process.env.ENABLE_OUTBOUND_REMINDERS === "true";
+let schedulerRunning = false;
 
 // ─── Enqueue reminders ──────────────────────────────────────────────────────
 // Finds upcoming CONFIRMED/SCHEDULED visits that need 24h or 1h reminders
@@ -85,40 +95,27 @@ async function createReminderIfNotExists(
 
   if (!pref || pref.channel === "IN_APP_ONLY" || !pref.enabled) return;
 
-  // Enqueue outbound notifications based on channel preference
+  // Enqueue outbound notifications based on channel preference (with dedup)
+  const templateKey = `visit_reminder_${timeLabel.replace(" ", "")}`;
   const patientEmail = (visit.patient.email || "").trim();
+
   if ((pref.channel === "EMAIL" || pref.channel === "EMAIL_AND_SMS") && patientEmail.includes("@")) {
-    await prisma.outboundNotification.create({
-      data: {
+    const existingOutbound = await prisma.outboundNotification.findFirst({
+      where: {
         userId: visit.patient.id,
         channel: "EMAIL",
-        toAddress: patientEmail,
-        templateKey: `visit_reminder_${timeLabel.replace(" ", "")}`,
-        payload: {
-          visitId: visit.id,
-          clinicianName: visit.clinician.username,
-          scheduledAt: visit.scheduledAt.toISOString(),
-          timeLabel,
-        },
-        status: "PENDING",
-        sendAt: new Date(),
+        templateKey,
+        payload: { path: ["visitId"], equals: visit.id },
+        status: { in: ["PENDING", "SENT"] },
       },
     });
-  }
-
-  if (pref.channel === "SMS" || pref.channel === "EMAIL_AND_SMS") {
-    // Get patient phone from profile
-    const profile = await prisma.patientProfile.findUnique({
-      where: { userId: visit.patient.id },
-      select: { phoneNumber: true },
-    });
-    if (profile?.phoneNumber) {
+    if (!existingOutbound) {
       await prisma.outboundNotification.create({
         data: {
           userId: visit.patient.id,
-          channel: "SMS",
-          toAddress: profile.phoneNumber,
-          templateKey: `visit_reminder_${timeLabel.replace(" ", "")}`,
+          channel: "EMAIL",
+          toAddress: patientEmail,
+          templateKey,
           payload: {
             visitId: visit.id,
             clinicianName: visit.clinician.username,
@@ -129,6 +126,42 @@ async function createReminderIfNotExists(
           sendAt: new Date(),
         },
       });
+    }
+  }
+
+  if (pref.channel === "SMS" || pref.channel === "EMAIL_AND_SMS") {
+    const profile = await prisma.patientProfile.findUnique({
+      where: { userId: visit.patient.id },
+      select: { phoneNumber: true },
+    });
+    if (profile?.phoneNumber) {
+      const existingOutbound = await prisma.outboundNotification.findFirst({
+        where: {
+          userId: visit.patient.id,
+          channel: "SMS",
+          templateKey,
+          payload: { path: ["visitId"], equals: visit.id },
+          status: { in: ["PENDING", "SENT"] },
+        },
+      });
+      if (!existingOutbound) {
+        await prisma.outboundNotification.create({
+          data: {
+            userId: visit.patient.id,
+            channel: "SMS",
+            toAddress: profile.phoneNumber,
+            templateKey,
+            payload: {
+              visitId: visit.id,
+              clinicianName: visit.clinician.username,
+              scheduledAt: visit.scheduledAt.toISOString(),
+              timeLabel,
+            },
+            status: "PENDING",
+            sendAt: new Date(),
+          },
+        });
+      }
     }
   }
 }
@@ -234,10 +267,15 @@ export async function cancelPendingReminders(visitId: string) {
 
 // ─── Start the scheduler ─────────────────────────────────────────────────────
 // Call this once from index.ts to start the background job.
+// Guard: calling this more than once in the same process is a no-op.
 export function startReminderScheduler() {
+  if (schedulerRunning) {
+    console.warn("[REMINDERS] Scheduler already running — ignoring duplicate start");
+    return;
+  }
+  schedulerRunning = true;
   console.log(`[REMINDERS] Scheduler started (outbound sending: ${SEND_ENABLED ? "ENABLED" : "DISABLED"})`);
 
-  // Run every 60 seconds
   setInterval(async () => {
     try {
       await enqueueVisitReminders();
@@ -247,7 +285,6 @@ export function startReminderScheduler() {
     }
   }, 60_000);
 
-  // Also run once immediately on startup
   setTimeout(async () => {
     try {
       await enqueueVisitReminders();

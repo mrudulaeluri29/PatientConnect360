@@ -54,6 +54,7 @@ export function AgencyBrandingProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAgencyBranding() {
   const context = useContext(AgencyBrandingContext);
   if (!context) {

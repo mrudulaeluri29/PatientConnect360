@@ -540,7 +540,7 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
             <span style={{ fontWeight: 600, color: "#374151" }}>Items</span>
             <select
               value={itemVisibility}
-              onChange={(e) => setItemVisibility(e.target.value as any)}
+              onChange={(e) => setItemVisibility(e.target.value as "active" | "inactive" | "all")}
               style={{ minWidth: 260, padding: "0.55rem 0.75rem", borderRadius: 10 }}
             >
               <option value="active">Active items only</option>

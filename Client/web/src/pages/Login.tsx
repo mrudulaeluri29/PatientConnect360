@@ -35,8 +35,8 @@ export default function Login() {
       } else {
         navigate("/dashboard");
       }
-    } catch (err: any) {
-      setError(err.message || "Invalid credentials. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Invalid credentials. Please try again.");
       setLoading(false);
     }
   };

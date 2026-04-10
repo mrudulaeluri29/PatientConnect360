@@ -124,6 +124,23 @@ export async function onVisitDenied(
   );
 }
 
+/** Care plan updated/created — notify patient + linked caregivers. */
+export async function onCarePlanUpdated(
+  patientId: string,
+  carePlanId: string,
+  updatedByName: string
+) {
+  const caregiverIds = await getLinkedCaregiverIds(patientId);
+  const recipients = [...new Set([patientId, ...caregiverIds])];
+
+  await notifyMany(recipients, {
+    type: "CAREPLAN_UPDATED",
+    title: "Care Plan Updated",
+    body: `Your care plan has been updated by ${updatedByName}.`,
+    meta: { carePlanId },
+  });
+}
+
 /** Visit cancelled — notify admin(s) + clinician + patient + linked caregivers. */
 export async function onVisitCancelled(
   patientId: string,

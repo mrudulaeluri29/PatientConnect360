@@ -27,6 +27,7 @@ type FeedbackContextValue = {
 
 const FeedbackContext = createContext<FeedbackContextValue | null>(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useFeedback(): FeedbackContextValue {
   const ctx = useContext(FeedbackContext);
   if (!ctx) {

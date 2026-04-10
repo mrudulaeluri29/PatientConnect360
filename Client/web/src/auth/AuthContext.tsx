@@ -13,7 +13,13 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (emailOrUsername: string, password: string, rememberMe?: boolean) => Promise<User>;
-  register: (email: string, username: string, password: string, role?: string, profileData?: any) => Promise<User>;
+  register: (
+    email: string,
+    username: string,
+    password: string,
+    role?: string,
+    profileData?: Record<string, unknown>
+  ) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -41,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const userData = JSON.parse(stored);
           setUser(userData);
-        } catch (e) {
+        } catch {
           localStorage.removeItem(STORAGE_KEY);
         }
       }
@@ -49,7 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       refreshUser();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const refreshUser = async () => {
@@ -60,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const userData = JSON.parse(stored);
           setUser(userData);
-        } catch (e) {
+        } catch {
           localStorage.removeItem(STORAGE_KEY);
           setUser(null);
         }
@@ -140,14 +145,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
       setLoading(false);
       return userData;
-    } catch (error: any) {
+    } catch (error: unknown) {
       setUser(null);
       setLoading(false);
-      throw new Error(error.response?.data?.error || "Login failed");
+      let message = "Login failed";
+      if (error && typeof error === "object" && "response" in error) {
+        const raw = (error as { response?: { data?: { error?: string } } }).response?.data?.error;
+        if (typeof raw === "string" && raw) message = raw;
+      }
+      throw new Error(message);
     }
   };
 
-  const register = async (email: string, username: string, password: string, role?: string, profileData?: any) => {
+  const register = async (
+    email: string,
+    username: string,
+    password: string,
+    role?: string,
+    profileData?: Record<string, unknown>
+  ) => {
     setLoading(true);
     
     if (DEV_MODE) {
@@ -158,7 +174,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: `dev-${role?.toLowerCase() || "user"}-${Date.now()}`,
         email,
         username,
-        role: (role as any) || "PATIENT",
+        role:
+          role === "ADMIN" || role === "PATIENT" || role === "CAREGIVER" || role === "CLINICIAN"
+            ? role
+            : "PATIENT",
       };
       
       localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
@@ -180,10 +199,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
       setLoading(false);
       return userData;
-    } catch (error: any) {
+    } catch (error: unknown) {
       setUser(null);
       setLoading(false);
-      throw new Error(error.response?.data?.error || "Registration failed");
+      let message = "Registration failed";
+      if (error && typeof error === "object" && "response" in error) {
+        const raw = (error as { response?: { data?: { error?: string } } }).response?.data?.error;
+        if (typeof raw === "string" && raw) message = raw;
+      }
+      throw new Error(message);
     }
   };
 
@@ -216,6 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

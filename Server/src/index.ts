@@ -20,6 +20,7 @@ import caregiverProgressRoutes from "./routes/caregiverProgress";
 import caregiverAlertsRoutes from "./routes/caregiverAlerts";
 import caregiverAccessRoutes from "./routes/caregiverAccess";
 import caregiverSafetyRoutes from "./routes/caregiverSafety";
+import caregiverPatientsRoutes from "./routes/caregiverPatients";
 import familyFeedbackRoutes from "./routes/familyFeedback";
 import carePlanRoutes from "./routes/carePlans";
 import patientDocumentRoutes from "./routes/patientDocuments";
@@ -111,6 +112,7 @@ app.use("/api/caregiver/progress", caregiverProgressRoutes);
 app.use("/api/caregiver/alerts", caregiverAlertsRoutes);
 app.use("/api/caregiver/access", caregiverAccessRoutes);
 app.use("/api/caregiver/safety", caregiverSafetyRoutes);
+app.use("/api/caregiver/patients", caregiverPatientsRoutes);
 
 // Feature 3 routes
 app.use("/api/family-feedback", familyFeedbackRoutes);

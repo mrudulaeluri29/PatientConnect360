@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthContext";
 import CaregiverHEPTab from "./CaregiverHEPTab";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import NotificationBell from "../../components/NotificationBell";
+import NotificationCenter from "../../components/notifications/NotificationCenter";
 import { api } from "../../lib/axios";
 import {
   getVisits,
@@ -113,6 +114,17 @@ type SafetyPayload = {
     action: "call_patient" | "call_agency" | "open_schedule" | "open_medications";
   }>;
 };
+
+/** Reads `response.data.error` from axios-like errors; otherwise returns fallback. */
+function axiosLikeApiError(err: unknown, fallback: string): string {
+  if (typeof err !== "object" || err === null || !("response" in err)) return fallback;
+  const response = (err as { response?: unknown }).response;
+  if (typeof response !== "object" || response === null || !("data" in response)) return fallback;
+  const data = (response as { data?: unknown }).data;
+  if (typeof data !== "object" || data === null || !("error" in data)) return fallback;
+  const msg = (data as { error?: unknown }).error;
+  return typeof msg === "string" && msg.length > 0 ? msg : fallback;
+}
 
 const VISIT_TYPE_LABELS: Record<string, string> = {
   HOME_HEALTH: "Home Health",
@@ -227,6 +239,9 @@ export default function CaregiverDashboard() {
 >
   Exercises & Tasks
 </button>
+            <button className={`nav-item ${activeTab === "notifications" ? "active" : ""}`} onClick={() => setActiveTab("notifications")}>
+              Notifications
+            </button>
           </nav>
         </div>
         <div className="cg-header-right">
@@ -253,6 +268,7 @@ export default function CaregiverDashboard() {
         {activeTab === "feedback" && <CaregiverFeedback />}
         {activeTab === "messages" && <CaregiverMessages />}
         {activeTab === "exercises" && <CaregiverHEPTab />}
+        {activeTab === "notifications" && <NotificationCenter />}
       </main>
     </div>
   );
@@ -264,12 +280,13 @@ function CaregiverRecordsTab() {
 
   useEffect(() => {
     api
-      .get("/api/caregiver/overview")
+      .get("/api/caregiver/patients")
       .then((res) => {
-        const data = res.data as OverviewData;
+        const pts: OverviewPatient[] = res.data.patients || [];
+        const data: OverviewData = { patients: pts, upcomingVisits: [], medications: [], alerts: [] };
         setOverview(data);
-        if (data.patients.length === 1) {
-          setSelectedPatientId(data.patients[0].id);
+        if (pts.length === 1) {
+          setSelectedPatientId(pts[0].id);
         } else {
           setSelectedPatientId(null);
         }
@@ -384,6 +401,32 @@ function CaregiverMessages() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
+  const [filterStarred, setFilterStarred] = useState(false);
+
+  const fetchStarredStatus = async () => {
+    try {
+      const res = await api.get("/api/simple-messages/conversations?starred=true");
+      const ids = new Set(
+        (res.data.conversations ?? []).map((c: { id: string }) => c.id),
+      );
+      setStarredIds(ids);
+    } catch { /* ignore */ }
+  };
+
+  const toggleStar = async (conversationId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isCurrentlyStarred = starredIds.has(conversationId);
+    try {
+      if (isCurrentlyStarred) {
+        await api.delete(`/api/simple-messages/conversations/${conversationId}/star`);
+        setStarredIds(prev => { const next = new Set(prev); next.delete(conversationId); return next; });
+      } else {
+        await api.post(`/api/simple-messages/conversations/${conversationId}/star`);
+        setStarredIds(prev => new Set(prev).add(conversationId));
+      }
+    } catch { /* ignore */ }
+  };
 
   const refreshInbox = async () => {
     const res = await api.get("/api/simple-messages/inbox");
@@ -407,14 +450,17 @@ function CaregiverMessages() {
 
   useEffect(() => {
     loadFolder("inbox");
+    fetchStarredStatus();
     api
       .get("/api/simple-messages/assigned-clinicians")
       .then((res) => setClinicians(res.data?.clinicians || []))
       .catch(() => setClinicians([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadFolder(activeFolder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFolder]);
 
   const openConversation = async (conversationId: string) => {
@@ -466,14 +512,30 @@ function CaregiverMessages() {
       </div>
 
       {!selectedId && (
-        <div className="cg-msg-tabs">
-          <button className={`cg-msg-tab ${activeFolder === "inbox" ? "active" : ""}`} onClick={() => setActiveFolder("inbox")}>
-            Inbox
-          </button>
-          <button className={`cg-msg-tab ${activeFolder === "sent" ? "active" : ""}`} onClick={() => setActiveFolder("sent")}>
-            Sent
-          </button>
-        </div>
+        <>
+          <div className="cg-msg-tabs">
+            <button className={`cg-msg-tab ${activeFolder === "inbox" ? "active" : ""}`} onClick={() => setActiveFolder("inbox")}>
+              Inbox
+            </button>
+            <button className={`cg-msg-tab ${activeFolder === "sent" ? "active" : ""}`} onClick={() => setActiveFolder("sent")}>
+              Sent
+            </button>
+          </div>
+          {activeFolder === "inbox" && (
+            <div style={{ display: "flex", gap: 8, padding: "0.5rem 0", flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                className="cg-btn"
+                style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred ? "#6E5B9A" : undefined, color: !filterStarred ? "#fff" : undefined }}
+                onClick={() => setFilterStarred(false)}
+              >All</button>
+              <button
+                className="cg-btn"
+                style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }}
+                onClick={() => setFilterStarred(!filterStarred)}
+              >Starred</button>
+            </div>
+          )}
+        </>
       )}
 
       {selectedId ? (
@@ -504,9 +566,19 @@ function CaregiverMessages() {
             <div className="cg-empty">No messages in this folder.</div>
           ) : (
             <div className="cg-msg-list">
-              {visibleRows.map((row) => (
+              {visibleRows
+                .filter((row) => {
+                  if (activeFolder === "inbox" && filterStarred && !starredIds.has(row.conversationId)) return false;
+                  return true;
+                })
+                .map((row) => (
                 <button key={row.id} className={`cg-msg-row ${row.unread ? "unread" : ""}`} onClick={() => openConversation(row.conversationId)}>
                   <div className="cg-msg-row-top">
+                    <span
+                      onClick={(e) => toggleStar(row.conversationId, e)}
+                      style={{ cursor: "pointer", fontSize: "1.1rem", color: starredIds.has(row.conversationId) ? "#f59e0b" : "#d1d5db", marginRight: 8 }}
+                      title={starredIds.has(row.conversationId) ? "Unstar" : "Star"}
+                    >{starredIds.has(row.conversationId) ? "\u2605" : "\u2606"}</span>
                     <strong>{activeFolder === "inbox" ? row.from || "Unknown" : row.to || "Unknown"}</strong>
                     <span>{new Date(row.time).toLocaleString()}</span>
                   </div>
@@ -739,8 +811,8 @@ function CaregiverAccess() {
       setShowAddPatient(false);
       setInvitationCode("");
       await loadAccessData();
-    } catch (e: any) {
-      showToast(e?.response?.data?.error || "Failed to link to patient", "error");
+    } catch (e: unknown) {
+      showToast(axiosLikeApiError(e, "Failed to link to patient"), "error");
     } finally {
       setSubmitting(false);
     }
@@ -756,17 +828,44 @@ function CaregiverAccess() {
     );
   }
 
-  const yesNo = (v: boolean) => (v ? "Yes" : "No");
   const toLabel = (key: string) =>
     key
       .replace(/([A-Z])/g, " $1")
       .replace(/^./, (c) => c.toUpperCase())
       .trim();
 
+  // Build plain-language "what you can do" / "what you cannot do" lists
+  const canDo: string[] = [];
+  const cannotDo: string[] = [];
+  if (data.permissions.readAccess) {
+    Object.entries(data.permissions.readAccess).forEach(([k, v]) => {
+      const label = toLabel(k);
+      (v ? canDo : cannotDo).push(`View ${label.toLowerCase()}`);
+    });
+  }
+  if (data.permissions.communication) {
+    Object.entries(data.permissions.communication).forEach(([k, v]) => {
+      const label = toLabel(k);
+      (v ? canDo : cannotDo).push(label);
+    });
+  }
+  if (data.permissions.management) {
+    Object.entries(data.permissions.management).forEach(([k, v]) => {
+      const label = toLabel(k);
+      (v ? canDo : cannotDo).push(label);
+    });
+  }
+  if (data.permissions.restrictions) {
+    Object.entries(data.permissions.restrictions).forEach(([k, v]) => {
+      const label = toLabel(k);
+      (v ? cannotDo : canDo).push(label);
+    });
+  }
+
   return (
     <div className="cg-content">
       <div className="cg-section-header">
-        <h2 className="cg-section-title">Access &amp; Permissions</h2>
+        <h2 className="cg-section-title">MPOA/Family Access Summary</h2>
         <button className="btn-primary" onClick={() => setShowAddPatient(true)}>
           + Add Patient
         </button>
@@ -774,10 +873,10 @@ function CaregiverAccess() {
 
       <div className="cg-access-head">
         <span className={`cg-order-status ${data.role === "PRIMARY_MPOA" ? "ok" : "warning"}`}>
-          {data.role === "PRIMARY_MPOA" ? "Primary MPOA" : "MPOA/Family"}
+          {data.role === "PRIMARY_MPOA" ? "Primary MPOA" : "MPOA/Family Member"}
         </span>
         <span className="cg-access-note">
-          Access level is role-based and audited for compliance.
+          This is a summary of your current access level. Access is determined by your relationship to each patient and is audited for HIPAA compliance.
         </span>
       </div>
 
@@ -803,22 +902,40 @@ function CaregiverAccess() {
           )}
         </div>
 
-        <PermissionCard title="Read Access" flags={data.permissions.readAccess} />
-        <PermissionCard title="Communication Rights" flags={data.permissions.communication} />
-        <PermissionCard title="Management Rights" flags={data.permissions.management} />
+        <div className="cg-card info">
+          <div className="cg-card-header">
+            <h3 className="cg-card-title">What You Can Do</h3>
+          </div>
+          {canDo.length === 0 ? (
+            <div className="cg-empty">No specific capabilities assigned.</div>
+          ) : (
+            <div className="cg-access-list">
+              {canDo.map((item, i) => (
+                <div key={i} className="cg-access-row">
+                  <span style={{ color: "#166534" }}>&#10003;</span>
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="cg-card alerts">
           <div className="cg-card-header">
-            <h3 className="cg-card-title">Restricted Actions</h3>
+            <h3 className="cg-card-title">What You Cannot Do</h3>
           </div>
-          <div className="cg-access-list">
-            {Object.entries(data.permissions.restrictions).map(([k, v]) => (
-              <div key={k} className="cg-access-row restricted">
-                <span>{toLabel(k)}</span>
-                <strong>{yesNo(v)}</strong>
-              </div>
-            ))}
-          </div>
+          {cannotDo.length === 0 ? (
+            <div className="cg-empty">No restrictions — full access granted.</div>
+          ) : (
+            <div className="cg-access-list">
+              {cannotDo.map((item, i) => (
+                <div key={i} className="cg-access-row restricted">
+                  <span style={{ color: "#dc2626" }}>&#10007;</span>
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -874,31 +991,6 @@ function CaregiverAccess() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function PermissionCard({ title, flags }: { title: string; flags: Record<string, boolean> }) {
-  const toLabel = (key: string) =>
-    key
-      .replace(/([A-Z])/g, " $1")
-      .replace(/^./, (c) => c.toUpperCase())
-      .trim();
-  const yesNo = (v: boolean) => (v ? "Yes" : "No");
-
-  return (
-    <div className="cg-card info">
-      <div className="cg-card-header">
-        <h3 className="cg-card-title">{title}</h3>
-      </div>
-      <div className="cg-access-list">
-        {Object.entries(flags).map(([k, v]) => (
-          <div key={k} className={`cg-access-row ${v ? "allowed" : "blocked"}`}>
-            <span>{toLabel(k)}</span>
-            <strong>{yesNo(v)}</strong>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1019,25 +1111,152 @@ function CaregiverSafety({ onNavigate }: { onNavigate: (tab: string) => void }) 
   );
 }
 
-// ─── Home Overview Tab ───────────────────────────────────────────────────────
+// ─── Patient Summary Card (fetches its own patient-scoped data) ──────────────
 
-function HomeOverview() {
-  const [data, setData] = useState<OverviewData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+function PatientSummaryCard({ patient, onSelect }: { patient: OverviewPatient; onSelect: () => void }) {
+  const [summary, setSummary] = useState<{ visitCount: number; medCount: number; criticalAlerts: number; highRiskMeds: number; nextVisit: string | null } | null>(null);
 
   useEffect(() => {
     api
-      .get("/api/caregiver/overview")
+      .get(`/api/caregiver/patients/${patient.id}/overview`)
       .then((res) => {
-        setData(res.data);
-        if (res.data.patients.length > 0) {
-          setSelectedPatientId(res.data.patients[0].id);
+        const visits: OverviewVisit[] = res.data.upcomingVisits || [];
+        const meds: OverviewMed[] = res.data.medications || [];
+        const alerts: OverviewAlert[] = res.data.alerts || [];
+        setSummary({
+          visitCount: visits.length,
+          medCount: meds.length,
+          criticalAlerts: alerts.filter((a) => a.severity === "red").length,
+          highRiskMeds: meds.filter((m) => m.riskLevel === "HIGH_RISK").length,
+          nextVisit: visits.length > 0 ? visits[0].scheduledAt : null,
+        });
+      })
+      .catch(() => setSummary({ visitCount: 0, medCount: 0, criticalAlerts: 0, highRiskMeds: 0, nextVisit: null }));
+  }, [patient.id]);
+
+  return (
+    <div className="cg-patient-overview-card" onClick={onSelect}>
+      <div className="cg-patient-card-header">
+        <div className="cg-patient-card-avatar">{patientInitials(patient)}</div>
+        <div className="cg-patient-card-info">
+          <h3 className="cg-patient-card-name">{patientDisplayName(patient)}</h3>
+          <span className="cg-patient-card-rel">
+            {patient.relationship || "MPOA/Family"}
+            {patient.isPrimary && " · Primary MPOA"}
+          </span>
+        </div>
+      </div>
+
+      <div className="cg-patient-card-stats">
+        <div className="cg-patient-card-stat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          <span>
+            {summary?.nextVisit
+              ? `Next visit: ${formatDate(summary.nextVisit)}`
+              : summary ? "No upcoming visits" : "Loading..."}
+          </span>
+        </div>
+
+        <div className="cg-patient-card-stat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2z" />
+            <line x1="12" y1="8" x2="12" y2="16" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
+          <span>{summary ? `${summary.medCount} active medications` : "Loading..."}</span>
+        </div>
+
+        {summary && summary.criticalAlerts > 0 && (
+          <div className="cg-patient-card-stat alert">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span style={{ color: "#ef4444", fontWeight: 600 }}>
+              {summary.criticalAlerts} critical alert{summary.criticalAlerts !== 1 ? "s" : ""}
+            </span>
+          </div>
+        )}
+
+        {summary && summary.highRiskMeds > 0 && (
+          <div className="cg-patient-card-stat alert">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span style={{ color: "#f59e0b", fontWeight: 600 }}>
+              {summary.highRiskMeds} high-risk med{summary.highRiskMeds !== 1 ? "s" : ""}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="cg-patient-card-footer">
+        <button className="cg-btn cg-btn-confirm">View Details</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Home Overview Tab ───────────────────────────────────────────────────────
+
+function HomeOverview() {
+  const [patients, setPatients] = useState<OverviewPatient[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [patientDetail, setPatientDetail] = useState<{
+    upcomingVisits: OverviewVisit[];
+    medications: OverviewMed[];
+    alerts: OverviewAlert[];
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  useEffect(() => {
+    api
+      .get("/api/caregiver/patients")
+      .then((res) => {
+        const pts: OverviewPatient[] = res.data.patients || [];
+        setPatients(pts);
+        if (pts.length > 0) {
+          setSelectedPatientId(pts[0].id);
         }
       })
-      .catch(() => setData({ patients: [], upcomingVisits: [], medications: [], alerts: [] }))
+      .catch(() => setPatients([]))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!selectedPatientId) {
+      setPatientDetail(null);
+      return;
+    }
+    setDetailLoading(true);
+    api
+      .get(`/api/caregiver/patients/${selectedPatientId}/overview`)
+      .then((res) => {
+        setPatientDetail({
+          upcomingVisits: res.data.upcomingVisits || [],
+          medications: res.data.medications || [],
+          alerts: res.data.alerts || [],
+        });
+      })
+      .catch(() => setPatientDetail({ upcomingVisits: [], medications: [], alerts: [] }))
+      .finally(() => setDetailLoading(false));
+  }, [selectedPatientId]);
+
+  const data: OverviewData | null = patients.length > 0
+    ? {
+        patients,
+        upcomingVisits: patientDetail?.upcomingVisits || [],
+        medications: patientDetail?.medications || [],
+        alerts: patientDetail?.alerts || [],
+      }
+    : null;
 
   if (loading) {
     return <div className="cg-loading">Loading your dashboard...</div>;
@@ -1072,86 +1291,9 @@ function HomeOverview() {
         </div>
 
         <div className="cg-patient-cards-grid">
-          {data.patients.map((p) => {
-            const patientVisits = data.upcomingVisits.filter((v) => v.patient.id === p.id);
-            const patientMeds = data.medications.filter((m) => m.patient.id === p.id);
-            const patientAlerts = data.alerts.filter((a) => !a.meta?.patientId || a.meta.patientId === p.id);
-            const nextVisit = patientVisits[0];
-            const highRiskMeds = patientMeds.filter((m) => m.riskLevel === "HIGH_RISK").length;
-            const criticalAlerts = patientAlerts.filter((a) => a.severity === "red").length;
-
-            return (
-              <div
-                key={p.id}
-                className="cg-patient-overview-card"
-                onClick={() => setSelectedPatientId(p.id)}
-              >
-                <div className="cg-patient-card-header">
-                  <div className="cg-patient-card-avatar">{patientInitials(p)}</div>
-                  <div className="cg-patient-card-info">
-                    <h3 className="cg-patient-card-name">{patientDisplayName(p)}</h3>
-                    <span className="cg-patient-card-rel">
-                      {p.relationship || "Caregiver"}
-                      {p.isPrimary && " · Primary MPOA"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="cg-patient-card-stats">
-                  <div className="cg-patient-card-stat">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                      <line x1="3" y1="10" x2="21" y2="10" />
-                    </svg>
-                    <span>
-                      {nextVisit
-                        ? `Next visit: ${formatDate(nextVisit.scheduledAt)}`
-                        : "No upcoming visits"}
-                    </span>
-                  </div>
-
-                  <div className="cg-patient-card-stat">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2z" />
-                      <line x1="12" y1="8" x2="12" y2="16" />
-                      <line x1="8" y1="12" x2="16" y2="12" />
-                    </svg>
-                    <span>{patientMeds.length} active medications</span>
-                  </div>
-
-                  {criticalAlerts > 0 && (
-                    <div className="cg-patient-card-stat alert">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                        <line x1="12" y1="9" x2="12" y2="13" />
-                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                      </svg>
-                      <span style={{ color: "#ef4444", fontWeight: 600 }}>
-                        {criticalAlerts} critical alert{criticalAlerts !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                  )}
-
-                  {highRiskMeds > 0 && (
-                    <div className="cg-patient-card-stat alert">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="12" y1="8" x2="12" y2="12" />
-                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                      </svg>
-                      <span style={{ color: "#f59e0b", fontWeight: 600 }}>
-                        {highRiskMeds} high-risk med{highRiskMeds !== 1 ? "s" : ""}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="cg-patient-card-footer">
-                  <button className="cg-btn cg-btn-confirm">View Details</button>
-                </div>
-              </div>
-            );
-          })}
+          {data.patients.map((p) => (
+            <PatientSummaryCard key={p.id} patient={p} onSelect={() => setSelectedPatientId(p.id)} />
+          ))}
         </div>
 
         <div style={{ marginTop: "2rem", padding: "1rem", background: "#f9fafb", borderRadius: "8px" }}>
@@ -1165,14 +1307,13 @@ function HomeOverview() {
 
   const selectedPatient = data.patients.find((p) => p.id === selectedPatientId) || data.patients[0];
 
-  const filteredVisits = data.upcomingVisits.filter((v) => v.patient.id === selectedPatient.id);
-  const filteredMeds = data.medications.filter((m) => m.patient.id === selectedPatient.id);
-  const filteredAlerts = data.alerts.filter(
-    (a) => !a.meta?.patientId || a.meta.patientId === selectedPatient.id
-  );
+  const filteredVisits = data.upcomingVisits;
+  const filteredMeds = data.medications;
+  const filteredAlerts = data.alerts;
 
   return (
     <div className="cg-content">
+      {detailLoading && <div className="cg-loading" style={{ marginBottom: "1rem" }}>Loading patient data...</div>}
       <div className="cg-section-header">
         <h2 className="cg-section-title">Home Overview</h2>
         {data.patients.length > 1 && (
@@ -1198,7 +1339,7 @@ function HomeOverview() {
               <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
               <div className="cg-patient-chip-info">
                 <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
-                <span className="cg-patient-chip-rel">{p.relationship || "Caregiver"}</span>
+                <span className="cg-patient-chip-rel">{p.relationship || "MPOA/Family"}</span>
               </div>
               {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
             </div>
@@ -1347,7 +1488,7 @@ function HomeOverview() {
             </div>
             <div className="cg-info-field">
               <span className="cg-info-label">Your Role</span>
-              <span className="cg-info-value">{selectedPatient.relationship || "Caregiver"}{selectedPatient.isPrimary ? " (Primary MPOA)" : ""}</span>
+              <span className="cg-info-value">{selectedPatient.relationship || "MPOA/Family"}{selectedPatient.isPrimary ? " (Primary MPOA)" : ""}</span>
             </div>
             {selectedPatient.patientProfile?.dateOfBirth && (
               <div className="cg-info-field">
@@ -1409,10 +1550,11 @@ function CaregiverSchedule() {
 
   useEffect(() => {
     api
-      .get("/api/caregiver/overview")
+      .get("/api/caregiver/patients")
       .then((res) => {
-        setOverview(res.data);
-        if (res.data.patients.length > 0) setSelectedPatientId(res.data.patients[0].id);
+        const pts: OverviewPatient[] = res.data.patients || [];
+        setOverview({ patients: pts, upcomingVisits: [], medications: [], alerts: [] });
+        if (pts.length > 0) setSelectedPatientId(pts[0].id);
       })
       .catch(() => setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] }))
       .finally(() => setLoadingOverview(false));
@@ -1440,8 +1582,8 @@ function CaregiverSchedule() {
       const updated = await updateVisitStatus(v.id, "CONFIRMED");
       setVisits((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
       void refreshVisits(true);
-    } catch (e: any) {
-      showToast(e?.response?.data?.error || "Failed to confirm visit", "error");
+    } catch (e: unknown) {
+      showToast(axiosLikeApiError(e, "Failed to confirm visit"), "error");
     } finally {
       setActionId(null);
     }
@@ -1463,8 +1605,8 @@ function CaregiverSchedule() {
       setVisits((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
       void refreshVisits(true);
       showToast("Visit cancelled.", "success");
-    } catch (e: any) {
-      showToast(e?.response?.data?.error || "Failed to cancel visit", "error");
+    } catch (e: unknown) {
+      showToast(axiosLikeApiError(e, "Failed to cancel visit"), "error");
     } finally {
       setActionId(null);
     }
@@ -1505,8 +1647,8 @@ function CaregiverSchedule() {
       setShowReschedule(null);
       showToast("Reschedule request submitted for admin review.", "success");
       await refreshVisits(true);
-    } catch (e: any) {
-      setReschedError(e?.response?.data?.error || "Failed to submit reschedule request.");
+    } catch (e: unknown) {
+      setReschedError(axiosLikeApiError(e, "Failed to submit reschedule request."));
     } finally {
       setReschedSubmitting(false);
     }
@@ -1544,7 +1686,7 @@ function CaregiverSchedule() {
               <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
               <div className="cg-patient-chip-info">
                 <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
-                <span className="cg-patient-chip-rel">{p.relationship || "Caregiver"}</span>
+                <span className="cg-patient-chip-rel">{p.relationship || "MPOA/Family"}</span>
               </div>
               {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
             </div>
@@ -1727,14 +1869,15 @@ function CaregiverMedications() {
     const run = async () => {
       setLoading(true);
       try {
-        const [ovRes, meds] = await Promise.all([
-          api.get("/api/caregiver/overview"),
+        const [ptsRes, meds] = await Promise.all([
+          api.get("/api/caregiver/patients"),
           getMedications({ status: "ACTIVE" }),
         ]);
-        setOverview(ovRes.data);
+        const pts: OverviewPatient[] = ptsRes.data.patients || [];
+        setOverview({ patients: pts, upcomingVisits: [], medications: [], alerts: [] });
         setMedications(meds);
-        if (ovRes.data.patients.length > 0) {
-          setSelectedPatientId(ovRes.data.patients[0].id);
+        if (pts.length > 0) {
+          setSelectedPatientId(pts[0].id);
         }
       } catch {
         setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] });
@@ -1791,7 +1934,7 @@ function CaregiverMedications() {
               <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
               <div className="cg-patient-chip-info">
                 <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
-                <span className="cg-patient-chip-rel">{p.relationship || "Caregiver"}</span>
+                <span className="cg-patient-chip-rel">{p.relationship || "MPOA/Family"}</span>
               </div>
               {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
             </div>
@@ -1844,7 +1987,7 @@ function CaregiverMedications() {
                 const refillDays = daysUntilRefill(m.refillDueDate);
                 const taken = !!takenMap[m.id];
                 return (
-                  <div key={m.id} className={`cg-med-item ${medicationCardClass(m.riskLevel as any)}`}>
+                  <div key={m.id} className={`cg-med-item ${medicationCardClass(m.riskLevel)}`}>
                     <div className="cg-med-main">
                       <div className="cg-med-name">{medDisplayName(m)}</div>
                       <div className="cg-med-dosage">
@@ -2000,7 +2143,7 @@ function CaregiverProgress() {
               <div className="cg-patient-chip-avatar">{patientInitials(b.patient)}</div>
               <div className="cg-patient-chip-info">
                 <span className="cg-patient-chip-name">{patientDisplayName(b.patient)}</span>
-                <span className="cg-patient-chip-rel">{b.patient.relationship || "Caregiver"}</span>
+                <span className="cg-patient-chip-rel">{b.patient.relationship || "MPOA/Family"}</span>
               </div>
               {b.patient.isPrimary && <span className="cg-primary-tag">MPOA</span>}
             </div>
@@ -2095,78 +2238,89 @@ type FeedbackPrompt = {
 
 function CaregiverFeedback() {
   const { showToast } = useFeedback();
-  const [overview, setOverview] = useState<OverviewData | null>(null);
+  const [patients, setPatients] = useState<OverviewPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [prompts, setPrompts] = useState<FeedbackPrompt[]>([]);
   const [showFeedbackModal, setShowFeedbackModal] = useState<FeedbackPrompt | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Feedback form state
   const [ratingHelpfulness, setRatingHelpfulness] = useState<number>(0);
   const [ratingCommunication, setRatingCommunication] = useState<number>(0);
   const [comment, setComment] = useState("");
 
+  // Shim so downstream JSX that reads `overview.patients` keeps working
+  const overview = patients.length > 0
+    ? { patients, upcomingVisits: [] as OverviewVisit[], medications: [] as OverviewMed[], alerts: [] as OverviewAlert[] }
+    : null;
+
   useEffect(() => {
     api
-      .get("/api/caregiver/overview")
+      .get("/api/caregiver/patients")
       .then((res) => {
-        setOverview(res.data);
-        if (res.data.patients.length > 0) {
-          setSelectedPatientId(res.data.patients[0].id);
+        const pts: OverviewPatient[] = res.data.patients || [];
+        setPatients(pts);
+        if (pts.length > 0) {
+          setSelectedPatientId(pts[0].id);
         }
-        generatePrompts(res.data);
       })
-      .catch(() => setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] }))
+      .catch(() => setPatients([]))
       .finally(() => setLoading(false));
   }, []);
 
-  const generatePrompts = (data: OverviewData) => {
-    const now = Date.now();
-    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-    const dismissed = getDismissedPrompts();
+  // When selected patient changes, fetch patient-scoped data and generate prompts
+  useEffect(() => {
+    if (!selectedPatientId) return;
+    api
+      .get(`/api/caregiver/patients/${selectedPatientId}/overview`)
+      .then((res) => {
+        generatePrompts(res.data, selectedPatientId);
+      })
+      .catch(() => setPrompts([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPatientId]);
 
+  const generatePrompts = (
+    data: {
+      recentCompletedVisits?: { id: string; scheduledAt: string; completedAt?: string | null; patient: { id: string; username: string; patientProfile: { legalName: string } | null } }[];
+      recentMedicationChanges?: { id: string; name: string; lastChangedAt: string | null; patientId: string; patientName: string }[];
+      medications?: OverviewMed[];
+    },
+    patientId: string,
+  ) => {
+    const dismissed = getDismissedPrompts();
     const newPrompts: FeedbackPrompt[] = [];
 
-    // Generate prompts for completed visits in last 7 days
-    data.upcomingVisits.forEach((v) => {
-      if (v.status === "COMPLETED") {
-        const visitTime = new Date(v.scheduledAt).getTime();
-        if (visitTime >= sevenDaysAgo && visitTime <= now) {
-          const promptId = `visit-${v.id}`;
-          if (!dismissed.includes(promptId)) {
-            newPrompts.push({
-              id: promptId,
-              patientId: v.patient.id,
-              patientName: v.patient.patientProfile?.legalName || v.patient.username,
-              eventType: "VISIT_COMPLETED",
-              relatedId: v.id,
-              eventDate: v.scheduledAt,
-              dismissed: false,
-            });
-          }
-        }
+    const completedVisits = data.recentCompletedVisits || [];
+    completedVisits.forEach((v) => {
+      const promptId = `visit-${v.id}-${patientId}`;
+      if (!dismissed.includes(promptId)) {
+        newPrompts.push({
+          id: promptId,
+          patientId: v.patient?.id || patientId,
+          patientName: v.patient?.patientProfile?.legalName || v.patient?.username || "Patient",
+          eventType: "VISIT_COMPLETED",
+          relatedId: v.id,
+          eventDate: v.completedAt || v.scheduledAt,
+          dismissed: false,
+        });
       }
     });
 
-    // Generate prompts for recently changed medications
-    data.medications.forEach((m) => {
-      if (m.riskLevel === "CHANGED" && m.lastChangedAt) {
-        const changeTime = new Date(m.lastChangedAt).getTime();
-        if (changeTime >= sevenDaysAgo && changeTime <= now) {
-          const promptId = `med-${m.id}`;
-          if (!dismissed.includes(promptId)) {
-            newPrompts.push({
-              id: promptId,
-              patientId: m.patient.id,
-              patientName: m.patient.patientProfile?.legalName || m.patient.username,
-              eventType: "MEDICATION_CHANGED",
-              relatedId: m.id,
-              eventDate: m.lastChangedAt,
-              dismissed: false,
-            });
-          }
-        }
+    const medChanges = data.recentMedicationChanges || [];
+    medChanges.forEach((m) => {
+      if (!m.lastChangedAt) return;
+      const promptId = `med-${m.id}-${patientId}`;
+      if (!dismissed.includes(promptId)) {
+        newPrompts.push({
+          id: promptId,
+          patientId: m.patientId || patientId,
+          patientName: m.patientName || "Patient",
+          eventType: "MEDICATION_CHANGED",
+          relatedId: m.id,
+          eventDate: m.lastChangedAt,
+          dismissed: false,
+        });
       }
     });
 
@@ -2218,8 +2372,8 @@ function CaregiverFeedback() {
       showToast("Feedback submitted successfully", "success");
       dismissPrompt(showFeedbackModal.id);
       setShowFeedbackModal(null);
-    } catch (e: any) {
-      showToast(e?.response?.data?.error || "Failed to submit feedback", "error");
+    } catch (e: unknown) {
+      showToast(axiosLikeApiError(e, "Failed to submit feedback"), "error");
     } finally {
       setSubmitting(false);
     }
@@ -2265,7 +2419,7 @@ function CaregiverFeedback() {
               <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
               <div className="cg-patient-chip-info">
                 <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
-                <span className="cg-patient-chip-rel">{p.relationship || "Caregiver"}</span>
+                <span className="cg-patient-chip-rel">{p.relationship || "MPOA/Family"}</span>
               </div>
               {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
             </div>

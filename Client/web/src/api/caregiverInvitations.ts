@@ -91,7 +91,7 @@ export async function validateCode(code: string): Promise<ValidateCodeResult> {
 export async function getCaregiverLinks(params?: {
   active?: boolean;
 }): Promise<ApiCaregiverLink[]> {
-  const queryParams: any = {};
+  const queryParams: Record<string, string> = {};
   if (params?.active !== undefined) queryParams.active = String(params.active);
   const res = await api.get("/api/caregiver-links", { params: queryParams });
   return res.data.links;

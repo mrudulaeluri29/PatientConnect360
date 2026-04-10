@@ -11,21 +11,36 @@ interface Visit {
   patient: { id: string; username: string };
 }
 
+type PatientHEPSection = "exercises" | "prep";
+
+function getApiErrorMessage(err: unknown, fallback: string): string {
+  if (typeof err === "object" && err !== null && "response" in err) {
+    const data = (err as { response?: { data?: unknown } }).response?.data;
+    if (data && typeof data === "object" && data !== null && "error" in data) {
+      const e = (data as { error: unknown }).error;
+      if (typeof e === "string") return e;
+    }
+  }
+  return fallback;
+}
+
+const PATIENT_HEP_SECTIONS: { key: PatientHEPSection; label: string }[] = [
+  { key: "exercises", label: "🏋️ My Home Exercises" },
+  { key: "prep", label: "📋 Visit Prep Tasks" },
+];
+
 // ─── Main Tab Component ───────────────────────────────────────────────────────
 export default function PatientHEPTab() {
-  const [activeSection, setActiveSection] = useState<"exercises" | "prep">("exercises");
+  const [activeSection, setActiveSection] = useState<PatientHEPSection>("exercises");
 
   return (
     <div style={{ padding: "1.5rem" }}>
       {/* Section switcher */}
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0.5rem" }}>
-        {[
-          { key: "exercises", label: "🏋️ My Home Exercises" },
-          { key: "prep", label: "📋 Visit Prep Tasks" },
-        ].map((s) => (
+        {PATIENT_HEP_SECTIONS.map((s) => (
           <button
             key={s.key}
-            onClick={() => setActiveSection(s.key as any)}
+            onClick={() => setActiveSection(s.key)}
             style={{
               padding: "0.5rem 1rem",
               borderRadius: "8px",
@@ -78,8 +93,11 @@ function MyExercises() {
       // Refresh
       const data = await getHEPAssignments();
       setAssignments(data);
-    } catch (e: any) {
-      setMessage({ ...message, [assignmentId]: `❌ ${e.response?.data?.error || "Failed"}` });
+    } catch (err: unknown) {
+      setMessage({
+        ...message,
+        [assignmentId]: `❌ ${getApiErrorMessage(err, "Failed")}`,
+      });
     } finally {
       setCompleting(null);
     }
@@ -281,6 +299,7 @@ function MyPrepTasks() {
   const [tasks, setTasks] = useState<VisitPrepTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -306,22 +325,29 @@ function MyPrepTasks() {
 
   const handleSelectVisit = async (visit: Visit) => {
     setSelectedVisit(visit);
+    setError("");
     try {
       const data = await getVisitPrepTasks(visit.id);
       setTasks(data);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      setError(getApiErrorMessage(e, "Could not load prep tasks for this visit"));
+    }
   };
 
   const handleToggleDone = async (task: VisitPrepTask) => {
     setToggling(task.id);
+    setError("");
     try {
       await updateVisitPrepTask(task.id, { isDone: !task.isDone });
       if (selectedVisit) {
         const data = await getVisitPrepTasks(selectedVisit.id);
         setTasks(data);
       }
-    } catch (e) { console.error(e); }
-    finally { setToggling(null); }
+    } catch (e) {
+      setError(getApiErrorMessage(e, "Could not update task"));
+    } finally {
+      setToggling(null);
+    }
   };
 
   if (loading) return <p>Loading prep tasks...</p>;
@@ -380,6 +406,12 @@ function MyPrepTasks() {
                     </span>
                   )}
                 </div>
+
+                {error && (
+                  <div style={{ marginBottom: "1rem", padding: "0.75rem", borderRadius: "8px", background: "#fee2e2", color: "#991b1b", fontSize: "0.875rem" }}>
+                    {error}
+                  </div>
+                )}
 
                 {/* Progress bar */}
                 {tasks.length > 0 && (

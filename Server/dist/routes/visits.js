@@ -582,7 +582,7 @@ router.post("/:id/review", requireRole_1.requireAdmin, async (req, res) => {
             // ── Feature 2: Notify that reschedule was approved ──
             (0, notificationHelpers_1.onVisitApproved)(existing.patient.id, existing.requestedById, existing.id, existing.clinician.username, nextScheduledAt);
             // Cancel any pending reminders for the original visit
-            (0, visitReminders_1.cancelPendingReminders)(existing.originalVisitId);
+            await (0, visitReminders_1.cancelPendingReminders)(existing.originalVisitId);
             // ── Feature 5: Audit log for reschedule approval ──
             await (0, audit_1.logAuditEvent)({
                 actorId: user.id,
@@ -870,7 +870,7 @@ router.patch("/:id", async (req, res) => {
                 select: { username: true },
             });
             (0, notificationHelpers_1.onVisitCancelled)(existing.patientId, existing.clinicianId, existing.id, data.cancelReason || null, cancellingUser?.username || "A user");
-            (0, visitReminders_1.cancelPendingReminders)(existing.id);
+            await (0, visitReminders_1.cancelPendingReminders)(existing.id);
             // ── Feature 5: Audit log for appointment cancellation ──
             await (0, audit_1.logAuditEvent)({
                 actorId: user.id,
