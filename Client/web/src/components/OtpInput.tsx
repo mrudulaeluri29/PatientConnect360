@@ -38,10 +38,12 @@ export default function OtpInput({ length = 6, value, onChange, error }: { lengt
     cells.push(
       <input
         key={i}
-        ref={(el) => (inputs.current[i] = el)}
+        ref={(el) => {
+          inputs.current[i] = el;
+        }}
         value={value[i] || ""}
         onChange={(e) => handleChange(e, i)}
-        onKeyDown={(e) => handleKey(e as any, i)}
+        onKeyDown={(e) => handleKey(e, i)}
         onPaste={handlePaste}
         inputMode="numeric"
         pattern="[0-9]*"

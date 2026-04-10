@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
 import OtpInput from "../components/OtpInput";
 import { verifyOtp, resendOtp } from "../api/auth";
@@ -27,7 +27,7 @@ export default function VerifyEmail() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await verifyOtp(email, code);
+      await verifyOtp(email, code);
       // success -> show transient success UI then redirect
       setSuccess(true);
       // wait 3 seconds then navigate

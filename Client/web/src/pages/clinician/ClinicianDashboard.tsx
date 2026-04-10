@@ -22,7 +22,6 @@ import {
   availabilityStatusClass,
   formatAvailabilityDate,
   type ApiAvailability,
-  type AvailabilityStatus,
 } from "../../api/availability";
 
 export default function ClinicianDashboard() {
@@ -454,8 +453,6 @@ function AppointmentsHub() {
     appt.patient.toLowerCase().includes(searchTerm.toLowerCase())
   );
   const confirmedAppointments = upcomingAppointments.filter((appt) => appt.status === "Confirmed").length;
-  const pendingAppointments = upcomingAppointments.filter((appt) => appt.status === "Pending").length;
-
   const pendingSubmissions = submissions.filter((s) => s.status === "PENDING").length;
   const approvedSubmissions = submissions.filter((s) => s.status === "APPROVED").length;
 
@@ -875,7 +872,6 @@ function ContactStaffHub() {
 
 // Today's Schedule Component
 function TodaySchedule() {
-  const { user } = useAuth();
   const [selectedVisit, setSelectedVisit] = useState<string | null>(null);
   const [visits, setVisits] = useState<ApiVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1097,7 +1093,7 @@ function ClinicianCareRecordsTab() {
           return { id: p.id, label };
         });
         setOptions(opts);
-        setSel((s) => (s && opts.some((o) => o.id === s) ? s : opts[0]?.id || ""));
+        setSel((s) => (s && opts.some((o: { id: string }) => o.id === s) ? s : opts[0]?.id || ""));
       })
       .catch(() => {
         setOptions([]);
@@ -1987,7 +1983,7 @@ interface FlaggedTasksProps {
   onNavigateToPatients: () => void;
 }
 
-function FlaggedTasks({ onNavigateToMessages, onNavigateToPatients }: FlaggedTasksProps) {
+export function FlaggedTasks({ onNavigateToMessages, onNavigateToPatients }: FlaggedTasksProps) {
   const [completedTaskIds, setCompletedTaskIds] = useState<Set<string>>(new Set());
 
   const toggleTaskComplete = (taskId: string) => {

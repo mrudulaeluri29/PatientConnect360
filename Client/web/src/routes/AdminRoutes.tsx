@@ -2,7 +2,7 @@
 // Defines all admin-only routes
 // All routes are protected by RequireAdmin middleware
 
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router";
 import RequireAdmin from "../middleware/RequireAdmin";
 import AdminLogin from "../pages/admin/AdminLogin";
 import AdminDashboard from "../pages/admin/AdminDashboard";

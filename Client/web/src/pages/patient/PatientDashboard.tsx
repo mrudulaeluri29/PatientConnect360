@@ -7,8 +7,6 @@ import NotificationBell from "../../components/NotificationBell";
 import "./PatientDashboard.css";
 import PatientHEPTab from "./PatientHEPTab";
 import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
-import type { Visit } from "../../types/visit";
-import { mockVisits } from "../../data/mockVisits";
 import {
   getVisits,
   updateVisitStatus,
@@ -35,6 +33,12 @@ import {
   type ApiVital,
   type VitalType,
 } from "../../api/vitals";
+import {
+  getCarePlans,
+  type ApiCarePlan,
+  type ApiCarePlanItem,
+  type CarePlanItemProgressStatus,
+} from "../../api/carePlans";
 import {
   getMyAvailability,
   formatAvailabilityDate,
@@ -70,6 +74,28 @@ const datetimeLocalToIso = (value?: string): string | undefined => {
 
   return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
 };
+
+function latestCarePlanItemStatus(item: ApiCarePlanItem, patientId: string): CarePlanItemProgressStatus {
+  return item.progress
+    .filter((p) => p.patientId === patientId)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]?.status ?? "NOT_STARTED";
+}
+
+function carePlanItemPercent(status: CarePlanItemProgressStatus): number {
+  if (status === "COMPLETED") return 100;
+  if (status === "IN_PROGRESS") return 50;
+  return 0;
+}
+
+function carePlanOverallPercent(plan: ApiCarePlan, patientId: string): number {
+  const items = plan.items ?? [];
+  if (!items.length) return 0;
+  const startedOrDone = items.filter((item) => {
+    const status = latestCarePlanItemStatus(item, patientId);
+    return status === "COMPLETED" || status === "IN_PROGRESS";
+  }).length;
+  return Math.round((startedOrDone / items.length) * 100);
+}
 
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -146,7 +172,7 @@ export default function PatientDashboard() {
         </div>
         <div className="patient-header-right">
           <NotificationBell
-            onMessageClick={(view, conversationId, messageId) => {
+            onMessageClick={(_view, conversationId, messageId) => {
               setActiveTab("messages");
               if (conversationId) {
                 setPendingConversation({ convId: conversationId, messageId });
@@ -368,6 +394,9 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
   const [careTeam, setCareTeam] = useState<{ id: string; username: string; specialization: string | null }[]>([]);
   const [refillAlerts, setRefillAlerts] = useState<ApiMedication[]>([]);
   const [teamAvailability, setTeamAvailability] = useState<ApiAvailability[]>([]);
+  const [carePlans, setCarePlans] = useState<ApiCarePlan[]>([]);
+  const [carePlansLoading, setCarePlansLoading] = useState(true);
+  const [carePlansError, setCarePlansError] = useState<string | null>(null);
   const [selectedClinician, setSelectedClinician] = useState<{ id: string; username: string; specialization: string | null } | null>(null);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestClinician, setRequestClinician] = useState<{ id: string; username: string } | null>(null);
@@ -423,7 +452,29 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
         return days !== null && days <= 7 && days >= 0;
       })))
       .catch(() => {});
+
+    if (user?.id) {
+      setCarePlansLoading(true);
+      setCarePlansError(null);
+      getCarePlans(user.id)
+        .then((plans) => setCarePlans(plans))
+        .catch((e: unknown) => {
+          const msg =
+            (e as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+            "Could not load care plan progress.";
+          setCarePlans([]);
+          setCarePlansError(msg);
+        })
+        .finally(() => setCarePlansLoading(false));
+    } else {
+      setCarePlans([]);
+      setCarePlansLoading(false);
+    }
   }, [user?.id, refreshVisits]);
+
+  const activeCarePlan = carePlans.find((plan) => plan.status === "ACTIVE") ?? carePlans[0] ?? null;
+  const activeCarePlanPercent =
+    activeCarePlan && user?.id ? carePlanOverallPercent(activeCarePlan, user.id) : 0;
 
   return (
     <div className="patient-content">
@@ -455,32 +506,55 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
           <button className="btn-view-all" onClick={onNavigateToVisits}>View All Visits</button>
         </div>
 
-        {/* Care Plan Progress — static until care plan model is built */}
+        {/* Care Plan Progress */}
         <div className="overview-card">
           <h3 className="card-title">Care Plan Progress</h3>
-          <div className="goals-tracker">
-            <div className="goal-item">
-              <div className="goal-header">
-                <span className="goal-name">Walk 50 ft independently</span>
-                <span className="goal-progress">75%</span>
-              </div>
-              <div className="progress-bar"><div className="progress-fill" style={{ width: "75%" }}></div></div>
+          {carePlansLoading ? (
+            <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>Loading care plan progress...</div>
+          ) : carePlansError ? (
+            <div style={{ color: "#991b1b", fontSize: "0.9rem" }}>{carePlansError}</div>
+          ) : !activeCarePlan ? (
+            <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>
+              No active care plan yet. Your care team will add goals here when ready.
             </div>
-            <div className="goal-item">
-              <div className="goal-header">
-                <span className="goal-name">Manage diabetes</span>
-                <span className="goal-progress">90%</span>
-              </div>
-              <div className="progress-bar"><div className="progress-fill" style={{ width: "90%" }}></div></div>
+          ) : activeCarePlan.items.length === 0 ? (
+            <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>
+              Active care plan found, but no goals have been added yet.
             </div>
-            <div className="goal-item">
-              <div className="goal-header">
-                <span className="goal-name">Wound healing</span>
-                <span className="goal-progress">60%</span>
+          ) : (
+            <div className="goals-tracker">
+              <div className="goal-item">
+                <div className="goal-header">
+                  <span className="goal-name">Overall active care plan</span>
+                  <span className="goal-progress">{activeCarePlanPercent}%</span>
+                </div>
+                <div className="progress-bar">
+                  <div className="progress-fill" style={{ width: `${activeCarePlanPercent}%` }}></div>
+                </div>
               </div>
-              <div className="progress-bar"><div className="progress-fill" style={{ width: "60%" }}></div></div>
+              {activeCarePlan.items.map((item) => {
+                const status = user?.id ? latestCarePlanItemStatus(item, user.id) : "NOT_STARTED";
+                const percent = carePlanItemPercent(status);
+                return (
+                  <div className="goal-item" key={item.id}>
+                    <div className="goal-header">
+                      <span className="goal-name">{item.title}</span>
+                      <span className="goal-progress">{status.replace("_", " ")} - {percent}%</span>
+                    </div>
+                    {item.details ? (
+                      <div style={{ color: "#6b7280", fontSize: "0.85rem", marginBottom: "0.4rem" }}>
+                        {item.details}
+                      </div>
+                    ) : null}
+                    <div className="progress-bar">
+                      <div className="progress-fill" style={{ width: `${percent}%` }}></div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          )}
+          <button className="btn-view-all" onClick={onNavigateToRecords}>Open Records</button>
         </div>
 
         {/* Assigned Clinicians — clickable to see history + schedule */}
@@ -686,7 +760,6 @@ function HEPBanner() {
 }
 // Upcoming Visits Component
 function UpcomingVisits() {
-  const { user } = useAuth();
   const { showToast, promptDialog } = useFeedback();
   const [visits, setVisits] = useState<ApiVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1138,13 +1211,23 @@ function MedicationsSupplies() {
 function HealthSummary() {
   const { user } = useAuth();
   const [latest, setLatest] = useState<Partial<Record<VitalType, ApiVital>>>({});
+  const [carePlans, setCarePlans] = useState<ApiCarePlan[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.id) return;
-    getLatestVitals(user.id)
-      .then(setLatest)
-      .catch(() => setLatest({}))
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    Promise.allSettled([getLatestVitals(user.id), getCarePlans(user.id)])
+      .then(([vitalsResult, carePlansResult]) => {
+        if (vitalsResult.status === "fulfilled") setLatest(vitalsResult.value);
+        else setLatest({});
+
+        if (carePlansResult.status === "fulfilled") setCarePlans(carePlansResult.value);
+        else setCarePlans([]);
+      })
       .finally(() => setLoading(false));
   }, [user?.id]);
 
@@ -1168,6 +1251,11 @@ function HealthSummary() {
       message: "Based on recent assessments, fall risk factors have been identified. Safety measures are in place.",
     },
   ];
+  const activeCarePlan = carePlans.find((plan) => plan.status === "ACTIVE") ?? carePlans[0] ?? null;
+  const activeCarePlanPercent =
+    activeCarePlan && user?.id ? carePlanOverallPercent(activeCarePlan, user.id) : 0;
+  const circumference = 2 * Math.PI * 50;
+  const circleOffset = circumference * (1 - activeCarePlanPercent / 100);
 
   return (
     <div className="patient-content">
@@ -1259,37 +1347,57 @@ function HealthSummary() {
           </div>
         </div>
 
-        {/* Progress Visuals — static until care plan tracking is built */}
+        {/* Progress Visuals */}
         <div className="progress-section">
           <h3 className="subsection-title">Therapy Progress</h3>
-          <div className="progress-visuals">
-            <div className="progress-visual-card">
-              <div className="progress-visual-title">Physical Therapy Completion</div>
-              <div className="progress-circle">
-                <svg width="120" height="120" viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="50" stroke="#e5e7eb" strokeWidth="10" fill="none"></circle>
-                  <circle cx="60" cy="60" r="50" stroke="#6E5B9A" strokeWidth="10" fill="none"
-                    strokeDasharray={`${2 * Math.PI * 50}`}
-                    strokeDashoffset={`${2 * Math.PI * 50 * 0.25}`}
-                    transform="rotate(-90 60 60)"></circle>
-                </svg>
-                <div className="progress-percentage">75%</div>
+          {!activeCarePlan ? (
+            <div style={{ color: "#6b7280", padding: "1rem 0", fontSize: "0.9rem" }}>
+              No care plan progress available yet.
+            </div>
+          ) : (
+            <div className="progress-visuals">
+              <div className="progress-visual-card">
+                <div className="progress-visual-title">Active Care Plan Started</div>
+                <div className="progress-circle">
+                  <svg width="120" height="120" viewBox="0 0 120 120">
+                    <circle cx="60" cy="60" r="50" stroke="#e5e7eb" strokeWidth="10" fill="none"></circle>
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="50"
+                      stroke="#6E5B9A"
+                      strokeWidth="10"
+                      fill="none"
+                      strokeDasharray={`${circumference}`}
+                      strokeDashoffset={`${circleOffset}`}
+                      transform="rotate(-90 60 60)"
+                    ></circle>
+                  </svg>
+                  <div className="progress-percentage">{activeCarePlanPercent}%</div>
+                </div>
+              </div>
+              <div className="progress-visual-card">
+                <div className="progress-visual-title">Care Plan Items</div>
+                <div style={{ color: "#374151", fontSize: "0.9rem", lineHeight: 1.6 }}>
+                  <strong>{activeCarePlan.items.length}</strong> total item{activeCarePlan.items.length === 1 ? "" : "s"}
+                  <br />
+                  <strong>
+                    {activeCarePlan.items.filter((item) =>
+                      user?.id ? latestCarePlanItemStatus(item, user.id) === "COMPLETED" : false
+                    ).length}
+                  </strong>{" "}
+                  completed
+                  <br />
+                  <strong>
+                    {activeCarePlan.items.filter((item) =>
+                      user?.id ? latestCarePlanItemStatus(item, user.id) === "IN_PROGRESS" : false
+                    ).length}
+                  </strong>{" "}
+                  in progress
+                </div>
               </div>
             </div>
-            <div className="progress-visual-card">
-              <div className="progress-visual-title">Wound Care Progress</div>
-              <div className="progress-circle">
-                <svg width="120" height="120" viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="50" stroke="#e5e7eb" strokeWidth="10" fill="none"></circle>
-                  <circle cx="60" cy="60" r="50" stroke="#6E5B9A" strokeWidth="10" fill="none"
-                    strokeDasharray={`${2 * Math.PI * 50}`}
-                    strokeDashoffset={`${2 * Math.PI * 50 * 0.40}`}
-                    transform="rotate(-90 60 60)"></circle>
-                </svg>
-                <div className="progress-percentage">60%</div>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
