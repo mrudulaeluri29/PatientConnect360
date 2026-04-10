@@ -1,2 +1,2 @@
 ALTER TABLE "Visit"
-ADD COLUMN "medicationChangesSummary" TEXT;
+ADD COLUMN IF NOT EXISTS "medicationChangesSummary" TEXT;
