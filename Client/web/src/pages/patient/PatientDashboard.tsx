@@ -5,6 +5,8 @@ import { useFeedback } from "../../contexts/FeedbackContext";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
 import "./PatientDashboard.css";
+import PatientHEPTab from "./PatientHEPTab";
+import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
 import type { Visit } from "../../types/visit";
 import { mockVisits } from "../../data/mockVisits";
 import {
@@ -51,7 +53,6 @@ import {
   type ApiInvitation,
   type ApiCaregiverLink,
 } from "../../api/caregiverInvitations";
-import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
 import {
   getMyPrivacySettings,
   updateMyPrivacySettings,
@@ -135,6 +136,12 @@ export default function PatientDashboard() {
             >
               Family
             </button>
+            <button
+              className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
+              onClick={() => setActiveTab("exercises")}
+            >
+              Exercises & Tasks
+            </button>
           </nav>
         </div>
         <div className="patient-header-right">
@@ -162,7 +169,7 @@ export default function PatientDashboard() {
       <main className="patient-main">
         {privacyConsentRequired ? (
           <div className="privacy-global-warning">
-            Please click Re-consent in Records → Privacy & consent to continue using other sections.
+            Please click Re-consent in Records &rarr; Privacy &amp; consent to continue using other sections.
           </div>
         ) : null}
         {activeTab === "overview" && (
@@ -187,6 +194,7 @@ export default function PatientDashboard() {
           />
         )}
         {activeTab === "family" && <FamilyAccessPanel />}
+        {activeTab === "exercises" && <PatientHEPTab />}
       </main>
     </div>
   );
@@ -353,13 +361,7 @@ function PrivacyConsentCard({ onPendingChange }: { onPendingChange?: (pending: b
 }
 
 // overview Tab Component
-function OverviewTab({
-  onNavigateToVisits,
-  onNavigateToRecords,
-}: {
-  onNavigateToVisits: () => void;
-  onNavigateToRecords: () => void;
-}) {
+function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateToVisits: () => void; onNavigateToRecords?: () => void }) {
   const { user } = useAuth();
   const [allVisits, setAllVisits] = useState<ApiVisit[]>([]);
   const [upcomingVisits, setUpcomingVisits] = useState<ApiVisit[]>([]);
@@ -453,14 +455,32 @@ function OverviewTab({
           <button className="btn-view-all" onClick={onNavigateToVisits}>View All Visits</button>
         </div>
 
+        {/* Care Plan Progress — static until care plan model is built */}
         <div className="overview-card">
-          <h3 className="card-title">Care plan &amp; documents</h3>
-          <p style={{ color: "#6b7280", fontSize: "0.9rem", margin: "0 0 0.75rem" }}>
-            View your structured care plan, update progress, and download documents your team shares with you.
-          </p>
-          <button type="button" className="btn-view-all" onClick={onNavigateToRecords}>
-            Open Records
-          </button>
+          <h3 className="card-title">Care Plan Progress</h3>
+          <div className="goals-tracker">
+            <div className="goal-item">
+              <div className="goal-header">
+                <span className="goal-name">Walk 50 ft independently</span>
+                <span className="goal-progress">75%</span>
+              </div>
+              <div className="progress-bar"><div className="progress-fill" style={{ width: "75%" }}></div></div>
+            </div>
+            <div className="goal-item">
+              <div className="goal-header">
+                <span className="goal-name">Manage diabetes</span>
+                <span className="goal-progress">90%</span>
+              </div>
+              <div className="progress-bar"><div className="progress-fill" style={{ width: "90%" }}></div></div>
+            </div>
+            <div className="goal-item">
+              <div className="goal-header">
+                <span className="goal-name">Wound healing</span>
+                <span className="goal-progress">60%</span>
+              </div>
+              <div className="progress-bar"><div className="progress-fill" style={{ width: "60%" }}></div></div>
+            </div>
+          </div>
         </div>
 
         {/* Assigned Clinicians — clickable to see history + schedule */}
@@ -616,7 +636,54 @@ function OverviewTab({
   );
 }
 
+// ─── HEP Banner ───────────────────────────────────────────────────────────────
+function HEPBanner() {
+  const [activeCount, setActiveCount] = useState<number | null>(null);
 
+  useEffect(() => {
+    async function load() {
+      try {
+        const { api } = await import("../../lib/axios");
+        const res = await api.get("/api/hep");
+        const assignments = res.data.assignments || [];
+        const active = assignments.filter((a: any) => a.status === "ACTIVE").length;
+        setActiveCount(active);
+      } catch (e) { console.error(e); }
+    }
+    load();
+  }, []);
+
+  if (activeCount === null || activeCount === 0) return null;
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: "0.75rem",
+      padding: "0.75rem 1rem", marginBottom: "1rem",
+      borderRadius: "10px", background: "#f5f3ff",
+      border: "1px solid #c4b5fd",
+    }}>
+      <span style={{ fontSize: "1.5rem" }}>🏋️</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 600, color: "#6E5B9A", fontSize: "0.875rem" }}>
+          You have {activeCount} active home exercise{activeCount !== 1 ? "s" : ""}
+        </div>
+        <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>
+          Complete your exercises before your next visit
+        </div>
+      </div>
+      
+      <button
+        onClick={() => {
+          const btn = document.querySelector('[data-tab="exercises"]') as HTMLElement;
+          if (btn) btn.click();
+        }}
+        style={{ fontSize: "0.75rem", color: "#6E5B9A", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}
+      >
+        View Exercises
+      </button>
+    </div>
+  );
+}
 // Upcoming Visits Component
 function UpcomingVisits() {
   const { user } = useAuth();
@@ -766,7 +833,7 @@ function UpcomingVisits() {
           Request a Visit
         </button>
       </div>
-
+      <HEPBanner />
       {/* Upcoming */}
       <h3 style={{ fontSize: "1rem", color: "#374151", margin: "1rem 0 0.5rem" }}>Upcoming</h3>
       <div className="visits-container">

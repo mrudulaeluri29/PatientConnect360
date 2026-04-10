@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
+import CaregiverHEPTab from "./CaregiverHEPTab";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import NotificationBell from "../../components/NotificationBell";
 import { api } from "../../lib/axios";
@@ -220,6 +221,12 @@ export default function CaregiverDashboard() {
             <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
               Messages
             </button>
+            <button
+  className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
+  onClick={() => setActiveTab("exercises")}
+>
+  Exercises & Tasks
+</button>
           </nav>
         </div>
         <div className="cg-header-right">
@@ -245,6 +252,7 @@ export default function CaregiverDashboard() {
         {activeTab === "safety" && <CaregiverSafety onNavigate={setActiveTab} />}
         {activeTab === "feedback" && <CaregiverFeedback />}
         {activeTab === "messages" && <CaregiverMessages />}
+        {activeTab === "exercises" && <CaregiverHEPTab />}
       </main>
     </div>
   );

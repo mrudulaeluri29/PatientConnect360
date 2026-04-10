@@ -1,4 +1,4 @@
-import "./loadEnv";
+import "dotenv/config";  //loads .env file automatically 
 
 //imports libraries for building server 
 import express from "express";
@@ -24,14 +24,18 @@ import familyFeedbackRoutes from "./routes/familyFeedback";
 import carePlanRoutes from "./routes/carePlans";
 import patientDocumentRoutes from "./routes/patientDocuments";
 import patientPrivacyRoutes from "./routes/patientPrivacy";
+import hepRoutes from "./routes/hep";
+import visitPrepTaskRoutes from "./routes/visitPrepTasks";
 
 // Feature 2 imports
 import notificationRoutes from "./routes/notifications";
 import messageUpgradeRoutes from "./routes/messageUpgrades";
 import { startReminderScheduler } from "./jobs/visitReminders";
 
+
 // Import our Prisma database client
 import { prisma } from "./db";
+
 
 // No mailer in use since SendGrid was removed
 
@@ -39,6 +43,7 @@ const app = express(); //Creates an Express "application" this is our server.
 
 // Behind managed proxies (Render/Railway/etc.) so secure cookies can work correctly.
 app.set("trust proxy", 1);
+
 
 function parseAllowedOrigins(raw: string | undefined): string[] {
   if (!raw) return [];
@@ -68,6 +73,8 @@ app.use(
 app.use(cookieParser()); // before route handlers so req.cookies is always available
 app.use(express.json()); // tells Express to read JSON bodies
 
+
+
 //lets us know that the server is live
 //When someone visits "http://localhost:4000/health", the server replies with { ok: true, time: "..." }
 app.get("/health", (_req, res) => {
@@ -86,6 +93,8 @@ app.get("/db/ping", async (_req, res) => {
     res.status(500).json({ db: "error", message: "Cannot reach database" });
   }
 });
+
+app.use("/api/visits", visitPrepTaskRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/password-reset", passwordResetRoutes);
 app.use("/api/admin", adminRoutes);
@@ -115,6 +124,7 @@ app.use("/api/patients", patientPrivacyRoutes);
 app.use("/api/notifications", notificationRoutes);
 // Message upgrades merged into existing messages routes to avoid collision
 app.use("/api/messages-v2", messageUpgradeRoutes);
+app.use("/api/hep", hepRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 
