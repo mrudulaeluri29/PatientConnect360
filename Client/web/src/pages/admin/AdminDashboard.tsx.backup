@@ -1119,7 +1119,7 @@ function UserManagement() {
     <div className="user-management">
       <div className="section-header">
         <h2 className="section-title">User Management</h2>
-        <button className="btn-primary" onClick={() => setShowInviteModal(true)}>+ Invite Clinician</button>
+        <button className="btn-primary" onClick={() => setShowInviteModal(true)}>Invite Clinician</button>
       </div>
 
       <div className="user-filters">

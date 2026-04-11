@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
 import { InvitationStatus, AuditActionType } from "@prisma/client";
 import { logAuditEvent } from "../lib/audit";
+import { sendInvitationEmail } from "../mailer";
 
 const router = Router();
 
@@ -101,6 +102,15 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
         expiresAt: invitation.expiresAt.toISOString(),
       },
     });
+
+    const inviterName = invitation.patient?.patientProfile?.legalName || invitation.patient?.username || "A Patient";
+    sendInvitationEmail(invitation.email, "CAREGIVER", invitation.code, inviterName)
+      .then((res) => {
+        if (!res.success) {
+          console.error(`Failed to send caregiver invitation email to ${invitation.email}:`, res.error || res.reason);
+        }
+      })
+      .catch((err) => console.error("Error invoking sendInvitationEmail:", err));
 
     res.status(201).json({ invitation });
   } catch (e) {

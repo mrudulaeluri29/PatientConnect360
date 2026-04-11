@@ -714,6 +714,145 @@
   background: #fecaca;
 }
 
+.invite-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #991b1b;
+}
+
+.invite-empty-cell {
+  text-align: center;
+  padding: 2.5rem 1rem !important;
+}
+
+.invite-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: #6b7280;
+}
+
+.invite-empty-state svg {
+  color: #cbd5e1;
+}
+
+.invite-empty-state p {
+  margin: 0;
+}
+
+.invite-muted {
+  font-size: 0.9rem;
+}
+
+.invite-target-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.invite-target-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #ede9fe;
+  color: #6E5B9A;
+  flex-shrink: 0;
+}
+
+.invite-target-email {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.invite-target-role {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+.invite-code-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.invite-code {
+  display: inline-block;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #1f2937;
+  font-size: 0.85rem;
+}
+
+.invite-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.invite-copy-btn:hover {
+  border-color: #cbd5e1;
+  background: #f9fafb;
+  color: #42326E;
+}
+
+.invite-expiration {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.invitation-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.invitation-status--pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.invitation-status--used {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.invitation-status--expired {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.invitation-status--revoked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
@@ -781,6 +920,49 @@
   gap: 1rem;
   justify-content: flex-end;
   margin-top: 1.5rem;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  box-sizing: border-box;
+  background: white;
+  color: #1f2937;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: #6E5B9A;
+  box-shadow: 0 0 0 3px rgba(110, 91, 154, 0.1);
+}
+
+.invite-modal {
+  position: relative;
+}
+
+.invite-modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.invite-modal-close:hover {
+  background: #f3f4f6;
+  color: #1f2937;
 }
 
 /* Reports & Analytics */
@@ -1820,8 +2002,13 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Broadcast View */
@@ -2006,6 +2193,7 @@
     opacity: 0;
     transform: translateY(-20px) scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -2131,15 +2319,15 @@
     align-items: stretch;
     gap: 1rem;
   }
-  
+
   .filter-group {
     justify-content: space-between;
   }
-  
+
   .messages-table-container {
     overflow-x: auto;
   }
-  
+
   .messages-table {
     min-width: 800px;
   }
@@ -2149,27 +2337,27 @@
   .admin-messages .section-header {
     padding: 1rem;
   }
-  
+
   .messages-toolbar {
     padding: 1rem;
   }
-  
+
   .form-row {
     flex-direction: column;
     gap: 1rem;
   }
-  
+
   .modal-content {
     width: 95%;
     margin: 1rem;
   }
-  
+
   .modal-header,
   .modal-body,
   .modal-actions {
     padding: 1rem;
   }
-  
+
   .action-buttons {
     flex-wrap: wrap;
   }

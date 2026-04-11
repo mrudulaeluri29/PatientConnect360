@@ -4,6 +4,10 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { validatePassword, validateEmail, validateUsername } from "../utils/validation";
 import { sendOtp } from "../api/auth";
+import { ONBOARDING_CONSENTS, DEFAULT_COMM_PREFS } from "../api/onboarding";
+import type { CommPrefs } from "../api/onboarding";
+import ConsentSection from "../components/ConsentSection";
+import CommPreferences from "../components/CommPreferences";
 import AddressAutocomplete from "../components/AddressAutocomplete";
 import FileUpload from "../components/FileUpload";
 import "./Signup.css";
@@ -14,7 +18,6 @@ export default function Signup() {
     username: "",
     password: "",
     confirmPassword: "",
-    role: "PATIENT",
     // Patient-specific fields
     legalName: "",
     dateOfBirth: null as Date | null,
@@ -38,7 +41,9 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const isPatient = formData.role === "PATIENT";
+  // Feature 1: Consent and communication preferences state
+  const [consentState, setConsentState] = useState<Record<string, boolean>>({});
+  const [commPrefs, setCommPrefs] = useState<CommPrefs>(DEFAULT_COMM_PREFS);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -121,51 +126,56 @@ export default function Signup() {
     }
 
     // Patient-specific validation
-    if (isPatient) {
-      if (!formData.legalName.trim()) {
-        newErrors.legalName = "Legal name is required";
-      }
+    if (!formData.legalName.trim()) {
+      newErrors.legalName = "Legal name is required";
+    }
 
-      if (!formData.dateOfBirth) {
-        newErrors.dateOfBirth = "Date of birth is required";
-      } else {
-        const age = new Date().getFullYear() - formData.dateOfBirth.getFullYear();
-        if (age < 0 || age > 150) {
-          newErrors.dateOfBirth = "Please enter a valid date of birth";
-        }
+    if (!formData.dateOfBirth) {
+      newErrors.dateOfBirth = "Date of birth is required";
+    } else {
+      const age = new Date().getFullYear() - formData.dateOfBirth.getFullYear();
+      if (age < 0 || age > 150) {
+        newErrors.dateOfBirth = "Please enter a valid date of birth";
       }
+    }
 
-      if (!formData.phoneNumber.trim()) {
-        newErrors.phoneNumber = "Phone number is required";
-      } else if (formData.phoneNumber.replace(/\D/g, "").length < 10) {
-        newErrors.phoneNumber = "Please enter a valid phone number";
-      }
+    if (!formData.phoneNumber.trim()) {
+      newErrors.phoneNumber = "Phone number is required";
+    } else if (formData.phoneNumber.replace(/\D/g, "").length < 10) {
+      newErrors.phoneNumber = "Please enter a valid phone number";
+    }
 
-      if (!formData.insuranceProvider.trim()) {
-        newErrors.insuranceProvider = "Insurance provider is required";
-      }
+    if (!formData.insuranceProvider.trim()) {
+      newErrors.insuranceProvider = "Insurance provider is required";
+    }
 
-      if (!formData.insurancePolicyNumber.trim()) {
-        newErrors.insurancePolicyNumber = "Insurance policy number is required";
-      }
+    if (!formData.insurancePolicyNumber.trim()) {
+      newErrors.insurancePolicyNumber = "Insurance policy number is required";
+    }
 
-      if (!formData.preferredPharmacyName.trim()) {
-        newErrors.preferredPharmacyName = "Preferred pharmacy name is required";
-      }
+    if (!formData.preferredPharmacyName.trim()) {
+      newErrors.preferredPharmacyName = "Preferred pharmacy name is required";
+    }
 
-      if (!formData.pharmacyAddress.trim()) {
-        newErrors.pharmacyAddress = "Pharmacy address is required";
-      }
+    if (!formData.pharmacyAddress.trim()) {
+      newErrors.pharmacyAddress = "Pharmacy address is required";
+    }
 
-      if (!formData.pharmacyPhoneNumber.trim()) {
-        newErrors.pharmacyPhoneNumber = "Pharmacy phone number is required";
-      } else if (formData.pharmacyPhoneNumber.replace(/\D/g, "").length < 10) {
-        newErrors.pharmacyPhoneNumber = "Please enter a valid phone number";
-      }
+    if (!formData.pharmacyPhoneNumber.trim()) {
+      newErrors.pharmacyPhoneNumber = "Pharmacy phone number is required";
+    } else if (formData.pharmacyPhoneNumber.replace(/\D/g, "").length < 10) {
+      newErrors.pharmacyPhoneNumber = "Please enter a valid phone number";
+    }
 
-      if (!formData.homeAddress.trim()) {
-        newErrors.homeAddress = "Home address is required";
-      }
+    if (!formData.homeAddress.trim()) {
+      newErrors.homeAddress = "Home address is required";
+    }
+
+    // Feature 1: Validate required consents
+    const requiredConsents = ONBOARDING_CONSENTS.filter((c) => c.required);
+    const allConsentsAccepted = requiredConsents.every((c) => consentState[c.consentType]);
+    if (!allConsentsAccepted) {
+      newErrors.consents = "You must accept all required agreements to continue";
     }
 
     setErrors(newErrors);
@@ -194,10 +204,14 @@ export default function Signup() {
         preferredPharmacyName: formData.preferredPharmacyName,
         pharmacyAddress: formData.pharmacyAddress,
         pharmacyPhoneNumber: formData.pharmacyPhoneNumber,
-        // TODO: Handle file upload for insurance card
         uploadedFileName: uploadedFile?.name || null,
-        uploadedFileUrl: null, // Will be implemented with file upload service
+        uploadedFileUrl: null,
       };
+
+      // Feature 1: Include consents and communication preferences
+      const consents = Object.entries(consentState)
+        .filter(([, accepted]) => accepted)
+        .map(([consentType]) => ({ consentType, accepted: true }));
 
       // Start OTP flow: send verification email and store pending signup
       await sendOtp({
@@ -206,10 +220,12 @@ export default function Signup() {
         password: formData.password,
         role: "PATIENT",
         profileData,
-      });
+        consents,
+        communicationPreferences: commPrefs,
+      } as any);
 
       // Navigate to OTP verification page
-      navigate("/verify-email", { state: { email: formData.email } });
+      navigate("/verify-email", { state: { email: formData.email, role: "PATIENT" } });
     } catch (err: unknown) {
       let msg = "Registration failed. Please try again.";
       if (err && typeof err === "object" && "response" in err) {
@@ -232,7 +248,7 @@ export default function Signup() {
             <div className="brand-logo">
               <span className="logo-text">MediHealth</span>
             </div>
-            <h1 className="signup-title">Create Account</h1>
+            <h1 className="signup-title">Patient Registration</h1>
             <p className="signup-subtitle">
               Join MediHealth to manage your health, connect with your care team, and access your medical records
             </p>
@@ -257,9 +273,7 @@ export default function Signup() {
         <div className="signup-right">
           <div className="signup-form-container">
             <h2 className="form-title">Sign Up</h2>
-            <p className="form-subtitle">
-              {isPatient ? "Create your patient account" : "Create your account to get started"}
-            </p>
+            <p className="form-subtitle">Create your patient account</p>
 
             {errors.submit && (
               <div className="error-message">
@@ -301,191 +315,171 @@ export default function Signup() {
                 {errors.username && <span className="field-error">{errors.username}</span>}
               </div>
 
+              {/* Patient-Specific Fields */}
               <div className="form-group">
-                <label htmlFor="role">Role *</label>
-                <select
-                  id="role"
-                  name="role"
-                  value={formData.role}
+                <label htmlFor="legalName">Legal Name *</label>
+                <input
+                  type="text"
+                  id="legalName"
+                  name="legalName"
+                  value={formData.legalName}
                   onChange={handleChange}
+                  placeholder="John Doe"
+                  required
                   disabled={loading}
-                  className="role-select"
-                >
-                  <option value="PATIENT">Patient</option>
-                  <option value="CAREGIVER">Caregiver</option>
-                  <option value="CLINICIAN">Clinician</option>
-                </select>
+                  className={errors.legalName ? "error" : ""}
+                />
+                {errors.legalName && <span className="field-error">{errors.legalName}</span>}
               </div>
 
-              {/* Patient-Specific Fields */}
-              {isPatient && (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="legalName">Legal Name *</label>
-                    <input
-                      type="text"
-                      id="legalName"
-                      name="legalName"
-                      value={formData.legalName}
-                      onChange={handleChange}
-                      placeholder="John Doe"
-                      required
-                      disabled={loading}
-                      className={errors.legalName ? "error" : ""}
-                    />
-                    {errors.legalName && <span className="field-error">{errors.legalName}</span>}
-                  </div>
+              <div className="form-group">
+                <label htmlFor="dateOfBirth">Date of Birth *</label>
+                <DatePicker
+                  selected={formData.dateOfBirth}
+                  onChange={handleDateChange}
+                  dateFormat="MM/dd/yyyy"
+                  placeholderText="MM/DD/YYYY"
+                  maxDate={new Date()}
+                  showYearDropdown
+                  showMonthDropdown
+                  dropdownMode="select"
+                  yearDropdownItemNumber={100}
+                  scrollableYearDropdown
+                  className={errors.dateOfBirth ? "date-picker error" : "date-picker"}
+                  disabled={loading}
+                  required
+                  wrapperClassName="date-picker-wrapper"
+                />
+                {errors.dateOfBirth && <span className="field-error">{errors.dateOfBirth}</span>}
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="dateOfBirth">Date of Birth *</label>
-                    <DatePicker
-                      selected={formData.dateOfBirth}
-                      onChange={handleDateChange}
-                      dateFormat="MM/dd/yyyy"
-                      placeholderText="MM/DD/YYYY"
-                      maxDate={new Date()}
-                      showYearDropdown
-                      showMonthDropdown
-                      dropdownMode="select"
-                      yearDropdownItemNumber={100}
-                      scrollableYearDropdown
-                      className={errors.dateOfBirth ? "date-picker error" : "date-picker"}
-                      disabled={loading}
-                      required
-                      wrapperClassName="date-picker-wrapper"
-                    />
-                    {errors.dateOfBirth && <span className="field-error">{errors.dateOfBirth}</span>}
-                  </div>
+              <div className="form-group">
+                <label htmlFor="phoneNumber">Phone Number *</label>
+                <input
+                  type="tel"
+                  id="phoneNumber"
+                  name="phoneNumber"
+                  value={formData.phoneNumber}
+                  onChange={handlePhoneChange("phoneNumber")}
+                  placeholder="(555) 123-4567"
+                  required
+                  disabled={loading}
+                  className={errors.phoneNumber ? "error" : ""}
+                  maxLength={14}
+                />
+                {errors.phoneNumber && <span className="field-error">{errors.phoneNumber}</span>}
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="phoneNumber">Phone Number *</label>
-                    <input
-                      type="tel"
-                      id="phoneNumber"
-                      name="phoneNumber"
-                      value={formData.phoneNumber}
-                      onChange={handlePhoneChange("phoneNumber")}
-                      placeholder="(555) 123-4567"
-                      required
-                      disabled={loading}
-                      className={errors.phoneNumber ? "error" : ""}
-                      maxLength={14}
-                    />
-                    {errors.phoneNumber && <span className="field-error">{errors.phoneNumber}</span>}
-                  </div>
+              <div className="form-group">
+                <label htmlFor="insuranceProvider">Insurance Provider *</label>
+                <input
+                  type="text"
+                  id="insuranceProvider"
+                  name="insuranceProvider"
+                  value={formData.insuranceProvider}
+                  onChange={handleChange}
+                  placeholder="e.g., Blue Cross Blue Shield"
+                  required
+                  disabled={loading}
+                  className={errors.insuranceProvider ? "error" : ""}
+                />
+                {errors.insuranceProvider && <span className="field-error">{errors.insuranceProvider}</span>}
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="insuranceProvider">Insurance Provider *</label>
-                    <input
-                      type="text"
-                      id="insuranceProvider"
-                      name="insuranceProvider"
-                      value={formData.insuranceProvider}
-                      onChange={handleChange}
-                      placeholder="e.g., Blue Cross Blue Shield"
-                      required
-                      disabled={loading}
-                      className={errors.insuranceProvider ? "error" : ""}
-                    />
-                    {errors.insuranceProvider && <span className="field-error">{errors.insuranceProvider}</span>}
-                  </div>
+              <div className="form-group">
+                <label htmlFor="insurancePolicyNumber">Insurance Policy Number *</label>
+                <input
+                  type="text"
+                  id="insurancePolicyNumber"
+                  name="insurancePolicyNumber"
+                  value={formData.insurancePolicyNumber}
+                  onChange={handleChange}
+                  placeholder="e.g., ABC123456789"
+                  required
+                  disabled={loading}
+                  className={errors.insurancePolicyNumber ? "error" : ""}
+                />
+                {errors.insurancePolicyNumber && <span className="field-error">{errors.insurancePolicyNumber}</span>}
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="insurancePolicyNumber">Insurance Policy Number *</label>
-                    <input
-                      type="text"
-                      id="insurancePolicyNumber"
-                      name="insurancePolicyNumber"
-                      value={formData.insurancePolicyNumber}
-                      onChange={handleChange}
-                      placeholder="e.g., ABC123456789"
-                      required
-                      disabled={loading}
-                      className={errors.insurancePolicyNumber ? "error" : ""}
-                    />
-                    {errors.insurancePolicyNumber && <span className="field-error">{errors.insurancePolicyNumber}</span>}
-                  </div>
+              <div className="form-group">
+                <label htmlFor="preferredPharmacyName">Preferred Pharmacy Name *</label>
+                <input
+                  type="text"
+                  id="preferredPharmacyName"
+                  name="preferredPharmacyName"
+                  value={formData.preferredPharmacyName}
+                  onChange={handleChange}
+                  placeholder="e.g., CVS Pharmacy"
+                  required
+                  disabled={loading}
+                  className={errors.preferredPharmacyName ? "error" : ""}
+                />
+                {errors.preferredPharmacyName && <span className="field-error">{errors.preferredPharmacyName}</span>}
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="preferredPharmacyName">Preferred Pharmacy Name *</label>
-                    <input
-                      type="text"
-                      id="preferredPharmacyName"
-                      name="preferredPharmacyName"
-                      value={formData.preferredPharmacyName}
-                      onChange={handleChange}
-                      placeholder="e.g., CVS Pharmacy"
-                      required
-                      disabled={loading}
-                      className={errors.preferredPharmacyName ? "error" : ""}
-                    />
-                    {errors.preferredPharmacyName && <span className="field-error">{errors.preferredPharmacyName}</span>}
-                  </div>
+              <div className="form-group">
+                <label htmlFor="pharmacyAddress">Pharmacy Address *</label>
+                <AddressAutocomplete
+                  value={formData.pharmacyAddress}
+                  onChange={handleAddressChange("pharmacyAddress")}
+                  placeholder="Start typing pharmacy address..."
+                  error={errors.pharmacyAddress}
+                  disabled={loading}
+                />
+                {errors.pharmacyAddress && <span className="field-error">{errors.pharmacyAddress}</span>}
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="pharmacyAddress">Pharmacy Address *</label>
-                    <AddressAutocomplete
-                      value={formData.pharmacyAddress}
-                      onChange={handleAddressChange("pharmacyAddress")}
-                      placeholder="Start typing pharmacy address..."
-                      error={errors.pharmacyAddress}
-                      disabled={loading}
-                    />
-                    {errors.pharmacyAddress && <span className="field-error">{errors.pharmacyAddress}</span>}
-                  </div>
+              <div className="form-group">
+                <label htmlFor="pharmacyPhoneNumber">Pharmacy Phone Number *</label>
+                <input
+                  type="tel"
+                  id="pharmacyPhoneNumber"
+                  name="pharmacyPhoneNumber"
+                  value={formData.pharmacyPhoneNumber}
+                  onChange={handlePhoneChange("pharmacyPhoneNumber")}
+                  placeholder="e.g., (555) 987-6543"
+                  required
+                  disabled={loading}
+                  className={errors.pharmacyPhoneNumber ? "error" : ""}
+                  maxLength={14}
+                />
+                {errors.pharmacyPhoneNumber && <span className="field-error">{errors.pharmacyPhoneNumber}</span>}
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="pharmacyPhoneNumber">Pharmacy Phone Number *</label>
-                    <input
-                      type="tel"
-                      id="pharmacyPhoneNumber"
-                      name="pharmacyPhoneNumber"
-                      value={formData.pharmacyPhoneNumber}
-                      onChange={handlePhoneChange("pharmacyPhoneNumber")}
-                      placeholder="e.g., (555) 987-6543"
-                      required
-                      disabled={loading}
-                      className={errors.pharmacyPhoneNumber ? "error" : ""}
-                      maxLength={14}
-                    />
-                    {errors.pharmacyPhoneNumber && <span className="field-error">{errors.pharmacyPhoneNumber}</span>}
-                  </div>
+              <div className="form-group">
+                <label htmlFor="homeAddress">Home Address *</label>
+                <AddressAutocomplete
+                  value={formData.homeAddress}
+                  onChange={handleAddressChange("homeAddress")}
+                  placeholder="Start typing your home address..."
+                  error={errors.homeAddress}
+                  disabled={loading}
+                />
+                {errors.homeAddress && <span className="field-error">{errors.homeAddress}</span>}
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="homeAddress">Home Address *</label>
-                    <AddressAutocomplete
-                      value={formData.homeAddress}
-                      onChange={handleAddressChange("homeAddress")}
-                      placeholder="Start typing your home address..."
-                      error={errors.homeAddress}
-                      disabled={loading}
-                    />
-                    {errors.homeAddress && <span className="field-error">{errors.homeAddress}</span>}
-                  </div>
+              <div className="form-group">
+                <label htmlFor="apartmentSuite">Apartment, Suite, etc. (Optional)</label>
+                <input
+                  type="text"
+                  id="apartmentSuite"
+                  name="apartmentSuite"
+                  value={formData.apartmentSuite}
+                  onChange={handleChange}
+                  placeholder="Apt 4B"
+                  disabled={loading}
+                />
+              </div>
 
-                  <div className="form-group">
-                    <label htmlFor="apartmentSuite">Apartment, Suite, etc. (Optional)</label>
-                    <input
-                      type="text"
-                      id="apartmentSuite"
-                      name="apartmentSuite"
-                      value={formData.apartmentSuite}
-                      onChange={handleChange}
-                      placeholder="Apt 4B"
-                      disabled={loading}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <FileUpload
-                      onFileSelect={setUploadedFile}
-                      accept="image/*,.pdf"
-                      label="Upload Document (Optional)"
-                      disabled={loading}
-                    />
-                  </div>
-                </>
-              )}
+              <div className="form-group">
+                <FileUpload
+                  onFileSelect={setUploadedFile}
+                  accept="image/*,.pdf"
+                  label="Upload Document (Optional)"
+                  disabled={loading}
+                />
+              </div>
 
               <div className="form-group">
                 <label htmlFor="password">Password *</label>
@@ -579,6 +573,13 @@ export default function Signup() {
                 </div>
                 {errors.confirmPassword && <span className="field-error">{errors.confirmPassword}</span>}
               </div>
+
+              {/* Feature 1: Consent Section */}
+              <ConsentSection consents={ONBOARDING_CONSENTS} onChange={setConsentState} disabled={loading} />
+              {errors.consents && <span className="field-error">{errors.consents}</span>}
+
+              {/* Feature 1: Communication Preferences */}
+              <CommPreferences value={commPrefs} onChange={setCommPrefs} disabled={loading} />
 
               <button
                 type="submit"

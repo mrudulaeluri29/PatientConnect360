@@ -1,113 +1,257 @@
-import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router";
-import OtpInput from "../components/OtpInput";
+import { useState, useEffect, useCallback } from "react";
+import { useLocation, useNavigate, Link } from "react-router";
 import { verifyOtp, resendOtp } from "../api/auth";
 import "./Signup.css";
 
-type VerifyEmailNavState = { email?: string };
+const ROLE_REDIRECT_MAP: Record<string, string> = {
+  PATIENT: "/patient/dashboard",
+  CLINICIAN: "/clinician/login",
+  ADMIN: "/admin/login",
+  CAREGIVER: "/caregiver/dashboard",
+};
 
-function apiErrorMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === "object" && "response" in err) {
-    const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
-    if (typeof msg === "string" && msg) return msg;
-  }
-  return fallback;
-}
+const ROLE_LABEL_MAP: Record<string, string> = {
+  PATIENT: "Patient",
+  CLINICIAN: "Clinician",
+  ADMIN: "Administrator",
+  CAREGIVER: "Caregiver",
+};
 
 export default function VerifyEmail() {
-  const nav = useNavigate();
-  const loc = useLocation();
-  const email = (loc.state as VerifyEmailNavState | null | undefined)?.email ?? "";
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Pull email and role from navigation state
+  const email = (location.state as any)?.email || "";
+  const role = (location.state as any)?.role || "PATIENT";
 
   const [code, setCode] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [resendCooldown, setResendCooldown] = useState(60);
+  const [verified, setVerified] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
 
+  // Cooldown timer for resend
   useEffect(() => {
-    const t = setInterval(() => {
-      setResendCooldown((s) => Math.max(0, s - 1));
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => setCooldown((prev) => Math.max(0, prev - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
-  const [success, setSuccess] = useState(false);
-
-  const handleVerify = async () => {
+  const handleVerify = useCallback(async () => {
+    if (!code.trim()) {
+      setError("Please enter the verification code");
+      return;
+    }
     setLoading(true);
-    setError(null);
+    setError("");
+
     try {
-      await verifyOtp(email, code);
-      // success -> show transient success UI then redirect
-      setSuccess(true);
-      // wait 3 seconds then navigate
-      setTimeout(() => {
-        nav("/login");
-      }, 3000);
+      const res = await verifyOtp(email, code.trim());
+      if (res.data?.ok) {
+        setVerified(true);
+        // The verify-otp endpoint creates the account but doesn't set cookie;
+        // redirect to the appropriate login or dashboard
+        const redirectPath = ROLE_REDIRECT_MAP[role] || "/login";
+        setTimeout(() => navigate(redirectPath, { replace: true }), 2000);
+      } else {
+        setError(res.data?.error || "Verification failed. Please try again.");
+      }
     } catch (err: unknown) {
-      setError(apiErrorMessage(err, "Invalid code. Please try again."));
+      let msg = "Verification failed. Please try again.";
+      if (err && typeof err === "object" && "response" in err) {
+        const apiMsg = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+        if (typeof apiMsg === "string" && apiMsg) msg = apiMsg;
+      } else if (err instanceof Error && err.message) {
+        msg = err.message;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
-  };
+  }, [code, email, navigate, role]);
 
   const handleResend = async () => {
-    if (resendCooldown > 0) return;
-    setLoading(true);
+    if (cooldown > 0 || resending) return;
+    setResending(true);
+    setError("");
+
     try {
       await resendOtp(email);
-      setResendCooldown(60);
+      setCooldown(60);
     } catch (err: unknown) {
-      setError(apiErrorMessage(err, "Failed to resend code"));
+      let msg = "Failed to resend verification code.";
+      if (err && typeof err === "object" && "response" in err) {
+        const apiMsg = (err as { response?: { data?: { error?: string; retryAfter?: number } } }).response?.data;
+        if (apiMsg?.error === "cooldown" && apiMsg?.retryAfter) {
+          setCooldown(apiMsg.retryAfter);
+          msg = `Please wait ${apiMsg.retryAfter} seconds before requesting a new code.`;
+        } else if (typeof apiMsg?.error === "string") {
+          msg = apiMsg.error;
+        }
+      }
+      setError(msg);
     } finally {
-      setLoading(false);
+      setResending(false);
     }
   };
+
+  // Handle Enter key
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleVerify();
+  };
+
+  if (!email) {
+    return (
+      <div className="signup-page">
+        <div style={{ maxWidth: 480, margin: "100px auto", textAlign: "center", padding: 40 }}>
+          <h2>No Verification Pending</h2>
+          <p style={{ color: "#6b7280", marginTop: 12 }}>
+            Please go back and register first.
+          </p>
+          <Link to="/register" style={{ color: "#6E5B9A", fontWeight: 600, marginTop: 16, display: "inline-block" }}>
+            Go to Registration
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="signup-page">
-      <div className="signup-container">
-        <div className="signup-left" />
-        <div className="signup-right">
-          <div className="signup-form-container">
-            <div style={{ textAlign: "center", marginBottom: 8 }}>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>Verify your email</div>
-              <div style={{ color: "#666", marginTop: 6 }}>We sent a 6-digit code to {email}</div>
+      <div style={{
+        maxWidth: 480,
+        margin: "80px auto",
+        background: "#fff",
+        borderRadius: 16,
+        padding: "48px 40px",
+        boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
+        textAlign: "center",
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>
+          {verified ? "🎉" : "📧"}
+        </div>
+
+        <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#1a1a1a", marginBottom: 8 }}>
+          {verified ? "Account Created!" : "Verify Your Email"}
+        </h2>
+
+        <p style={{ color: "#6b7280", fontSize: "0.92rem", marginBottom: 24, lineHeight: 1.5 }}>
+          {verified ? (
+            <>
+              Your <strong>{ROLE_LABEL_MAP[role] || role}</strong> account has been successfully created.
+              Redirecting you to {role === "PATIENT" || role === "CAREGIVER" ? "your dashboard" : "the login page"}...
+            </>
+          ) : (
+            <>
+              We've sent a verification code to <strong>{email}</strong>.
+              <br />
+              <span style={{ fontSize: "0.85rem", color: "#9ca3af" }}>
+                Registering as: <strong>{ROLE_LABEL_MAP[role] || role}</strong>
+              </span>
+            </>
+          )}
+        </p>
+
+        {!verified && (
+          <>
+            <div style={{ marginBottom: 20 }}>
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => {
+                  setCode(e.target.value);
+                  if (error) setError("");
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Enter 6-digit code"
+                maxLength={6}
+                disabled={loading}
+                style={{
+                  width: "100%",
+                  fontSize: "1.6rem",
+                  textAlign: "center",
+                  letterSpacing: "0.3em",
+                  fontFamily: "monospace",
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: error ? "2px solid #ef4444" : "2px solid #e5e7eb",
+                  outline: "none",
+                  transition: "border-color 0.2s",
+                  background: loading ? "#f9fafb" : "#fff",
+                  boxSizing: "border-box",
+                }}
+                autoFocus
+              />
             </div>
 
-            {error && <div className="error-message"><span>{error}</span></div>}
-
-            {success ? (
-              <div style={{ textAlign: "center", padding: 20 }}>
-                <div style={{ fontSize: 48, color: "green", lineHeight: 1 }}>&#10003;</div>
-                <div style={{ fontWeight: 700, fontSize: 20, marginTop: 8 }}>
-                  Email Verified Successfully!
-                </div>
-                <div style={{ color: "#666", marginTop: 4 }}>
-                  Redirecting you to sign in...
-                </div>
+            {error && (
+              <div style={{
+                background: "rgba(239, 68, 68, 0.08)",
+                color: "#ef4444",
+                padding: "10px 16px",
+                borderRadius: 10,
+                fontSize: "0.88rem",
+                marginBottom: 16,
+                fontWeight: 500,
+              }}>
+                {error}
               </div>
-            ) : (
-              <>
-                <div style={{ marginTop: 12 }}>
-                  <OtpInput value={code} onChange={setCode} error={!!error} />
-                </div>
-
-                <button className="btn-signup-submit" onClick={handleVerify} disabled={loading || code.length < 6}>
-                  {loading ? "Verifying..." : "Verify"}
-                </button>
-
-                <div style={{ marginTop: 12, textAlign: "center" }}>
-                  {resendCooldown > 0 ? (
-                    <span style={{ color: "#888" }}>Resend code in 0:{resendCooldown.toString().padStart(2, "0")}</span>
-                  ) : (
-                    <button className="link-button" onClick={handleResend}>Resend verification code</button>
-                  )}
-                </div>
-              </>
             )}
+
+            <button
+              type="button"
+              onClick={handleVerify}
+              disabled={loading || !code.trim()}
+              className="btn-signup-submit"
+              style={{ width: "100%", marginBottom: 16, fontSize: "1rem" }}
+            >
+              {loading ? "Verifying..." : "Verify Code"}
+            </button>
+
+            <div style={{ fontSize: "0.88rem", color: "#6b7280" }}>
+              Didn't receive the code?{" "}
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resending || cooldown > 0}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: cooldown > 0 ? "#9ca3af" : "#6E5B9A",
+                  fontWeight: 600,
+                  cursor: cooldown > 0 ? "not-allowed" : "pointer",
+                  textDecoration: "underline",
+                  fontSize: "0.88rem",
+                  padding: 0,
+                }}
+              >
+                {resending ? "Resending..." : cooldown > 0 ? `Resend in ${cooldown}s` : "Resend Code"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {verified && (
+          <div style={{
+            background: "rgba(34, 197, 94, 0.08)",
+            border: "1px solid rgba(34, 197, 94, 0.2)",
+            borderRadius: 12,
+            padding: "16px 20px",
+            marginTop: 16,
+          }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: "50%",
+              background: "#22c55e", color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              margin: "0 auto 10px", fontSize: "1.2rem", fontWeight: 700,
+            }}>✓</div>
+            <div style={{ color: "#166534", fontWeight: 500, fontSize: "0.92rem" }}>
+              Redirecting you now...
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

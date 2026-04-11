@@ -13,6 +13,7 @@ import Dashboard from "./pages/Dashboard";
 import AdminSignup from "./pages/admin/AdminSignup";
 import AdminLogin from "./pages/admin/AdminLogin";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import InvitationsManagement from "./pages/admin/InvitationsManagement";
 import RequireAdmin from "./middleware/RequireAdmin";
 import ClinicianLogin from "./pages/clinician/ClinicianLogin";
 import ClinicianDashboard from "./pages/clinician/ClinicianDashboard";
@@ -48,6 +49,14 @@ export default function App() {
             element={
               <RequireAdmin>
                 <AdminDashboard />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/invitations"
+            element={
+              <RequireAdmin>
+                <InvitationsManagement />
               </RequireAdmin>
             }
           />

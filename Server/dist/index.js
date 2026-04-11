@@ -31,6 +31,7 @@ const patientDocuments_1 = __importDefault(require("./routes/patientDocuments"))
 const patientPrivacy_1 = __importDefault(require("./routes/patientPrivacy"));
 const hep_1 = __importDefault(require("./routes/hep"));
 const visitPrepTasks_1 = __importDefault(require("./routes/visitPrepTasks"));
+const onboardingInvitations_1 = __importDefault(require("./routes/onboardingInvitations"));
 // Feature 2 imports
 const notifications_1 = __importDefault(require("./routes/notifications"));
 const messageUpgrades_1 = __importDefault(require("./routes/messageUpgrades"));
@@ -114,6 +115,7 @@ app.use("/api/notifications", notifications_1.default);
 // Message upgrades merged into existing messages routes to avoid collision
 app.use("/api/messages-v2", messageUpgrades_1.default);
 app.use("/api/hep", hep_1.default);
+app.use("/api/onboarding-invitations", onboardingInvitations_1.default);
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 // Start server immediately (no email dependency)
 app.listen(PORT, () => {

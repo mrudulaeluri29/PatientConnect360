@@ -9,6 +9,7 @@ const db_1 = require("../db");
 const requireAuth_1 = require("../middleware/requireAuth");
 const client_1 = require("@prisma/client");
 const audit_1 = require("../lib/audit");
+const mailer_1 = require("../mailer");
 const router = (0, express_1.Router)();
 function getUser(req) {
     return req.user;
@@ -95,6 +96,14 @@ router.post("/", requireAuth_1.requireAuth, async (req, res) => {
                 expiresAt: invitation.expiresAt.toISOString(),
             },
         });
+        const inviterName = invitation.patient?.patientProfile?.legalName || invitation.patient?.username || "A Patient";
+        (0, mailer_1.sendInvitationEmail)(invitation.email, "CAREGIVER", invitation.code, inviterName)
+            .then((res) => {
+            if (!res.success) {
+                console.error(`Failed to send caregiver invitation email to ${invitation.email}:`, res.error || res.reason);
+            }
+        })
+            .catch((err) => console.error("Error invoking sendInvitationEmail:", err));
         res.status(201).json({ invitation });
     }
     catch (e) {
