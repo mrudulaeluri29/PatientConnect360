@@ -3,6 +3,10 @@ import { Link, useNavigate } from "react-router";
 import { validatePassword, validateEmail, validateUsername } from "../utils/validation";
 import { sendOtp } from "../api/auth";
 import { validateCode, type ValidateCodeResult } from "../api/caregiverInvitations";
+import { CAREGIVER_CONSENTS, DEFAULT_COMM_PREFS } from "../api/onboarding";
+import type { CommPrefs } from "../api/onboarding";
+import ConsentSection from "../components/ConsentSection";
+import CommPreferences from "../components/CommPreferences";
 import "./Signup.css";
 
 const RELATIONSHIPS = [
@@ -36,6 +40,10 @@ export default function SignupCaregiver() {
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // Feature 1: Consent and communication preferences
+  const [consentState, setConsentState] = useState<Record<string, boolean>>({});
+  const [commPrefs, setCommPrefs] = useState<CommPrefs>(DEFAULT_COMM_PREFS);
 
   // Validate invitation code when it reaches 8 chars
   useEffect(() => {
@@ -128,6 +136,13 @@ export default function SignupCaregiver() {
       newErrors.confirmPassword = "Passwords do not match";
     }
 
+    // Feature 1: Consent validation
+    const requiredConsents = CAREGIVER_CONSENTS.filter((c) => c.required);
+    const allAccepted = requiredConsents.every((c) => consentState[c.consentType]);
+    if (!allAccepted) {
+      newErrors.consents = "You must accept all required agreements to continue";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -138,6 +153,10 @@ export default function SignupCaregiver() {
 
     setLoading(true);
     try {
+      const consents = Object.entries(consentState)
+        .filter(([, accepted]) => accepted)
+        .map(([consentType]) => ({ consentType, accepted: true }));
+
       await sendOtp({
         email: formData.email,
         username: formData.username,
@@ -150,8 +169,10 @@ export default function SignupCaregiver() {
           phoneNumber: formData.phoneNumber.trim(),
           relationship: formData.relationship,
         },
-      });
-      navigate("/verify-email", { state: { email: formData.email } });
+        consents,
+        communicationPreferences: commPrefs,
+      } as any);
+      navigate("/verify-email", { state: { email: formData.email, role: "CAREGIVER" } });
     } catch (err: unknown) {
       let msg = "Registration failed. Please try again.";
       if (err && typeof err === "object" && "response" in err) {
@@ -338,6 +359,11 @@ export default function SignupCaregiver() {
                     </div>
                     {errors.confirmPassword && <span className="field-error">{errors.confirmPassword}</span>}
                   </div>
+
+                  {/* Feature 1: Consent + Preferences */}
+                  <ConsentSection consents={CAREGIVER_CONSENTS} onChange={setConsentState} disabled={loading} />
+                  {errors.consents && <span className="field-error">{errors.consents}</span>}
+                  <CommPreferences value={commPrefs} onChange={setCommPrefs} disabled={loading} />
 
                   <button type="submit" className="btn-signup-submit" disabled={loading || !passwordValidation.isValid}>
                     {loading ? "Creating account..." : "Create Caregiver Account"}

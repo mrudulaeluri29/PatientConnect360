@@ -63,6 +63,10 @@ model User {
   uploadedPatientDocuments PatientDocument[]   @relation("PatientDocumentUploader")
   visitSummariesAuthored Visit[]               @relation("VisitSummaryAuthor")
   activityRollups       UserActivityDaily[]    @relation("UserActivityRollups")
+  onboardingInvitationsCreated OnboardingInvitation[] @relation("OnboardingInvitationsCreated")
+  onboardingInvitationsUsed    OnboardingInvitation[] @relation("OnboardingInvitationsUsed")
+  consents              UserConsent[]           @relation("UserConsents")
+  communicationPreference UserCommunicationPreference? @relation("UserCommPrefs")
 }
 
 model AgencySettings {
@@ -571,6 +575,12 @@ enum AuditActionType {
   VISIT_RESCHEDULE_REQUESTED
   VISIT_RESCHEDULE_APPROVED
   BRANDING_UPDATED
+  ONBOARDING_INVITATION_CREATED
+  ONBOARDING_INVITATION_REVOKED
+  ONBOARDING_INVITATION_USED
+  ONBOARDING_COMPLETED
+  CONSENT_ACCEPTED
+  ACCOUNT_LOCKED
 }
 
 enum VisitStatus {
@@ -776,6 +786,59 @@ model UserActivityDaily {
   @@unique([userId, day])
   @@index([day])
   @@index([userId])
+}
+
+// ─── Feature 1: Onboarding Invitation + Consent + Preferences ───────────────
+
+model OnboardingInvitation {
+  id              String                  @id @default(cuid())
+  code            String                  @unique
+  targetRole      Role
+  email           String
+  phoneNumber     String?
+  invitedByUserId String?
+  patientId       String?               // only for CAREGIVER invites
+  metadata        Json?                 // flexible payload (agency, employeeId, etc.)
+  status          InvitationStatus       @default(PENDING)
+  expiresAt       DateTime
+  usedAt          DateTime?
+  usedByUserId    String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  invitedBy       User?                  @relation("OnboardingInvitationsCreated", fields: [invitedByUserId], references: [id])
+  usedBy          User?                  @relation("OnboardingInvitationsUsed", fields: [usedByUserId], references: [id])
+
+  @@index([code])
+  @@index([targetRole])
+  @@index([email])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model UserConsent {
+  id          String   @id @default(cuid())
+  userId      String
+  consentType String   // e.g. "TERMS_OF_USE", "HIPAA", "DATA_SHARING", "CAREGIVER_AGREEMENT"
+  version     String   @default("1.0")
+  accepted    Boolean  @default(true)
+  acceptedAt  DateTime @default(now())
+  ipAddress   String?
+  user        User     @relation("UserConsents", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, consentType])
+  @@index([userId])
+  @@index([consentType])
+}
+
+model UserCommunicationPreference {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  emailEnabled Boolean  @default(true)
+  smsEnabled   Boolean  @default(false)
+  inAppEnabled Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation("UserCommPrefs", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum HEPStatus {

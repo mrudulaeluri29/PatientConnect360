@@ -13,6 +13,7 @@ const client_1 = require("@prisma/client");
 const twilio_1 = require("./twilio");
 const audit_1 = require("./lib/audit");
 const activityRollup_1 = require("./lib/activityRollup");
+const onboarding_1 = require("./lib/onboarding");
 //express router 
 const router = (0, express_1.Router)();
 const COOKIE_NAME = "auth";
@@ -36,11 +37,19 @@ function setAuthCookie(res, userId, role, rememberMe = false) {
 }
 // POST /api/auth/register
 // Body: { email, username, password, role?, profileData? }
+// Feature 1: This route is now restricted — only for dev/internal use.
+// Production onboarding uses invite + OTP flow via /send-otp → /verify-otp.
 router.post("/register", async (req, res) => {
     try {
         const { email, username, password, role, profileData } = req.body || {};
         if (!email || !username || !password) {
             return res.status(400).json({ error: "email, username, and password are required" });
+        }
+        // Feature 1: Restrict direct registration in production
+        if (process.env.NODE_ENV === "production") {
+            return res.status(403).json({
+                error: "Direct registration is disabled. Please use an invitation code to sign up.",
+            });
         }
         // if role provided and invalid, reject
         const allowed = ["ADMIN", "PATIENT", "CAREGIVER", "CLINICIAN"];
@@ -109,20 +118,55 @@ router.post("/register", async (req, res) => {
 });
 // POST /api/auth/send-otp
 // Start a pending signup: store pending data and send OTP via Twilio Verify
+// Feature 1: Extended to support invite-based onboarding for all roles.
 router.post("/send-otp", async (req, res) => {
     try {
-        const { email, username, password, role, profileData } = req.body || {};
+        const { email, username, password, role, profileData, consents, communicationPreferences, invitationCode } = req.body || {};
         if (!email || !username || !password) {
             return res.status(400).json({ error: "email, username, and password are required" });
         }
+        // ── Invitation code validation for non-caregiver roles ────────────────
+        // Caregiver still uses profileData.invitationCode for backward compat
+        const effectiveRole = role || "PATIENT";
+        // For clinician and admin, invitation code is required
+        if (effectiveRole === "CLINICIAN" || effectiveRole === "ADMIN") {
+            const code = invitationCode || profileData?.invitationCode;
+            if (!code) {
+                return res.status(400).json({ error: "Invitation code is required for signup" });
+            }
+            const result = await (0, onboarding_1.validateOnboardingInvitation)(code);
+            if (!result.valid) {
+                return res.status(400).json({ error: result.reason });
+            }
+            // Verify the invitation matches the expected role
+            if (result.invitation.targetRole !== effectiveRole) {
+                return res.status(400).json({
+                    error: `This invitation is for ${result.invitation.targetRole} role, not ${effectiveRole}`,
+                });
+            }
+        }
+        // For patient, invitation code is optional (patients can self-register in MVP)
+        // but if provided, validate it
+        if (effectiveRole === "PATIENT" && (invitationCode || profileData?.invitationCode)) {
+            const code = invitationCode || profileData?.invitationCode;
+            const result = await (0, onboarding_1.validateOnboardingInvitation)(code);
+            if (!result.valid) {
+                return res.status(400).json({ error: result.reason });
+            }
+            if (result.invitation.targetRole !== "PATIENT") {
+                return res.status(400).json({
+                    error: `This invitation is for ${result.invitation.targetRole} role, not PATIENT`,
+                });
+            }
+        }
         // ── Caregiver invitation code validation ─────────────────────────────
-        if (role === "CAREGIVER") {
-            const invitationCode = profileData?.invitationCode;
-            if (!invitationCode) {
+        if (effectiveRole === "CAREGIVER") {
+            const caregiverInvCode = profileData?.invitationCode;
+            if (!caregiverInvCode) {
                 return res.status(400).json({ error: "Invitation code is required for caregiver signup" });
             }
             const invitation = await db_1.prisma.caregiverInvitation.findUnique({
-                where: { code: invitationCode.toUpperCase() },
+                where: { code: caregiverInvCode.toUpperCase() },
             });
             if (!invitation) {
                 return res.status(400).json({ error: "Invalid invitation code" });
@@ -138,14 +182,24 @@ router.post("/send-otp", async (req, res) => {
                 return res.status(400).json({ error: "Invitation code has expired" });
             }
         }
+        // Check for existing user collision before even sending OTP
+        const existingUser = await db_1.prisma.user.findFirst({
+            where: { OR: [{ email }, { username }] },
+        });
+        if (existingUser) {
+            return res.status(409).json({ error: "email or username already in use" });
+        }
         // Hash password before storing pending data
         const passwordHash = await bcrypt_1.default.hash(password, 12);
         const pending = {
             email,
             username,
             passwordHash,
-            role: role || "PATIENT",
+            role: effectiveRole,
             profileData: profileData || null,
+            invitationCode: invitationCode || profileData?.invitationCode || null,
+            consents: consents || null,
+            communicationPreferences: communicationPreferences || null,
         };
         // Upsert pending verification record
         await db_1.prisma.pendingVerification.upsert({
@@ -225,6 +279,8 @@ router.post("/resend-otp", async (req, res) => {
     }
 });
 // POST /api/auth/verify-otp
+// Feature 1: Extended to create profiles for all roles, persist consents + preferences,
+// and handle onboarding invitation marking.
 router.post("/verify-otp", async (req, res) => {
     try {
         const { email, code } = req.body || {};
@@ -341,10 +397,119 @@ router.post("/verify-otp", async (req, res) => {
                 });
                 return newUser;
             });
+            // Feature 1: Persist consents and communication preferences
+            if (pending.consents && Array.isArray(pending.consents)) {
+                await (0, onboarding_1.persistConsents)(result.id, pending.consents);
+            }
+            if (pending.communicationPreferences) {
+                await (0, onboarding_1.persistCommunicationPreferences)(result.id, pending.communicationPreferences);
+            }
             await db_1.prisma.pendingVerification.delete({ where: { email } });
+            await (0, audit_1.logAuditEvent)({
+                actorId: result.id,
+                actorRole: "CAREGIVER",
+                actionType: client_1.AuditActionType.ONBOARDING_COMPLETED,
+                description: `Caregiver ${result.username} completed onboarding via invitation`,
+                metadata: { invitationCode: invCode },
+            });
             return res.json({ ok: true, user: result });
         }
-        // ── Standard (patient / clinician) user creation ─────────────────────
+        // ── Clinician: create user + profile ─────────────────────────────────
+        if (pending.role === "CLINICIAN") {
+            const createdUser = await db_1.prisma.user.create({
+                data: {
+                    email: pending.email,
+                    username: pending.username,
+                    passwordHash: pending.passwordHash,
+                    role: "CLINICIAN",
+                    clinicianProfile: {
+                        create: {
+                            username: pending.username,
+                            specialization: pending.profileData?.specialization || null,
+                            licenseNumber: pending.profileData?.licenseNumber || null,
+                            hospitalAffiliation: pending.profileData?.hospitalAffiliation || null,
+                        },
+                    },
+                },
+                select: { id: true, email: true, username: true, role: true },
+            });
+            // Mark onboarding invitation as used, if applicable
+            if (pending.invitationCode) {
+                try {
+                    await db_1.prisma.onboardingInvitation.updateMany({
+                        where: { code: pending.invitationCode.toUpperCase(), status: "PENDING" },
+                        data: { status: "ACCEPTED", usedAt: new Date(), usedByUserId: createdUser.id },
+                    });
+                }
+                catch (e) {
+                    console.error("Failed to mark onboarding invitation:", e);
+                }
+            }
+            // Persist consents and preferences
+            if (pending.consents && Array.isArray(pending.consents)) {
+                await (0, onboarding_1.persistConsents)(createdUser.id, pending.consents);
+            }
+            if (pending.communicationPreferences) {
+                await (0, onboarding_1.persistCommunicationPreferences)(createdUser.id, pending.communicationPreferences);
+            }
+            await db_1.prisma.pendingVerification.delete({ where: { email } });
+            await (0, audit_1.logAuditEvent)({
+                actorId: createdUser.id,
+                actorRole: "CLINICIAN",
+                actionType: client_1.AuditActionType.ONBOARDING_COMPLETED,
+                description: `Clinician ${createdUser.username} completed onboarding`,
+            });
+            return res.json({ ok: true, user: createdUser });
+        }
+        // ── Admin: create user + profile ─────────────────────────────────────
+        if (pending.role === "ADMIN") {
+            const createdUser = await db_1.prisma.user.create({
+                data: {
+                    email: pending.email,
+                    username: pending.username,
+                    passwordHash: pending.passwordHash,
+                    role: "ADMIN",
+                },
+                select: { id: true, email: true, username: true, role: true },
+            });
+            // Create admin profile
+            await db_1.prisma.adminProfile.create({
+                data: {
+                    userId: createdUser.id,
+                    displayName: pending.username,
+                    phoneNumber: pending.profileData?.phoneNumber || null,
+                    superAdmin: false,
+                },
+            });
+            // Mark onboarding invitation as used, if applicable
+            if (pending.invitationCode) {
+                try {
+                    await db_1.prisma.onboardingInvitation.updateMany({
+                        where: { code: pending.invitationCode.toUpperCase(), status: "PENDING" },
+                        data: { status: "ACCEPTED", usedAt: new Date(), usedByUserId: createdUser.id },
+                    });
+                }
+                catch (e) {
+                    console.error("Failed to mark onboarding invitation:", e);
+                }
+            }
+            // Persist consents and preferences
+            if (pending.consents && Array.isArray(pending.consents)) {
+                await (0, onboarding_1.persistConsents)(createdUser.id, pending.consents);
+            }
+            if (pending.communicationPreferences) {
+                await (0, onboarding_1.persistCommunicationPreferences)(createdUser.id, pending.communicationPreferences);
+            }
+            await db_1.prisma.pendingVerification.delete({ where: { email } });
+            await (0, audit_1.logAuditEvent)({
+                actorId: createdUser.id,
+                actorRole: "ADMIN",
+                actionType: client_1.AuditActionType.ONBOARDING_COMPLETED,
+                description: `Admin ${createdUser.username} completed onboarding`,
+            });
+            return res.json({ ok: true, user: createdUser });
+        }
+        // ── Standard patient user creation ───────────────────────────────────
         const createdUser = await db_1.prisma.user.create({
             data: {
                 email: pending.email,
@@ -355,8 +520,33 @@ router.post("/verify-otp", async (req, res) => {
             },
             select: { id: true, email: true, username: true, role: true }
         });
+        // Mark onboarding invitation as used, if applicable
+        if (pending.invitationCode) {
+            try {
+                await db_1.prisma.onboardingInvitation.updateMany({
+                    where: { code: pending.invitationCode.toUpperCase(), status: "PENDING" },
+                    data: { status: "ACCEPTED", usedAt: new Date(), usedByUserId: createdUser.id },
+                });
+            }
+            catch (e) {
+                console.error("Failed to mark onboarding invitation:", e);
+            }
+        }
+        // Feature 1: Persist consents and communication preferences
+        if (pending.consents && Array.isArray(pending.consents)) {
+            await (0, onboarding_1.persistConsents)(createdUser.id, pending.consents);
+        }
+        if (pending.communicationPreferences) {
+            await (0, onboarding_1.persistCommunicationPreferences)(createdUser.id, pending.communicationPreferences);
+        }
         // Clean up pending record
         await db_1.prisma.pendingVerification.delete({ where: { email } });
+        await (0, audit_1.logAuditEvent)({
+            actorId: createdUser.id,
+            actorRole: pending.role,
+            actionType: client_1.AuditActionType.ONBOARDING_COMPLETED,
+            description: `${pending.role} ${createdUser.username} completed onboarding`,
+        });
         res.json({ ok: true, user: createdUser });
     }
     catch (e) {
@@ -366,11 +556,14 @@ router.post("/verify-otp", async (req, res) => {
 });
 // POST /api/auth/login
 // Body: { emailOrUsername, password, rememberMe? }
+// Feature 1: Added true lockout enforcement and gated admin bootstrap.
 // helper that creates a default admin account if none exist.
-// credentials are pulled from env vars (used by the createAdmin script),
-// or fall back to an obvious development account.  This function returns
-// the credentials it used so the caller can log/return them if desired.
+// Feature 1: Gated behind NODE_ENV !== "production" for security.
 async function ensureAdminExists() {
+    // Feature 1: Only allow in development/test, never in production
+    if (process.env.NODE_ENV === "production" && !process.env.ALLOW_DEV_ADMIN_BOOTSTRAP) {
+        return null;
+    }
     const count = await db_1.prisma.user.count({ where: { role: "ADMIN" } });
     if (count > 0)
         return null;
@@ -395,7 +588,7 @@ async function ensureAdminExists() {
             superAdmin: true,
         },
     });
-    console.log(`🚨 No admins found, created default admin: ${username}/${password}`);
+    console.log(`🚨 No admins found, created default admin: ${username}/${password} (DEV ONLY)`);
     return { username, password };
 }
 router.post("/login", async (req, res) => {
@@ -407,14 +600,11 @@ router.post("/login", async (req, res) => {
         // if database contains no admin yet, create one before attempting lookup
         const created = await ensureAdminExists();
         if (created) {
-            // inform client (mostly useful in development); the server log also
-            // prints the credentials. we still continue to perform the lookup so
-            // the caller can immediately retry with the new account.
             console.warn("Created default admin account; credentials returned in response. " +
                 "Change ADMIN_* env vars or use the createAdmin script to reset.");
         }
         const user = await db_1.prisma.user.findFirst({
-            where: { OR: [{ email: emailOrUsername }, { username: emailOrUsername }] }
+            where: { OR: [{ email: emailOrUsername }, { username: emailOrUsername }] },
         });
         // If user does not exist, return generic invalid credentials (don't reveal which)
         if (!user) {
@@ -431,11 +621,23 @@ router.post("/login", async (req, res) => {
             catch (e) {
                 console.error("Failed to log audit event:", e);
             }
-            // if we just created an admin above and the caller used a matching
-            // username/email we could return its credentials here too, but for
-            // simplicity we just fail and let the client resubmit with the right
-            // values which were logged/returned already.
             return res.status(401).json({ error: "invalid credentials", created });
+        }
+        // Feature 1: True lockout enforcement
+        if ((0, onboarding_1.isAccountLocked)(user.failedLoginAttempts, user.lastFailedAt)) {
+            const remainingMs = (0, onboarding_1.lockoutRemainingMs)(user.lastFailedAt);
+            const remainingMin = Math.ceil(remainingMs / 60000);
+            await (0, audit_1.logAuditEvent)({
+                actorId: user.id,
+                actorRole: user.role,
+                actionType: client_1.AuditActionType.ACCOUNT_LOCKED,
+                description: `Login attempt blocked — account locked for user ${user.username}`,
+                metadata: { remainingMinutes: remainingMin },
+            });
+            return res.status(423).json({
+                error: `Account temporarily locked. Try again in ${remainingMin} minute(s).`,
+                lockedUntil: new Date(Date.now() + remainingMs).toISOString(),
+            });
         }
         const ok = await bcrypt_1.default.compare(password, user.passwordHash);
         // If password is incorrect, increment failed counter and record time
