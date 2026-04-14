@@ -6,6 +6,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import { isAxiosError } from "axios";
 import { api } from "../../lib/axios";
+
 import NotificationBell from "../../components/NotificationBell";
 import NotificationCenter from "../../components/notifications/NotificationCenter";
 import "./ClinicianDashboard.css";
@@ -25,6 +26,9 @@ import {
   formatAvailabilityDate,
   type ApiAvailability,
 } from "../../api/availability";
+import ScheduleCalendar from "../../components/schedule/ScheduleCalendar";
+import { getSchedule } from "../../api/schedule";
+import type { ScheduleEvent } from "../../components/schedule/scheduleTypes";
 
 function refreshNotificationsGlobally(): void {
   const w = window as Window & { refreshNotifications?: () => void };
@@ -421,6 +425,18 @@ function AppointmentsHub() {
   const [appointments, setAppointments] = useState<ApiVisit[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
 
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([]);
+
+  useEffect(() => {
+    const now = new Date();
+    const fourWeeks = new Date(now.getTime() + 28 * 24 * 60 * 60 * 1000);
+    getSchedule({
+      from: now.toISOString(),
+      to: fourWeeks.toISOString(),
+      includeAvailability: true,
+    }).then(setScheduleEvents).catch(console.error);
+  }, []);
+
   // Submitted availability history
   const [submissions, setSubmissions] = useState<ApiAvailability[]>([]);
   const [subsLoading, setSubsLoading] = useState(true);
@@ -575,6 +591,13 @@ function AppointmentsHub() {
 
   return (
     <div className="clinician-content">
+      <ScheduleCalendar
+          events={scheduleEvents}
+          initialView="timeGridWeek"
+          onAction={(action, event) => {
+            if (action === "checkin") console.log("checkin", event.id);
+          }}
+        />
       <div className="content-header">
         <div className="content-header-main">
           <h2 className="section-title">Appointments & Availability</h2>
@@ -900,6 +923,19 @@ function TodaySchedule() {
   const [visits, setVisits] = useState<ApiVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([]);
+
+  useEffect(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    getSchedule({
+      from: todayStart.toISOString(),
+      to: todayEnd.toISOString(),
+      includeAvailability: true,
+    }).then(setScheduleEvents).catch(console.error);
+  }, []);
 
   const toOffsetIsoString = (d: Date) => {
     const pad = (n: number) => String(Math.trunc(Math.abs(n))).padStart(2, "0");
@@ -953,9 +989,8 @@ function TodaySchedule() {
   );
 
   return (
-    <div className="clinician-content">
-      <div className="content-header">
-        <div className="content-header-main">
+      <div className="clinician-content">
+        <div className="content-header">
           <h2 className="section-title">Today's Schedule</h2>
           <SectionKpiChips
             chips={[
@@ -975,9 +1010,15 @@ function TodaySchedule() {
             Refresh Routes
           </button>
         </div>
-      </div>
-
+<ScheduleCalendar
+        events={scheduleEvents}
+        initialView="timeGridDay"
+        onAction={(action, event) => {
+          if (action === "checkin") handleCheckIn(event.id);
+        }}
+      />
       {loading ? (
+
         <div style={{ padding: "2rem", color: "#6b7280" }}>Loading today's schedule...</div>
       ) : (
         <div className="schedule-container">
