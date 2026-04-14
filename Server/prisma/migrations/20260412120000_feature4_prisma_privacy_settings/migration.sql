@@ -1,0 +1,2 @@
+-- PatientPrivacySettings already exists (see 20260406160000_f6_privacy_consent).
+-- This migration adds the Prisma model only; no DDL changes.

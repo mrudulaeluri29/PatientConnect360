@@ -67,6 +67,27 @@
   font-size: 0.9rem;
   font-weight: 600;
 }
+
+.f1-privacy-lead {
+  margin: 0 0 0.85rem;
+  font-size: 0.9rem;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.privacy-consent-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+  margin-bottom: 0.2rem;
+}
+
+.privacy-consent-version {
+  color: #6b7280;
+  font-weight: 500;
+}
 .patient-dashboard {
   min-height: 100vh;
   background-color: #f9fafb;
@@ -275,19 +296,65 @@
 .goal-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 0.65rem;
 }
 
 .goal-name {
   font-size: 0.95rem;
   color: #1f2937;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
-.goal-progress {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #6E5B9A;
+.goal-progress-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.goal-status-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+}
+
+.goal-status-badge.done {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.goal-status-badge.active {
+  color: #5b21b6;
+  background: #ede9fe;
+}
+
+.goal-status-badge.todo {
+  color: #475569;
+  background: #e2e8f0;
+}
+
+.goal-percent-chip {
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: #334155;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.goal-details {
+  color: #6b7280;
+  font-size: 0.84rem;
+  margin-top: -0.15rem;
+  margin-bottom: 0.2rem;
+  line-height: 1.35;
 }
 
 .progress-bar {
