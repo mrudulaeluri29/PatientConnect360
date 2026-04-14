@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { useAgencyBranding } from "../branding/AgencyBranding";
+import AuthPageShell from "../components/auth/AuthPageShell";
+import StatusMessage from "../components/ui/StatusMessage";
+import "./Auth.css";
 import "./Login.css";
 
 export default function Login() {
@@ -42,50 +45,31 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-container">
-        <div className="login-left">
-            <div className="login-branding">
-              <div className="brand-logo">
-                {settings.logoUrl ? (
-                  <img src={settings.logoUrl} alt={settings.portalName} style={{ width: 42, height: 42, objectFit: "contain", borderRadius: 10 }} />
-                ) : null}
-                <span className="logo-text">{settings.portalName}</span>
-              </div>
-            <h1 className="login-title">Welcome Back</h1>
-            <p className="login-subtitle">
-              Sign in to access your health portal and connect with your care team
-            </p>
-          </div>
-          
-          <div className="login-features">
-            <div className="feature-item">
-              <span>Secure & HIPAA Compliant</span>
-            </div>
-            <div className="feature-item">
-              <span>Connect with Care Team</span>
-            </div>
-            <div className="feature-item">
-              <span>Manage Appointments</span>
-            </div>
-            <div className="feature-item">
-              <span>Access Medical Records</span>
-            </div>
-          </div>
+    <AuthPageShell
+      eyebrow="Account access"
+      title="Welcome back"
+      description={`Sign in to ${settings.portalName} to review messages, appointments, and records in one place.`}
+      highlights={[
+        "Secure and HIPAA-aligned sign-in experience",
+        "Direct access for patients, caregivers, clinicians, and admins",
+        "Records, appointments, and messaging stay in one account",
+      ]}
+    >
+      <div className="auth-panel auth-panel--compact login-form-container">
+        <div className="auth-panel__header">
+          <h2 className="auth-panel__title">Sign In</h2>
+          <p className="auth-panel__subtitle">Enter your credentials to access your account.</p>
         </div>
 
-        <div className="login-right">
-          <div className="login-form-container">
-            <h2 className="form-title">Sign In</h2>
-            <p className="form-subtitle">Enter your credentials to access your account</p>
+        {error ? (
+          <div className="auth-status-stack">
+            <StatusMessage tone="danger">{error}</StatusMessage>
+          </div>
+        ) : null}
 
-            {error && (
-              <div className="error-message">
-                <span>{error}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="login-form">
+        <form onSubmit={handleSubmit} className="login-form auth-form">
+          <div className="auth-form-section">
+            <div className="auth-form-grid auth-form-grid--single">
               <div className="form-group">
                 <label htmlFor="emailOrUsername">Email or Username</label>
                 <input
@@ -132,62 +116,55 @@ export default function Login() {
                   </button>
                 </div>
               </div>
-
-              <div className="form-options">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                  />
-                  <span>Remember me</span>
-                </label>
-                <Link to="/forgot-password" className="forgot-password">
-                  Forgot password?
-                </Link>
-              </div>
-
-              <button
-                type="submit"
-                className="btn-login-submit"
-                disabled={loading}
-                style={{ backgroundColor: settings.primaryColor }}
-              >
-                {loading ? "Signing in..." : "Sign In"}
-              </button>
-            </form>
-
-            <div className="login-divider">
-              <span>Don't have an account?</span>
             </div>
+          </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1.5rem" }}>
-              <Link to="/register" className="btn-signup-link">
-                Sign Up as Patient
-              </Link>
-              <Link to="/register/clinician" className="btn-signup-link" style={{ background: "transparent", border: `2px solid ${settings.primaryColor}`, color: settings.primaryColor }}>
-                Sign Up as Clinician
-              </Link>
-              <Link to="/register/caregiver" className="btn-signup-link" style={{ background: "transparent", border: `2px solid ${settings.primaryColor}`, color: settings.primaryColor }}>
-                Sign Up as Caregiver
-              </Link>
-            </div>
+          <div className="form-options">
+            <label className="checkbox-label">
+              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+              <span>Remember me</span>
+            </label>
+            <Link to="/forgot-password" className="forgot-password">
+              Forgot password?
+            </Link>
+          </div>
 
-            <div className="role-info">
-              <p className="role-info-title">{settings.supportName || "Admin"} Access:</p>
-              <Link to="/admin/login" style={{ color: settings.primaryColor, textDecoration: "none", fontWeight: "500" }}>
-                Admin Login
-              </Link>
-            </div>
-            <div className="role-info" style={{ marginTop: "1rem" }}>
-              <p className="role-info-title">Clinician Access:</p>
-              <Link to="/clinician/login" style={{ color: settings.primaryColor, textDecoration: "none", fontWeight: "500" }}>
-                Clinician Login
-              </Link>
-            </div>
+          <button type="submit" className="btn-login-submit" disabled={loading}>
+            {loading ? "Signing in..." : "Sign In"}
+          </button>
+        </form>
+
+        <div className="auth-divider">
+          <span>Choose your entry point</span>
+        </div>
+
+        <div className="auth-link-stack">
+          <Link to="/register" className="btn-signup-link">
+            Sign Up as Patient
+          </Link>
+          <Link to="/register/clinician" className="btn-signup-link btn-signup-link--outline">
+            Sign Up as Clinician
+          </Link>
+          <Link to="/register/caregiver" className="btn-signup-link btn-signup-link--outline">
+            Sign Up as Caregiver
+          </Link>
+        </div>
+
+        <div className="auth-role-access">
+          <div className="auth-role-access__group">
+            <p className="auth-role-access__label">{settings.supportName || "Admin"} access</p>
+            <Link to="/admin/login" className="role-info-link">
+              Admin Login
+            </Link>
+          </div>
+          <div className="auth-role-access__group">
+            <p className="auth-role-access__label">Clinician access</p>
+            <Link to="/clinician/login" className="role-info-link">
+              Clinician Login
+            </Link>
           </div>
         </div>
       </div>
-    </div>
+    </AuthPageShell>
   );
 }

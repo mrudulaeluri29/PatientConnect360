@@ -1,0 +1,120 @@
+.notification-center {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.notification-center__tabs {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.notification-center__tab-button {
+  border: none;
+}
+
+.notification-center__badge {
+  margin-left: var(--space-2);
+}
+
+.notification-center input[type="text"],
+.notification-center select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-strong);
+  font-size: var(--text-sm);
+  font-family: inherit;
+}
+
+.notification-center input[type="text"]:disabled,
+.notification-center select:disabled {
+  background: var(--bg-muted);
+  cursor: not-allowed;
+}
+
+.notification-center__actions {
+  justify-content: flex-end;
+}
+
+.notification-center__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.notification-center__item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.notification-center__item--unread {
+  border-color: color-mix(in srgb, var(--brand-primary) 32%, var(--border-subtle));
+  background: var(--brand-primary-soft);
+}
+
+.notification-center__icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.notification-center__item-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.notification-center__item-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.notification-center__item-body {
+  margin: var(--space-2) 0 0;
+  color: var(--text-default);
+  font-size: var(--text-sm);
+}
+
+.notification-center__item-time {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.notification-center__unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--brand-primary);
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+
+.notification-center__preferences {
+  max-width: 480px;
+}
+
+.notification-center__checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-primary);
+}
+
+.notification-center__saved {
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 767px) {
+  .notification-center {
+    max-width: none;
+  }
+
+  .notification-center__item-title-row {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+}

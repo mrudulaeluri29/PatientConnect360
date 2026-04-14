@@ -1,0 +1,9 @@
+html {
+  scroll-behavior: smooth;
+}
+
+@media (max-width: 767px) {
+  html {
+    font-size: 15px;
+  }
+}

@@ -1,0 +1,20 @@
+.surface-card,
+.surface-panel,
+.surface-raised {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-low);
+}
+
+.surface-card {
+  border-radius: var(--radius-lg);
+}
+
+.surface-panel {
+  border-radius: var(--radius-md);
+}
+
+.surface-raised {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-medium);
+}

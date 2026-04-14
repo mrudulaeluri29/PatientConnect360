@@ -6,9 +6,10 @@ import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import { isAxiosError } from "axios";
 import { api } from "../../lib/axios";
-
-import NotificationBell from "../../components/NotificationBell";
+import DashboardShell from "../../components/dashboard-shell/DashboardShell";
+import { dashboardNavConfig } from "../../components/dashboard-shell/navConfig";
 import NotificationCenter from "../../components/notifications/NotificationCenter";
+import MessageCenterShell from "../../components/ui/MessageCenterShell";
 import "./ClinicianDashboard.css";
 import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
 import {
@@ -63,103 +64,30 @@ export default function ClinicianDashboard() {
   };
 
   return (
-    <div className="clinician-dashboard">
-      {/* Header */}
-      <header className="clinician-header">
-        <div className="clinician-header-left">
-          <h1 className="clinician-logo">MediHealth</h1>
-          <nav className="clinician-nav">
-            <button
-              className={`nav-item ${activeTab === "schedule" ? "active" : ""}`}
-              onClick={() => setActiveTab("schedule")}
-            >
-              Today's Schedule
-            </button>
-            <button
-              className={`nav-item ${activeTab === "patients" ? "active" : ""}`}
-              onClick={() => setActiveTab("patients")}
-            >
-              Patients
-            </button>
-            <button
-              className={`nav-item ${activeTab === "care-records" ? "active" : ""}`}
-              onClick={() => setActiveTab("care-records")}
-            >
-              Care records
-            </button>
-            <button
-              className={`nav-item ${activeTab === "messages" ? "active" : ""}`}
-              onClick={() => setActiveTab("messages")}
-            >
-              Messages
-            </button>
-            <button
-              className={`nav-item ${activeTab === "tasks" ? "active" : ""}`}
-              onClick={() => setActiveTab("tasks")}
-            >
-              Tasks
-            </button>
-            <button
-              className={`nav-item ${activeTab === "appointments" ? "active" : ""}`}
-              onClick={() => setActiveTab("appointments")}
-            >
-              Appointments
-            </button>
-            <button
-              className={`nav-item ${activeTab === "contact-staff" ? "active" : ""}`}
-              onClick={() => setActiveTab("contact-staff")}
-            >
-              Contact Staff
-            </button>
-            <button
-              className={`nav-item ${activeTab === "notifications" ? "active" : ""}`}
-              onClick={() => setActiveTab("notifications")}
-            >
-              Notifications
-            </button>
-          </nav>
-        </div>
-        <div className="clinician-header-right">
-          <NotificationBell onMessageClick={handleMessageClick} />
-          <div className="clinician-user-info">
-            <span className="clinician-user-name">{user?.username || user?.email || "Clinician"}</span>
-            <div className="clinician-user-badges">
-              <span className="badge badge-clinician">Clinician</span>
-            </div>
-          </div>
-          <button className="btn-logout" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </header>
-
-      <main className="clinician-main">
-        <div
-          className={
-            activeTab === "care-records"
-              ? "clinician-main-layout clinician-main-layout--care-records-full"
-              : "clinician-main-layout"
-          }
-        >
-          <div className="clinician-main-content">
-            {activeTab === "schedule" && <TodaySchedule />}
-            {activeTab === "patients" && <PatientSnapshot />}
-            {activeTab === "care-records" && <ClinicianCareRecordsTab />}
-            {activeTab === "messages" && (
-              <SimpleMessages
-                pendingConversation={pendingConversation}
-                onConversationOpened={() => setPendingConversation(null)}
-              />
-            )}
-{activeTab === "tasks" && <ClinicianWorklistTab />}
-            {activeTab === "appointments" && <AppointmentsHub />}
-            {activeTab === "contact-staff" && <ContactStaffHub />}
-            {activeTab === "notifications" && <NotificationCenter />}
-          </div>
-          {activeTab !== "care-records" && <AssistantSidebar activeTab={activeTab} />}
-        </div>
-      </main>
-    </div>
+    <DashboardShell
+      role="clinician"
+      className="clinician-dashboard"
+      navGroups={dashboardNavConfig.clinician}
+      activeItem={activeTab}
+      onSelectItem={setActiveTab}
+      onLogout={handleLogout}
+      onNotificationMessageClick={handleMessageClick}
+      userName={user?.username || user?.email || "Clinician"}
+      roleLabel="Clinician"
+      fullWidthContent={activeTab === "care-records"}
+      secondaryAside={activeTab !== "care-records" ? <AssistantSidebar activeTab={activeTab} /> : undefined}
+    >
+      {activeTab === "schedule" && <TodaySchedule />}
+      {activeTab === "patients" && <PatientSnapshot />}
+      {activeTab === "care-records" && <ClinicianCareRecordsTab />}
+      {activeTab === "messages" && (
+        <SimpleMessages pendingConversation={pendingConversation} onConversationOpened={() => setPendingConversation(null)} />
+      )}
+      {activeTab === "tasks" && <ClinicianWorklistTab />}
+      {activeTab === "appointments" && <AppointmentsHub />}
+      {activeTab === "contact-staff" && <ContactStaffHub />}
+      {activeTab === "notifications" && <NotificationCenter />}
+    </DashboardShell>
   );
 }
 
@@ -1822,9 +1750,19 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
   };
 
   return (
-    <div className="clinician-content">
-      {/* Folder Tabs */}
-      {!selectedMessage && (
+    <MessageCenterShell
+      title="Staff Messaging"
+      description="Review patient and family conversations, open notification-driven threads, and compose replies from one coordinated workspace."
+      action={!selectedMessage ? (
+        <button className="btn-primary" onClick={() => setShowNewMessageModal(true)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          New Message
+        </button>
+      ) : undefined}
+      tabs={!selectedMessage ? (
         <div className="message-folder-tabs">
           <button
             className={`folder-tab ${activeFolder === "inbox" ? "active" : ""}`}
@@ -1834,44 +1772,20 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
               <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c) => c.unread).length}</span>
             )}
           </button>
-          <button
-            className={`folder-tab ${activeFolder === "sent" ? "active" : ""}`}
-            onClick={() => setActiveFolder("sent")}
-          >
+          <button className={`folder-tab ${activeFolder === "sent" ? "active" : ""}`} onClick={() => setActiveFolder("sent")}>
             Sent
           </button>
-          <div style={{ marginLeft: "auto" }}>
-            <button className="btn-primary" onClick={() => setShowNewMessageModal(true)}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              New Message
-            </button>
-          </div>
         </div>
-      )}
-
-      {/* Filters */}
-      {!selectedMessage && activeFolder === "inbox" && (
-        <div style={{ display: "flex", gap: 8, padding: "0.5rem 0", flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            className={`btn-secondary`}
-            style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred && !roleFilter ? "#6E5B9A" : undefined, color: !filterStarred && !roleFilter ? "#fff" : undefined }}
-            onClick={() => { setFilterStarred(false); setRoleFilter(""); }}
-          >All</button>
-          <button
-            className={`btn-secondary`}
-            style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }}
-            onClick={() => setFilterStarred(!filterStarred)}
-          >Starred</button>
-          <button
-            className={`btn-secondary`}
-            style={{ fontSize: "0.8rem", padding: "4px 12px", background: roleFilter === "family" ? "#6E5B9A" : undefined, color: roleFilter === "family" ? "#fff" : undefined }}
-            onClick={() => setRoleFilter(roleFilter === "family" ? "" : "family")}
-          >Family</button>
+      ) : undefined}
+      filters={!selectedMessage && activeFolder === "inbox" ? (
+        <div className="message-center-staff__filters">
+          <button className="btn-secondary" style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred && !roleFilter ? "#6E5B9A" : undefined, color: !filterStarred && !roleFilter ? "#fff" : undefined }} onClick={() => { setFilterStarred(false); setRoleFilter(""); }}>All</button>
+          <button className="btn-secondary" style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }} onClick={() => setFilterStarred(!filterStarred)}>Starred</button>
+          <button className="btn-secondary" style={{ fontSize: "0.8rem", padding: "4px 12px", background: roleFilter === "family" ? "#6E5B9A" : undefined, color: roleFilter === "family" ? "#fff" : undefined }} onClick={() => setRoleFilter(roleFilter === "family" ? "" : "family")}>Family</button>
         </div>
-      )}
+      ) : undefined}
+      className="clinician-content"
+    >
 
       {selectedMessage ? (
         // Message Detail View (Full Screen)
@@ -1913,7 +1827,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
               <p>Loading conversation...</p>
             </div>
           ) : (
-            <div className="message-detail-full">
+            <div className="message-detail-full message-center-shell__panel">
               <div className="message-detail-subject">
                 <h2>{selectedConversation.subject}</h2>
                 <div className="message-detail-meta">
@@ -1984,7 +1898,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       ) : activeFolder === "inbox" ? (
         // Inbox List View (Gmail-style)
         <>
-          <div className="inbox-list">
+          <div className="inbox-list message-center-shell__panel">
             {loading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading messages...</p>}
             {!loading && conversations.length === 0 && (
               <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
@@ -2032,7 +1946,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       ) : !selectedMessage && activeFolder === "sent" ? (
         // Sent List View
         <>
-          <div className="inbox-list">
+          <div className="inbox-list message-center-shell__panel">
             {sentLoading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading sent messages...</p>}
             {!sentLoading && sentConversations.length === 0 && (
               <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
@@ -2129,7 +2043,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
           </div>
         </div>
       )}
-    </div>
+    </MessageCenterShell>
   );
 }
 

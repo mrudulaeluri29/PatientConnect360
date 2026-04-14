@@ -1,0 +1,28 @@
+.task-workspace {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: var(--space-5);
+}
+
+.task-workspace__sidebar,
+.task-workspace__main {
+  min-width: 0;
+}
+
+.task-workspace__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.task-workspace__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+@media (max-width: 1023px) {
+  .task-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

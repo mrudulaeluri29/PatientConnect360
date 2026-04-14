@@ -64,12 +64,19 @@ const allowedOrigins = [
   ...parseAllowedOrigins(process.env.CORS_ORIGINS),
 ];
 
+function isAllowedDevOrigin(origin: string): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  // Vite may hop ports (5173, 5174, 5175, ...) when a port is in use.
+  return /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
       // allow non-browser requests (curl/postman) with no origin
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (isAllowedDevOrigin(origin)) return callback(null, true);
       return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     credentials: true,

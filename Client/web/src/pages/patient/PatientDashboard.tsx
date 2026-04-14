@@ -3,8 +3,10 @@ import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAn
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import { api } from "../../lib/axios";
-import NotificationBell from "../../components/NotificationBell";
+import DashboardShell from "../../components/dashboard-shell/DashboardShell";
+import { dashboardNavConfig } from "../../components/dashboard-shell/navConfig";
 import NotificationCenter from "../../components/notifications/NotificationCenter";
+import MessageCenterShell from "../../components/ui/MessageCenterShell";
 import "./PatientDashboard.css";
 import PatientHEPTab from "./PatientHEPTab";
 import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
@@ -168,98 +170,32 @@ export default function PatientDashboard() {
     setActiveTab(tab);
   };
 
-  return (
-    <div className="patient-dashboard">
-      {/* Header */}
-      <header className="patient-header">
-        <div className="patient-header-left">
-          <h1 className="patient-logo">MediHealth</h1>
-          <nav className="patient-nav">
-            <button
-              className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
-              onClick={() => openTab("overview")}
-            >
-              Overview
-            </button>
-            <button
-              className={`nav-item ${activeTab === "visits" ? "active" : ""}`}
-              onClick={() => openTab("visits")}
-            >
-              Visits
-            </button>
-            <button
-              className={`nav-item ${activeTab === "medications" ? "active" : ""}`}
-              onClick={() => openTab("medications")}
-            >
-              Medications
-            </button>
-            <button
-              className={`nav-item ${activeTab === "health" ? "active" : ""}`}
-              onClick={() => openTab("health")}
-            >
-              Health
-            </button>
-            <button
-              className={`nav-item ${activeTab === "records" ? "active" : ""}`}
-              onClick={() => openTab("records")}
-            >
-              Records
-            </button>
-            <button
-              className={`nav-item ${activeTab === "messages" ? "active" : ""}`}
-              onClick={() => openTab("messages")}
-            >
-              Messages
-            </button>
-            <button
-              className={`nav-item ${activeTab === "family" ? "active" : ""}`}
-              onClick={() => openTab("family")}
-            >
-              Family
-            </button>
-            <button
-              className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
-              onClick={() => setActiveTab("exercises")}
-            >
-              Exercises & Tasks
-            </button>
-            <button
-              className={`nav-item ${activeTab === "notifications" ? "active" : ""}`}
-              onClick={() => openTab("notifications")}
-            >
-              Notifications
-            </button>
-          </nav>
-        </div>
-        <div className="patient-header-right">
-          <NotificationBell
-            onMessageClick={(_view, conversationId, messageId) => {
-              setActiveTab("messages");
-              if (conversationId) {
-                setPendingConversation({ convId: conversationId, messageId });
-              }
-            }}
-          />
-          <div className="patient-user-info">
-            <span className="patient-user-name">{user?.username || user?.email || "Patient"}</span>
-            <div className="patient-user-badges">
-              <span className="badge badge-patient">Patient</span>
-            </div>
-          </div>
-          <button className="btn-logout" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </header>
+  const handleMessageClick = (_view: string, conversationId?: string, messageId?: string) => {
+    setActiveTab("messages");
+    if (conversationId) {
+      setPendingConversation({ convId: conversationId, messageId });
+    }
+  };
 
-      {/* Main Content */}
-      <main className="patient-main">
-        {privacyConsentRequired ? (
-          <div className="privacy-global-warning">
-            You updated privacy settings — please open <strong>Records</strong> and tap <strong>Re-consent</strong> under
-            Privacy &amp; consent before using other sections. That confirms your choices for linked caregivers.
-          </div>
-        ) : null}
+  return (
+    <DashboardShell
+      role="patient"
+      className="patient-dashboard"
+      navGroups={dashboardNavConfig.patient}
+      activeItem={activeTab}
+      onSelectItem={openTab}
+      onLogout={handleLogout}
+      onNotificationMessageClick={handleMessageClick}
+      userName={user?.username || user?.email || "Patient"}
+      roleLabel="Patient"
+      banner={privacyConsentRequired ? (
+        <div className="privacy-global-warning">
+          You updated privacy settings — please open <strong>Records</strong> and tap <strong>Re-consent</strong> under Privacy &amp;
+          consent before using other sections. That confirms your choices for linked caregivers.
+        </div>
+      ) : null}
+    >
+      <div className="patient-main">
         {activeTab === "overview" && (
           <OverviewTab
             onNavigateToVisits={() => openTab("visits")}
@@ -270,10 +206,10 @@ export default function PatientDashboard() {
         {activeTab === "medications" && <MedicationsSupplies />}
         {activeTab === "health" && <HealthSummary />}
         {activeTab === "records" && (
-          <>
+          <div className="patient-records-shell">
             <PrivacyConsentPanel variant="patient" onPendingChange={setPrivacyConsentRequired} />
             {!privacyConsentRequired ? <PatientCareRecordsPanel patientId={user?.id ?? null} /> : null}
-          </>
+          </div>
         )}
         {activeTab === "messages" && (
           <SimpleMessages
@@ -284,8 +220,8 @@ export default function PatientDashboard() {
         {activeTab === "family" && <FamilyAccessPanel />}
         {activeTab === "exercises" && <PatientHEPTab />}
         {activeTab === "notifications" && <NotificationCenter />}
-      </main>
-    </div>
+      </div>
+    </DashboardShell>
   );
 }
 
@@ -384,9 +320,15 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
 
   return (
     <div className="patient-content">
+      <div className="overview-hero">
+        <div>
+          <h2 className="section-title">Home Overview</h2>
+          <p className="overview-hero-copy">Track the next visit, urgent refill reminders, care-plan progress, and quick routes into records and exercises.</p>
+        </div>
+      </div>
       <div className="overview-grid">
         {/* Upcoming Visits Summary */}
-        <div className="overview-card">
+        <div className="overview-card overview-card--primary">
           <h3 className="card-title">Upcoming Visits</h3>
           <div className="visits-summary">
             {upcomingVisits.length === 0 ? (
@@ -413,7 +355,7 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
         </div>
 
         {/* Care Plan Progress */}
-        <div className="overview-card">
+        <div className="overview-card overview-card--progress">
           <h3 className="card-title">Care Plan Progress</h3>
           {carePlansLoading ? (
             <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>Loading care plan progress...</div>
@@ -472,7 +414,7 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
         </div>
 
         {/* Assigned Clinicians — clickable to see history + schedule */}
-        <div className="overview-card">
+        <div className="overview-card overview-card--team">
           <h3 className="card-title">Your Care Team</h3>
           <div className="clinicians-list">
             {careTeam.length === 0 ? (
@@ -555,7 +497,7 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
         </div>
 
         {/* Health Alerts — driven by real refill data */}
-        <div className="overview-card alert-card">
+        <div className="overview-card alert-card overview-card--alerts">
           <h3 className="card-title">Health Alerts</h3>
           <div className="alerts-list-overview">
             {refillAlerts.length === 0 ? (
@@ -581,7 +523,7 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
         </div>
 
         {/* Care Team Availability — shows approved slots for assigned clinicians */}
-        <div className="overview-card">
+        <div className="overview-card overview-card--availability">
           <h3 className="card-title">Care Team Availability</h3>
           <div className="team-availability-list">
             {teamAvailability.length === 0 ? (
@@ -1622,16 +1564,56 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
 
   return (
     <div className="patient-content">
-      <div className="content-header">
-        <h2 className="section-title">Secure Communication Center</h2>
-        <button className="btn-primary" onClick={() => setShowNewMessageModal(true)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          New Message
-        </button>
-      </div>
+      <MessageCenterShell
+        title="Secure Communication Center"
+        description="Review clinician conversations, manage unread threads, and open a specific notification-driven message without losing context."
+        action={
+          <button className="btn-primary" onClick={() => setShowNewMessageModal(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            New Message
+          </button>
+        }
+        tabs={!selectedMessage ? (
+          <div className="message-folder-tabs-patient">
+            <button
+              className={`folder-tab-patient ${activeFolder === "inbox" ? "active" : ""}`}
+              onClick={() => setActiveFolder("inbox")}
+            >
+              Inbox {conversations.some((c) => c.unread) && (
+                <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c) => c.unread).length}</span>
+              )}
+            </button>
+            <button
+              className={`folder-tab-patient ${activeFolder === "sent" ? "active" : ""}`}
+              onClick={() => setActiveFolder("sent")}
+            >
+              Sent
+            </button>
+          </div>
+        ) : undefined}
+        filters={!selectedMessage && activeFolder === "inbox" ? (
+          <div className="message-center-patient__filters">
+            <button
+              className={`btn-secondary${!filterStarred && !roleFilter ? " active" : ""}`}
+              style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred && !roleFilter ? "#6E5B9A" : undefined, color: !filterStarred && !roleFilter ? "#fff" : undefined }}
+              onClick={() => { setFilterStarred(false); setRoleFilter(""); }}
+            >All</button>
+            <button
+              className={`btn-secondary${filterStarred ? " active" : ""}`}
+              style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }}
+              onClick={() => setFilterStarred(!filterStarred)}
+            >Starred</button>
+            <button
+              className={`btn-secondary${roleFilter === "clinician" ? " active" : ""}`}
+              style={{ fontSize: "0.8rem", padding: "4px 12px", background: roleFilter === "clinician" ? "#6E5B9A" : undefined, color: roleFilter === "clinician" ? "#fff" : undefined }}
+              onClick={() => setRoleFilter(roleFilter === "clinician" ? "" : "clinician")}
+            >Clinician</button>
+          </div>
+        ) : undefined}
+      >
 
       {/* New Message Modal */}
       {showNewMessageModal && (
@@ -1699,47 +1681,6 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
         </div>
       )}
 
-      {/* Folder Tabs */}
-      {!selectedMessage && (
-        <div className="message-folder-tabs-patient">
-          <button
-            className={`folder-tab-patient ${activeFolder === "inbox" ? "active" : ""}`}
-            onClick={() => setActiveFolder("inbox")}
-          >
-            Inbox {conversations.some((c) => c.unread) && (
-              <span className="unread-badge" style={{ marginLeft: 8 }}>{conversations.filter((c) => c.unread).length}</span>
-            )}
-          </button>
-          <button
-            className={`folder-tab-patient ${activeFolder === "sent" ? "active" : ""}`}
-            onClick={() => setActiveFolder("sent")}
-          >
-            Sent
-          </button>
-        </div>
-      )}
-
-      {/* Filters */}
-      {!selectedMessage && activeFolder === "inbox" && (
-        <div style={{ display: "flex", gap: 8, padding: "0.5rem 0", flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            className={`btn-secondary${!filterStarred && !roleFilter ? " active" : ""}`}
-            style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred && !roleFilter ? "#6E5B9A" : undefined, color: !filterStarred && !roleFilter ? "#fff" : undefined }}
-            onClick={() => { setFilterStarred(false); setRoleFilter(""); }}
-          >All</button>
-          <button
-            className={`btn-secondary${filterStarred ? " active" : ""}`}
-            style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }}
-            onClick={() => setFilterStarred(!filterStarred)}
-          >Starred</button>
-          <button
-            className={`btn-secondary${roleFilter === "clinician" ? " active" : ""}`}
-            style={{ fontSize: "0.8rem", padding: "4px 12px", background: roleFilter === "clinician" ? "#6E5B9A" : undefined, color: roleFilter === "clinician" ? "#fff" : undefined }}
-            onClick={() => setRoleFilter(roleFilter === "clinician" ? "" : "clinician")}
-          >Clinician</button>
-        </div>
-      )}
-
       {selectedMessage ? (
         // Message Detail View (Full Screen)
         <>
@@ -1770,7 +1711,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
               <p>Loading conversation...</p>
             </div>
           ) : (
-            <div className="message-detail-full-patient">
+            <div className="message-detail-full-patient message-center-shell__panel">
               <div className="message-detail-subject-patient">
                 <h2>{selectedConversation.subject}</h2>
                 <div className="message-detail-meta-patient">
@@ -1845,7 +1786,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       ) : activeFolder === "inbox" ? (
         // Inbox List View (Gmail-style)
         <>
-          <div className="inbox-list-patient">
+          <div className="inbox-list-patient message-center-shell__panel">
             {inboxLoading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading messages...</p>}
             {!inboxLoading && conversations.length === 0 && (
               <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
@@ -1894,7 +1835,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
       ) : activeFolder === "sent" ? (
         // Sent List View
         <>
-          <div className="inbox-list-patient">
+          <div className="inbox-list-patient message-center-shell__panel">
             {sentLoading && <p style={{ padding: '2rem', textAlign: 'center' }}>Loading sent messages...</p>}
             {!sentLoading && sentConversations.length === 0 && (
               <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
@@ -1926,6 +1867,7 @@ function SimpleMessages({ pendingConversation, onConversationOpened }: SimpleMes
           </div>
         </>
       ) : null}
+      </MessageCenterShell>
     </div>
   );
 }

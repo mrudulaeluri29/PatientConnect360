@@ -1,0 +1,26 @@
+.ui-status-message {
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--text-sm);
+}
+
+.ui-status-message--info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.ui-status-message--success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.ui-status-message--warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.ui-status-message--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}

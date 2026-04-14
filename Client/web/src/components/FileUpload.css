@@ -4,16 +4,16 @@
 
 .file-upload-label {
   display: block;
-  font-weight: 500;
-  color: #374151;
-  margin-bottom: 0.5rem;
-  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
 }
 
 .file-upload-container {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -24,25 +24,26 @@
 .file-upload-button {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.875rem 1.5rem;
-  background-color: #f9fafb;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.3s;
-  font-size: 0.95rem;
-  color: #374151;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-strong);
 }
 
 .file-upload-button:hover:not(.disabled) {
-  background-color: #f3f4f6;
-  border-color: #B29CE4;
-  color: #6E5B9A;
+  background-color: var(--brand-primary-soft);
+  border-color: var(--brand-primary);
+  color: var(--brand-primary-strong);
 }
 
 .file-upload-button.error {
-  border-color: #ef4444;
+  border-color: var(--danger);
 }
 
 .file-upload-button.disabled {
@@ -53,14 +54,14 @@
 .file-info {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex: 1;
   min-width: 200px;
 }
 
 .file-name {
-  color: #374151;
-  font-size: 0.95rem;
+  color: var(--text-strong);
+  font-size: var(--text-sm);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -68,14 +69,14 @@
 }
 
 .file-size {
-  color: #6b7280;
-  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 
 .file-remove {
   background: none;
   border: none;
-  color: #ef4444;
+  color: var(--danger);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0;
@@ -88,7 +89,7 @@
 }
 
 .file-remove:hover:not(:disabled) {
-  color: #dc2626;
+  color: color-mix(in srgb, var(--danger) 85%, black);
 }
 
 .file-remove:disabled {
@@ -97,14 +98,14 @@
 }
 
 .file-placeholder {
-  color: #9ca3af;
-  font-size: 0.95rem;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .file-error {
   display: block;
-  color: #ef4444;
-  font-size: 0.875rem;
-  margin-top: 0.25rem;
+  color: var(--danger);
+  font-size: var(--text-sm);
+  margin-top: var(--space-1);
 }
 

@@ -1,0 +1,35 @@
+.hep-layout {
+  padding: var(--space-5);
+}
+
+.hep-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.hep-switcher__button {
+  min-height: 44px;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-default);
+  font: inherit;
+  font-weight: 600;
+}
+
+.hep-switcher__button.is-active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--text-inverse);
+}
+
+@media (max-width: 767px) {
+  .hep-layout {
+    padding: var(--space-4);
+  }
+}

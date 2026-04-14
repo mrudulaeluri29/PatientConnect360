@@ -1,0 +1,99 @@
+.clinician-worklist-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.clinician-worklist-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.clinician-worklist-switcher__button {
+  min-height: 44px;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-default);
+  font: inherit;
+  font-weight: 600;
+}
+
+.clinician-worklist-switcher__button.is-active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--text-inverse);
+}
+
+.clinician-worklist-pane,
+.clinician-worklist-sidebar-card,
+.clinician-worklist-main-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-low);
+}
+
+.clinician-worklist-sidebar-card,
+.clinician-worklist-main-card {
+  padding: var(--space-5);
+}
+
+.clinician-worklist-note,
+.clinician-worklist-meta {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.clinician-worklist-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.clinician-worklist-row {
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.clinician-worklist-row.is-selected {
+  background: var(--brand-primary-soft);
+  border-color: var(--brand-primary);
+}
+
+.clinician-worklist-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.clinician-worklist-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.clinician-worklist-empty {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-muted);
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 767px) {
+  .clinician-worklist-inline-form {
+    flex-direction: column;
+  }
+}

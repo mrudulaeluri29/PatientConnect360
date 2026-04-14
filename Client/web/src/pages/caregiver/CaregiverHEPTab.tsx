@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { api } from "../../lib/axios";
 import { getHEPAssignments, completeHEPAssignment, type ExerciseAssignment } from "../../api/hep";
 import { getVisitPrepTasks, updateVisitPrepTask, type VisitPrepTask } from "../../api/visitPrepTasks";
+import "./CaregiverHEPTab.css";
 
 interface Visit {
   id: string;
@@ -92,18 +93,19 @@ export default function CaregiverHEPTab({
 
   if (patients.length === 0) {
     return (
-      <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280" }}>
-        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>👥</div>
+      <div className="cg-hep-empty-state">
+        <div className="cg-hep-empty-state__icon">👥</div>
         <p>No linked patients found. Use the Access tab to connect to a patient.</p>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "1.5rem" }}>
-      {/* Patient selector */}
+    <div className="cg-hep-layout">
       {patients.length > 1 && (
-        <div style={{ marginBottom: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div className="cg-hep-selector-shell">
+          <div className="cg-hep-selector-label">Selected patient</div>
+          <div className="cg-hep-selector">
           {patients.map((p) => (
             <button
               key={p.id}
@@ -111,37 +113,21 @@ export default function CaregiverHEPTab({
                 if (onSelectedPatientIdChange) onSelectedPatientIdChange(p.id);
                 else setLocalSelectedPatientId(p.id);
               }}
-              style={{
-                padding: "0.4rem 0.8rem",
-                borderRadius: "9999px",
-                border: "none",
-                cursor: "pointer",
-                background: effectiveSelectedPatientId === p.id ? "#6E5B9A" : "#f3f4f6",
-                color: effectiveSelectedPatientId === p.id ? "white" : "#374151",
-                fontWeight: effectiveSelectedPatientId === p.id ? 700 : 400,
-              }}
+              className={`cg-hep-selector__chip ${effectiveSelectedPatientId === p.id ? "is-active" : ""}`}
             >
               {p.username}
             </button>
           ))}
+          </div>
         </div>
       )}
 
-      {/* Section switcher */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0.5rem" }}>
+      <div className="cg-hep-switcher">
         {CAREGIVER_HEP_SECTIONS.map((s) => (
           <button
             key={s.key}
             onClick={() => setActiveSection(s.key)}
-            style={{
-              padding: "0.5rem 1rem",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: activeSection === s.key ? 700 : 400,
-              background: activeSection === s.key ? "#6E5B9A" : "#f3f4f6",
-              color: activeSection === s.key ? "white" : "#374151",
-            }}
+            className={`cg-hep-switcher__button ${activeSection === s.key ? "is-active" : ""}`}
           >
             {s.label}
           </button>

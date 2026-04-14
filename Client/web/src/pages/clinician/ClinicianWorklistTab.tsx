@@ -12,6 +12,8 @@ import {
   updateVisitPrepTask,
   type VisitPrepTask,
 } from "../../api/visitPrepTasks";
+import TaskWorkspaceLayout from "../../components/ui/TaskWorkspaceLayout";
+import "./ClinicianWorklistTab.css";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Visit {
@@ -52,22 +54,13 @@ export default function ClinicianWorklistTab() {
   const [activeSection, setActiveSection] = useState<ClinicianWorklistSection>("worklist");
 
   return (
-    <div className="clinician-content">
-      {/* Section switcher */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0.5rem" }}>
+    <div className="clinician-content clinician-worklist-shell">
+      <div className="clinician-worklist-switcher">
         {CLINICIAN_WORKLIST_SECTIONS.map((s) => (
           <button
             key={s.key}
             onClick={() => setActiveSection(s.key)}
-            style={{
-              padding: "0.5rem 1rem",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: activeSection === s.key ? 700 : 400,
-              background: activeSection === s.key ? "#6E5B9A" : "#f3f4f6",
-              color: activeSection === s.key ? "white" : "#374151",
-            }}
+            className={`clinician-worklist-switcher__button ${activeSection === s.key ? "is-active" : ""}`}
           >
             {s.label}
           </button>

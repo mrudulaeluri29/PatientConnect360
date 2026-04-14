@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../lib/axios";
+import Badge from "./ui/Badge";
+import Button from "./ui/Button";
+import EmptyState from "./ui/EmptyState";
 import "./NotificationBell.css";
 
 interface InAppNotificationApi {
@@ -172,7 +175,7 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
     if (!isDropdownOpen) {
       fetchAllNotifications();
     }
-    setIsDropdownOpen(!isDropdownOpen);
+    setIsDropdownOpen((prev) => !prev);
   };
 
   const handleNotificationClick = async (notif: NotificationItem) => {
@@ -245,13 +248,16 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
 
   return (
     <div className="notification-bell-container" ref={dropdownRef}>
-      <button
+      <Button
+        type="button"
+        variant="quiet"
+        size="sm"
         className="notification-bell-button"
         onClick={handleBellClick}
         aria-label={`Notifications (${totalUnread} unread)`}
       >
-        {/* Bell Icon */}
         <svg
+          className="notification-bell-icon"
           width="20"
           height="20"
           viewBox="0 0 24 24"
@@ -265,36 +271,31 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
           <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
         </svg>
 
-        {/* Notification Count Badge */}
         {totalUnread > 0 && (
-          <span className="notification-badge">
+          <Badge tone="danger" className="notification-badge">
             {totalUnread > 99 ? "99+" : totalUnread}
-          </span>
+          </Badge>
         )}
-      </button>
+      </Button>
 
       {/* Dropdown */}
       {isDropdownOpen && (
         <div className="notification-dropdown">
           <div className="notification-dropdown-header">
             <h3>Notifications</h3>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div className="notification-dropdown-actions">
               {totalUnread > 0 && (
                 <>
                   <span className="total-unread">{totalUnread} unread</span>
-                  <button
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="quiet"
+                    className="notification-mark-read-button"
                     onClick={handleMarkAllRead}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#6E5B9A",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                      textDecoration: "underline",
-                    }}
                   >
                     Mark all read
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
@@ -305,19 +306,16 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
               <div className="notification-loading">Loading...</div>
             ) : notifications.length === 0 ? (
               <div className="notification-empty">
-                <svg
-                  width="48"
-                  height="48"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1"
-                  opacity="0.3"
-                >
-                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
-                  <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
-                </svg>
-                <p>No notifications</p>
+                <EmptyState
+                  icon={
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
+                      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
+                    </svg>
+                  }
+                  title="No notifications"
+                  description="New reminders and messages will appear here."
+                />
               </div>
             ) : (
               notifications.slice(0, 20).map((notif) => (
@@ -325,7 +323,6 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
                   key={notif.id}
                   className={`notification-item ${!notif.isRead ? "unread" : ""}`}
                   onClick={() => handleNotificationClick(notif)}
-                  style={{ cursor: "pointer" }}
                 >
                   <div className="notification-icon">{getNotifIcon(notif.type)}</div>
                   <div className="notification-content">

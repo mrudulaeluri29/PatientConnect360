@@ -1,0 +1,24 @@
+.ui-modal-shell {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-overlay);
+}
+
+.ui-modal-shell__header,
+.ui-modal-shell__body,
+.ui-modal-shell__footer {
+  padding: var(--space-5);
+}
+
+.ui-modal-shell__header {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ui-modal-shell__footer {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ui-modal-shell__header h3 {
+  margin: 0;
+}

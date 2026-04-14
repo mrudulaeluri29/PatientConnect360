@@ -1,6 +1,6 @@
 .admin-dashboard {
   min-height: 100vh;
-  background-color: #f9fafb;
+  background-color: var(--bg-app);
 }
 
 /* Header */
@@ -106,9 +106,9 @@
 
 /* Main Content */
 .admin-main {
-  padding: 2rem;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: 0;
+  max-width: none;
+  margin: 0;
 }
 
 .admin-content {

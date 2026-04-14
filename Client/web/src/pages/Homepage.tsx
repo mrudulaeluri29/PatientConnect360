@@ -5,6 +5,7 @@ import "./Homepage.css";
 
 export default function Homepage() {
   const [activeSection, setActiveSection] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { settings } = useAgencyBranding();
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export default function Homepage() {
       }
     };
 
-    window.addEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("hashchange", handleHashChange);
     
     // Check initial hash
@@ -46,6 +47,7 @@ export default function Homepage() {
 
   const handleNavClick = (section: string) => {
     setActiveSection(section);
+    setMobileMenuOpen(false);
   };
 
   return (
@@ -59,6 +61,17 @@ export default function Homepage() {
             ) : null}
             <span className="logo-text">{settings.portalName}</span>
           </div>
+          <button
+            type="button"
+            className="nav-menu-button"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
           <div className="nav-links">
             <a 
               href="#features" 
@@ -83,33 +96,59 @@ export default function Homepage() {
             </a>
           </div>
           <div className="nav-actions">
-            <Link to="/login" className="btn-login" style={{ color: settings.primaryColor, borderColor: settings.primaryColor }}>Login</Link>
-            <Link to="/register" className="btn-signup" style={{ backgroundColor: settings.primaryColor }}>Sign Up</Link>
+            <Link to="/login" className="btn-login">Login</Link>
+            <Link to="/register" className="btn-signup">Sign Up</Link>
+          </div>
+        </div>
+        <div className={`mobile-nav-panel ${mobileMenuOpen ? "is-open" : ""}`}>
+          <a href="#features" className={activeSection === "features" ? "active" : ""} onClick={() => handleNavClick("features")}>
+            Features
+          </a>
+          <a href="#about" className={activeSection === "about" ? "active" : ""} onClick={() => handleNavClick("about")}>
+            About
+          </a>
+          <a href="#support" className={activeSection === "support" ? "active" : ""} onClick={() => handleNavClick("support")}>
+            Support
+          </a>
+          <div className="mobile-nav-panel__actions">
+            <Link to="/login" className="btn-login" onClick={() => setMobileMenuOpen(false)}>Login</Link>
+            <Link to="/register" className="btn-signup" onClick={() => setMobileMenuOpen(false)}>Sign Up</Link>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
       <section className="hero">
-        <div className="hero-background">
-          <img src="/hos.jpg" alt="Modern healthcare facility" className="hero-image" />
-          <div className="hero-overlay"></div>
-        </div>
-        <div className="hero-content">
-          <h1 className="hero-title">
-              <span className="title-line-1">YOUR HEALTH,</span>
-              <span className="title-line-2">CONNECTED</span>
-              <span className="title-line-3">YOUR CARE, SIMPLIFIED</span>
-          </h1>
-          <p className="hero-subtitle">
-            Seamlessly connect with your healthcare team, manage appointments, 
-            and access your medical records—all in one secure platform.
-          </p>
-          <div className="hero-cta">
-            <Link to="/register" className="btn-primary">
-              Get Started Free
-            </Link>
-            <p className="cta-note">Secure • HIPAA Compliant • Free</p>
+        <div className="hero-shell">
+          <div className="hero-copy">
+            <div className="hero-eyebrow">PatientConnect360</div>
+            <h1 className="hero-title">Connected care that feels clear, calm, and easy to trust.</h1>
+            <p className="hero-subtitle">
+              Manage appointments, messages, records, and care coordination in one secure portal designed for patients, caregivers, clinicians, and operations teams.
+            </p>
+            <div className="hero-cta">
+              <Link to="/register" className="btn-primary">
+                Create an account
+              </Link>
+              <Link to="/login" className="hero-secondary-link">
+                Already have access? Sign in
+              </Link>
+            </div>
+            <div className="hero-trust-row">
+              <span>Secure messaging</span>
+              <span>Appointment coordination</span>
+              <span>Records access</span>
+            </div>
+          </div>
+
+          <div className="hero-media">
+            <div className="hero-media__frame">
+              <img src="/hos.jpg" alt="Modern healthcare facility" className="hero-image" />
+            </div>
+            <div className="hero-media__card">
+              <p className="hero-media__card-label">Support</p>
+              <strong>{settings.supportName || "Support Team"}</strong>
+              <span>{[settings.supportEmail, settings.supportPhone].filter(Boolean).join(" • ") || "Support details available once configured."}</span>
+            </div>
           </div>
         </div>
       </section>
@@ -222,7 +261,7 @@ export default function Homepage() {
         <div className="cta-container">
           <h2>Ready to take control of your health?</h2>
           <p>Join thousands of patients and healthcare providers using {settings.portalName}</p>
-          <Link to="/register" className="btn-primary large" style={{ backgroundColor: settings.primaryColor }}>
+          <Link to="/register" className="btn-primary large">
             Get Started Today
           </Link>
         </div>

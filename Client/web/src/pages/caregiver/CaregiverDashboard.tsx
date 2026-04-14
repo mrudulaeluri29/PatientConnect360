@@ -3,8 +3,10 @@ import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAn
 import { useAuth } from "../../auth/AuthContext";
 import CaregiverHEPTab from "./CaregiverHEPTab";
 import { useFeedback } from "../../contexts/FeedbackContext";
-import NotificationBell from "../../components/NotificationBell";
+import DashboardShell from "../../components/dashboard-shell/DashboardShell";
+import { dashboardNavConfig } from "../../components/dashboard-shell/navConfig";
 import NotificationCenter from "../../components/notifications/NotificationCenter";
+import MessageCenterShell from "../../components/ui/MessageCenterShell";
 import { api } from "../../lib/axios";
 import {
   getVisits,
@@ -201,6 +203,43 @@ function medDisplayName(m: ApiMedication): string {
   return m.name;
 }
 
+function CaregiverPatientSelector({
+  patients,
+  selectedPatientId,
+  onSelect,
+  className = "",
+}: {
+  patients: OverviewPatient[];
+  selectedPatientId: string | null;
+  onSelect: (patientId: string) => void;
+  className?: string;
+}) {
+  if (patients.length <= 1) return null;
+
+  return (
+    <div className={["cg-patient-selector-shell", className].filter(Boolean).join(" ")}>
+      <div className="cg-patient-selector-label">Selected patient</div>
+      <div className="cg-patient-selector">
+        {patients.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className={`cg-patient-chip ${p.id === selectedPatientId ? "active" : ""}`}
+            onClick={() => onSelect(p.id)}
+          >
+            <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
+            <div className="cg-patient-chip-info">
+              <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
+              <span className="cg-patient-chip-rel">{p.relationship || "MPOA/Family"}</span>
+            </div>
+            {p.isPrimary ? <span className="cg-primary-tag">MPOA</span> : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function CaregiverDashboard() {
@@ -214,68 +253,27 @@ export default function CaregiverDashboard() {
   };
 
   return (
-    <div className="cg-dashboard">
-      <header className="cg-header">
-        <div className="cg-header-left">
-          <h1 className="cg-logo">MediHealth</h1>
-          <nav className="cg-nav">
-            <button className={`nav-item ${activeTab === "home" ? "active" : ""}`} onClick={() => setActiveTab("home")}>
-              Home
-            </button>
-            <button className={`nav-item ${activeTab === "schedule" ? "active" : ""}`} onClick={() => setActiveTab("schedule")}>
-              Schedule
-            </button>
-            <button className={`nav-item ${activeTab === "medications" ? "active" : ""}`} onClick={() => setActiveTab("medications")}>
-              Medications
-            </button>
-            <button className={`nav-item ${activeTab === "progress" ? "active" : ""}`} onClick={() => setActiveTab("progress")}>
-              Progress
-            </button>
-            <button className={`nav-item ${activeTab === "records" ? "active" : ""}`} onClick={() => setActiveTab("records")}>
-              Records
-            </button>
-            <button className={`nav-item ${activeTab === "alerts" ? "active" : ""}`} onClick={() => setActiveTab("alerts")}>
-              Alerts
-            </button>
-            <button className={`nav-item ${activeTab === "access" ? "active" : ""}`} onClick={() => setActiveTab("access")}>
-              Access
-            </button>
-            <button className={`nav-item ${activeTab === "safety" ? "active" : ""}`} onClick={() => setActiveTab("safety")}>
-              Safety
-            </button>
-            <button className={`nav-item ${activeTab === "feedback" ? "active" : ""}`} onClick={() => setActiveTab("feedback")}>
-              Feedback
-            </button>
-            <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
-              Messages
-            </button>
-            <button
-  className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
-  onClick={() => setActiveTab("exercises")}
->
-  Exercises & Tasks
-</button>
-            <button className={`nav-item ${activeTab === "notifications" ? "active" : ""}`} onClick={() => setActiveTab("notifications")}>
-              Notifications
-            </button>
-          </nav>
-        </div>
-        <div className="cg-header-right">
-          <NotificationBell onMessageClick={(view) => setActiveTab(view)} />
-          <div className="cg-user-info">
-            <span className="cg-user-name">{user?.username || user?.email || "MPOA/Family"}</span>
-            <div className="cg-user-badges">
-              <span className="badge-caregiver">MPOA/Family</span>
-            </div>
-          </div>
-          <button className="btn-logout" onClick={handleLogout}>Logout</button>
-        </div>
-      </header>
-
-      <main className="cg-main">
-        {activeTab === "home" && <HomeOverview />}
-        {activeTab === "schedule" && <CaregiverSchedule />}
-        {activeTab === "medications" && <CaregiverMedications />}
+    <DashboardShell
+      role="caregiver"
+      className="cg-dashboard"
+      navGroups={dashboardNavConfig.caregiver}
+      activeItem={activeTab}
+      onSelectItem={setActiveTab}
+      onLogout={handleLogout}
+      onNotificationMessageClick={(view) => setActiveTab(view)}
+      userName={user?.username || user?.email || "MPOA/Family"}
+      roleLabel="MPOA/Family"
+    >
+      <div className="cg-main">
+        {activeTab === "home" && (
+          <HomeOverview selectedPatientId={sharedSelectedPatientId} onSelectedPatientIdChange={setSharedSelectedPatientId} />
+        )}
+        {activeTab === "schedule" && (
+          <CaregiverSchedule selectedPatientId={sharedSelectedPatientId} onSelectedPatientIdChange={setSharedSelectedPatientId} />
+        )}
+        {activeTab === "medications" && (
+          <CaregiverMedications selectedPatientId={sharedSelectedPatientId} onSelectedPatientIdChange={setSharedSelectedPatientId} />
+        )}
         {activeTab === "progress" && (
           <CaregiverProgress
             selectedPatientId={sharedSelectedPatientId}
@@ -291,7 +289,9 @@ export default function CaregiverDashboard() {
         {activeTab === "alerts" && <CaregiverAlerts onNavigate={setActiveTab} />}
         {activeTab === "access" && <CaregiverAccess />}
         {activeTab === "safety" && <CaregiverSafety onNavigate={setActiveTab} />}
-        {activeTab === "feedback" && <CaregiverFeedback />}
+        {activeTab === "feedback" && (
+          <CaregiverFeedback selectedPatientId={sharedSelectedPatientId} onSelectedPatientIdChange={setSharedSelectedPatientId} />
+        )}
         {activeTab === "messages" && <CaregiverMessages />}
         {activeTab === "exercises" && (
           <CaregiverHEPTab
@@ -300,8 +300,8 @@ export default function CaregiverDashboard() {
           />
         )}
         {activeTab === "notifications" && <NotificationCenter />}
-      </main>
-    </div>
+      </div>
+    </DashboardShell>
   );
 }
 
@@ -543,43 +543,27 @@ function CaregiverMessages() {
   const visibleRows = activeFolder === "inbox" ? inbox : sent;
 
   return (
-    <div className="cg-content">
-      <div className="cg-section-header">
-        <h2 className="cg-section-title">Secure Messaging</h2>
-        <button className="btn-primary" onClick={() => setShowNewMessage(true)}>
-          New Message
-        </button>
-      </div>
-
-      {!selectedId && (
-        <>
-          <div className="cg-msg-tabs">
-            <button className={`cg-msg-tab ${activeFolder === "inbox" ? "active" : ""}`} onClick={() => setActiveFolder("inbox")}>
-              Inbox
-            </button>
-            <button className={`cg-msg-tab ${activeFolder === "sent" ? "active" : ""}`} onClick={() => setActiveFolder("sent")}>
-              Sent
-            </button>
-          </div>
-          {activeFolder === "inbox" && (
-            <div style={{ display: "flex", gap: 8, padding: "0.5rem 0", flexWrap: "wrap", alignItems: "center" }}>
-              <button
-                className="cg-btn"
-                style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred ? "#6E5B9A" : undefined, color: !filterStarred ? "#fff" : undefined }}
-                onClick={() => setFilterStarred(false)}
-              >All</button>
-              <button
-                className="cg-btn"
-                style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }}
-                onClick={() => setFilterStarred(!filterStarred)}
-              >Starred</button>
-            </div>
-          )}
-        </>
-      )}
+    <MessageCenterShell
+      title="Care Team Messaging"
+      description="Stay aligned with clinicians, review unread conversations, and respond without losing sight of the care context."
+      action={<button className="btn-primary" onClick={() => setShowNewMessage(true)}>New Message</button>}
+      tabs={!selectedId ? (
+        <div className="cg-msg-tabs">
+          <button className={`cg-msg-tab ${activeFolder === "inbox" ? "active" : ""}`} onClick={() => setActiveFolder("inbox")}>Inbox</button>
+          <button className={`cg-msg-tab ${activeFolder === "sent" ? "active" : ""}`} onClick={() => setActiveFolder("sent")}>Sent</button>
+        </div>
+      ) : undefined}
+      filters={!selectedId && activeFolder === "inbox" ? (
+        <div className="message-center-caregiver__filters">
+          <button className="cg-btn" style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred ? "#6E5B9A" : undefined, color: !filterStarred ? "#fff" : undefined }} onClick={() => setFilterStarred(false)}>All</button>
+          <button className="cg-btn" style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }} onClick={() => setFilterStarred(!filterStarred)}>Starred</button>
+        </div>
+      ) : undefined}
+      className="cg-content"
+    >
 
       {selectedId ? (
-        <div className="cg-card info">
+        <div className="cg-card info message-center-shell__panel">
           <div className="cg-card-header">
             <h3 className="cg-card-title">{selectedConversation?.subject || "Conversation"}</h3>
             <button className="cg-btn cg-btn-resched" onClick={() => setSelectedId(null)}>
@@ -601,7 +585,7 @@ function CaregiverMessages() {
       ) : loadingList ? (
         <div className="cg-loading">Loading messages...</div>
       ) : (
-        <div className="cg-card info">
+        <div className="cg-card info message-center-shell__panel">
           {visibleRows.length === 0 ? (
             <div className="cg-empty">No messages in this folder.</div>
           ) : (
@@ -675,7 +659,7 @@ function CaregiverMessages() {
           </div>
         </div>
       )}
-    </div>
+    </MessageCenterShell>
   );
 }
 
@@ -1245,9 +1229,14 @@ function PatientSummaryCard({ patient, onSelect }: { patient: OverviewPatient; o
 
 // ─── Home Overview Tab ───────────────────────────────────────────────────────
 
-function HomeOverview() {
+function HomeOverview({
+  selectedPatientId,
+  onSelectedPatientIdChange,
+}: {
+  selectedPatientId: string | null;
+  onSelectedPatientIdChange: (patientId: string | null) => void;
+}) {
   const [patients, setPatients] = useState<OverviewPatient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [patientDetail, setPatientDetail] = useState<{
     upcomingVisits: OverviewVisit[];
     medications: OverviewMed[];
@@ -1262,13 +1251,13 @@ function HomeOverview() {
       .then((res) => {
         const pts: OverviewPatient[] = res.data.patients || [];
         setPatients(pts);
-        if (pts.length > 0) {
-          setSelectedPatientId(pts[0].id);
+        if (pts.length > 0 && (!selectedPatientId || !pts.some((p) => p.id === selectedPatientId))) {
+          onSelectedPatientIdChange(pts[0].id);
         }
       })
       .catch(() => setPatients([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [onSelectedPatientIdChange, selectedPatientId]);
 
   useEffect(() => {
     if (!selectedPatientId) {
@@ -1319,32 +1308,6 @@ function HomeOverview() {
     );
   }
 
-  // Multi-patient overview: show cards for each patient
-  if (data.patients.length > 1 && !selectedPatientId) {
-    return (
-      <div className="cg-content">
-        <div className="cg-section-header">
-          <h2 className="cg-section-title">MPOA/Family Overview</h2>
-          <p style={{ color: "#6b7280", fontSize: "0.9rem", marginTop: "0.5rem" }}>
-            Select a patient to view their detailed care information
-          </p>
-        </div>
-
-        <div className="cg-patient-cards-grid">
-          {data.patients.map((p) => (
-            <PatientSummaryCard key={p.id} patient={p} onSelect={() => setSelectedPatientId(p.id)} />
-          ))}
-        </div>
-
-        <div style={{ marginTop: "2rem", padding: "1rem", background: "#f9fafb", borderRadius: "8px" }}>
-          <p style={{ color: "#6b7280", fontSize: "0.9rem", margin: 0 }}>
-            <strong>Note:</strong> All patient information is strictly isolated. Selecting a patient shows only their data.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const selectedPatient = data.patients.find((p) => p.id === selectedPatientId) || data.patients[0];
 
   const filteredVisits = data.upcomingVisits;
@@ -1356,36 +1319,18 @@ function HomeOverview() {
       {detailLoading && <div className="cg-loading" style={{ marginBottom: "1rem" }}>Loading patient data...</div>}
       <div className="cg-section-header">
         <h2 className="cg-section-title">Home Overview</h2>
-        {data.patients.length > 1 && (
-          <button
-            className="btn-secondary"
-            onClick={() => setSelectedPatientId(null)}
-            style={{ marginLeft: "auto" }}
-          >
-            ← Back to All Patients
-          </button>
-        )}
+        <p className="cg-home-subtitle">Keep patient context visible while reviewing visits, medications, alerts, and care status.</p>
       </div>
 
-      {/* Patient Selector (show if multiple patients) */}
-      {data.patients.length > 1 && (
-        <div className="cg-patient-selector">
+      <CaregiverPatientSelector patients={data.patients} selectedPatientId={selectedPatient.id} onSelect={onSelectedPatientIdChange} />
+
+      {data.patients.length > 1 ? (
+        <div className="cg-patient-cards-grid">
           {data.patients.map((p) => (
-            <div
-              key={p.id}
-              className={`cg-patient-chip ${p.id === selectedPatient.id ? "active" : ""}`}
-              onClick={() => setSelectedPatientId(p.id)}
-            >
-              <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
-              <div className="cg-patient-chip-info">
-                <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
-                <span className="cg-patient-chip-rel">{p.relationship || "MPOA/Family"}</span>
-              </div>
-              {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
-            </div>
+            <PatientSummaryCard key={p.id} patient={p} onSelect={() => onSelectedPatientIdChange(p.id)} />
           ))}
         </div>
-      )}
+      ) : null}
 
       {/* Overview Grid */}
       <div className="cg-overview-grid">
@@ -1557,13 +1502,18 @@ function HomeOverview() {
 
 // ─── Schedule Tab ────────────────────────────────────────────────────────────
 
-function CaregiverSchedule() {
+function CaregiverSchedule({
+  selectedPatientId,
+  onSelectedPatientIdChange,
+}: {
+  selectedPatientId: string | null;
+  onSelectedPatientIdChange: (patientId: string | null) => void;
+}) {
   const { showToast, promptDialog } = useFeedback();
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [visits, setVisits] = useState<ApiVisit[]>([]);
   const [loadingVisits, setLoadingVisits] = useState(true);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
 
   const [showReschedule, setShowReschedule] = useState<null | ApiVisit>(null);
@@ -1606,12 +1556,12 @@ function CaregiverSchedule() {
       .then((res) => {
         const pts: OverviewPatient[] = res.data.patients || [];
         setOverview({ patients: pts, upcomingVisits: [], medications: [], alerts: [] });
-        if (pts.length > 0) setSelectedPatientId(pts[0].id);
+        if (pts.length > 0 && (!selectedPatientId || !pts.some((p) => p.id === selectedPatientId))) onSelectedPatientIdChange(pts[0].id);
       })
       .catch(() => setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] }))
       .finally(() => setLoadingOverview(false));
     void refreshVisits(false);
-  }, [refreshVisits]);
+  }, [onSelectedPatientIdChange, refreshVisits, selectedPatientId]);
 
   const selectedPatient =
     overview?.patients.find((p) => p.id === selectedPatientId) || overview?.patients[0] || null;
@@ -1737,24 +1687,7 @@ function CaregiverSchedule() {
         }}
       />
 
-      {overview.patients.length > 1 && selectedPatient && (
-        <div className="cg-patient-selector">
-          {overview.patients.map((p) => (
-            <div
-              key={p.id}
-              className={`cg-patient-chip ${p.id === selectedPatient.id ? "active" : ""}`}
-              onClick={() => setSelectedPatientId(p.id)}
-            >
-              <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
-              <div className="cg-patient-chip-info">
-                <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
-                <span className="cg-patient-chip-rel">{p.relationship || "MPOA/Family"}</span>
-              </div>
-              {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
-            </div>
-          ))}
-        </div>
-      )}
+      {selectedPatient ? <CaregiverPatientSelector patients={overview.patients} selectedPatientId={selectedPatient.id} onSelect={onSelectedPatientIdChange} /> : null}
 
       <div className="cg-schedule-grid">
         <div className="cg-card visits">
@@ -1919,11 +1852,16 @@ function CaregiverSchedule() {
 
 // ─── Medications Tab ─────────────────────────────────────────────────────────
 
-function CaregiverMedications() {
+function CaregiverMedications({
+  selectedPatientId,
+  onSelectedPatientIdChange,
+}: {
+  selectedPatientId: string | null;
+  onSelectedPatientIdChange: (patientId: string | null) => void;
+}) {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [medications, setMedications] = useState<ApiMedication[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [showOnlyAttention, setShowOnlyAttention] = useState(false);
   const [takenMap, setTakenMap] = useState<Record<string, boolean>>({});
 
@@ -1938,9 +1876,7 @@ function CaregiverMedications() {
         const pts: OverviewPatient[] = ptsRes.data.patients || [];
         setOverview({ patients: pts, upcomingVisits: [], medications: [], alerts: [] });
         setMedications(meds);
-        if (pts.length > 0) {
-          setSelectedPatientId(pts[0].id);
-        }
+        if (pts.length > 0 && (!selectedPatientId || !pts.some((p) => p.id === selectedPatientId))) onSelectedPatientIdChange(pts[0].id);
       } catch {
         setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] });
         setMedications([]);
@@ -1949,7 +1885,7 @@ function CaregiverMedications() {
       }
     };
     run();
-  }, []);
+  }, [onSelectedPatientIdChange, selectedPatientId]);
 
   if (loading) return <div className="cg-loading">Loading medications...</div>;
 
@@ -1985,24 +1921,7 @@ function CaregiverMedications() {
         <h2 className="cg-section-title">Medications &amp; Orders</h2>
       </div>
 
-      {overview.patients.length > 1 && (
-        <div className="cg-patient-selector">
-          {overview.patients.map((p) => (
-            <div
-              key={p.id}
-              className={`cg-patient-chip ${p.id === selectedPatient.id ? "active" : ""}`}
-              onClick={() => setSelectedPatientId(p.id)}
-            >
-              <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
-              <div className="cg-patient-chip-info">
-                <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
-                <span className="cg-patient-chip-rel">{p.relationship || "MPOA/Family"}</span>
-              </div>
-              {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
-            </div>
-          ))}
-        </div>
-      )}
+      <CaregiverPatientSelector patients={overview.patients} selectedPatientId={selectedPatient.id} onSelect={onSelectedPatientIdChange} />
 
       <div className="cg-kpi-row">
         <div className="cg-kpi-card">
@@ -2353,11 +2272,16 @@ type FeedbackPrompt = {
   dismissed: boolean;
 };
 
-function CaregiverFeedback() {
+function CaregiverFeedback({
+  selectedPatientId,
+  onSelectedPatientIdChange,
+}: {
+  selectedPatientId: string | null;
+  onSelectedPatientIdChange: (patientId: string | null) => void;
+}) {
   const { showToast } = useFeedback();
   const [patients, setPatients] = useState<OverviewPatient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [prompts, setPrompts] = useState<FeedbackPrompt[]>([]);
   const [showFeedbackModal, setShowFeedbackModal] = useState<FeedbackPrompt | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -2377,13 +2301,11 @@ function CaregiverFeedback() {
       .then((res) => {
         const pts: OverviewPatient[] = res.data.patients || [];
         setPatients(pts);
-        if (pts.length > 0) {
-          setSelectedPatientId(pts[0].id);
-        }
+        if (pts.length > 0 && (!selectedPatientId || !pts.some((p) => p.id === selectedPatientId))) onSelectedPatientIdChange(pts[0].id);
       })
       .catch(() => setPatients([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [onSelectedPatientIdChange, selectedPatientId]);
 
   // When selected patient changes, fetch patient-scoped data and generate prompts
   useEffect(() => {
@@ -2525,24 +2447,7 @@ function CaregiverFeedback() {
         </p>
       </div>
 
-      {overview.patients.length > 1 && (
-        <div className="cg-patient-selector">
-          {overview.patients.map((p) => (
-            <div
-              key={p.id}
-              className={`cg-patient-chip ${p.id === selectedPatient.id ? "active" : ""}`}
-              onClick={() => setSelectedPatientId(p.id)}
-            >
-              <div className="cg-patient-chip-avatar">{patientInitials(p)}</div>
-              <div className="cg-patient-chip-info">
-                <span className="cg-patient-chip-name">{patientDisplayName(p)}</span>
-                <span className="cg-patient-chip-rel">{p.relationship || "MPOA/Family"}</span>
-              </div>
-              {p.isPrimary && <span className="cg-primary-tag">MPOA</span>}
-            </div>
-          ))}
-        </div>
-      )}
+      <CaregiverPatientSelector patients={overview.patients} selectedPatientId={selectedPatient.id} onSelect={onSelectedPatientIdChange} />
 
       <div className="cg-card info">
         <div className="cg-card-header">

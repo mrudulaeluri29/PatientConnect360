@@ -6,10 +6,14 @@ import { validatePassword, validateEmail, validateUsername } from "../utils/vali
 import { sendOtp } from "../api/auth";
 import { ONBOARDING_CONSENTS, DEFAULT_COMM_PREFS } from "../api/onboarding";
 import type { CommPrefs } from "../api/onboarding";
+import { useAgencyBranding } from "../branding/AgencyBranding";
+import AuthPageShell from "../components/auth/AuthPageShell";
+import StatusMessage from "../components/ui/StatusMessage";
 import ConsentSection from "../components/ConsentSection";
 import CommPreferences from "../components/CommPreferences";
 import AddressAutocomplete from "../components/AddressAutocomplete";
 import FileUpload from "../components/FileUpload";
+import "./Auth.css";
 import "./Signup.css";
 
 export default function Signup() {
@@ -40,6 +44,7 @@ export default function Signup() {
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { settings } = useAgencyBranding();
 
   // Feature 1: Consent and communication preferences state
   const [consentState, setConsentState] = useState<Record<string, boolean>>({});
@@ -241,48 +246,35 @@ export default function Signup() {
   };
 
   return (
-    <div className="signup-page">
-      <div className="signup-container">
-        <div className="signup-left">
-          <div className="signup-branding">
-            <div className="brand-logo">
-              <span className="logo-text">MediHealth</span>
-            </div>
-            <h1 className="signup-title">Patient Registration</h1>
-            <p className="signup-subtitle">
-              Join MediHealth to manage your health, connect with your care team, and access your medical records
-            </p>
-          </div>
-          
-          <div className="signup-features">
-            <div className="feature-item">
-              <span>Secure & HIPAA Compliant</span>
-            </div>
-            <div className="feature-item">
-              <span>24/7 Access to Records</span>
-            </div>
-            <div className="feature-item">
-              <span>Connect with Care Team</span>
-            </div>
-            <div className="feature-item">
-              <span>Manage Appointments</span>
-            </div>
-          </div>
+    <AuthPageShell
+      eyebrow="Patient registration"
+      title="Create your patient account"
+      description={`Join ${settings.portalName} to manage appointments, records, and care communication from one secure portal.`}
+      highlights={[
+        "Keep your personal, pharmacy, and insurance details in one place",
+        "Review privacy agreements before activating your account",
+        "Verify by email before your account becomes active",
+      ]}
+    >
+      <div className="auth-panel signup-form-container">
+        <div className="auth-panel__header">
+          <h2 className="auth-panel__title">Sign Up</h2>
+          <p className="auth-panel__subtitle">Complete the information below to create your patient account.</p>
         </div>
 
-        <div className="signup-right">
-          <div className="signup-form-container">
-            <h2 className="form-title">Sign Up</h2>
-            <p className="form-subtitle">Create your patient account</p>
+        {errors.submit ? (
+          <div className="auth-status-stack">
+            <StatusMessage tone="danger">{errors.submit}</StatusMessage>
+          </div>
+        ) : null}
 
-            {errors.submit && (
-              <div className="error-message">
-                <span>{errors.submit}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="signup-form">
-              {/* Basic Fields */}
+        <form onSubmit={handleSubmit} className="signup-form auth-form">
+          <section className="auth-form-section">
+            <div className="auth-form-section__header">
+              <h3>Account details</h3>
+              <p>Start with the credentials and contact details required for sign-in.</p>
+            </div>
+            <div className="auth-form-grid">
               <div className="form-group">
                 <label htmlFor="email">Email *</label>
                 <input
@@ -315,7 +307,101 @@ export default function Signup() {
                 {errors.username && <span className="field-error">{errors.username}</span>}
               </div>
 
-              {/* Patient-Specific Fields */}
+              <div className="form-group">
+                <label htmlFor="password">Password *</label>
+                <div className="password-input-wrapper">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    id="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder="Create a password"
+                    required
+                    disabled={loading}
+                    className={errors.password ? "error" : ""}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={loading}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                {formData.password && (
+                  <div className={`password-requirements ${passwordValidation.isValid ? "valid" : ""}`}>
+                    <div className="requirement-title">Password must contain:</div>
+                    <ul className="requirement-list">
+                      <li className={formData.password.length >= 10 ? "met" : ""}>At least 10 characters</li>
+                      <li className={/[A-Z]/.test(formData.password) ? "met" : ""}>One capital letter</li>
+                      <li className={/[a-z]/.test(formData.password) ? "met" : ""}>One lowercase letter</li>
+                      <li className={/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(formData.password) ? "met" : ""}>
+                        One special character
+                      </li>
+                    </ul>
+                  </div>
+                )}
+                {errors.password && <span className="field-error">{errors.password}</span>}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm Password *</label>
+                <div className="password-input-wrapper">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="Confirm your password"
+                    required
+                    disabled={loading}
+                    className={errors.confirmPassword ? "error" : ""}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    disabled={loading}
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  >
+                    {showConfirmPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                {errors.confirmPassword && <span className="field-error">{errors.confirmPassword}</span>}
+              </div>
+            </div>
+          </section>
+
+          <section className="auth-form-section">
+            <div className="auth-form-section__header">
+              <h3>Personal and insurance details</h3>
+              <p>Use the same legal and insurance details your care team will reference.</p>
+            </div>
+            <div className="auth-form-grid">
               <div className="form-group">
                 <label htmlFor="legalName">Legal Name *</label>
                 <input
@@ -402,6 +488,15 @@ export default function Signup() {
                 {errors.insurancePolicyNumber && <span className="field-error">{errors.insurancePolicyNumber}</span>}
               </div>
 
+            </div>
+          </section>
+
+          <section className="auth-form-section">
+            <div className="auth-form-section__header">
+              <h3>Pharmacy and home details</h3>
+              <p>These details help visits, prescriptions, and records stay accurate.</p>
+            </div>
+            <div className="auth-form-grid">
               <div className="form-group">
                 <label htmlFor="preferredPharmacyName">Preferred Pharmacy Name *</label>
                 <input
@@ -480,126 +575,44 @@ export default function Signup() {
                   disabled={loading}
                 />
               </div>
+            </div>
+          </section>
 
+          <section className="auth-form-section">
+            <div className="auth-form-section__header">
+              <h3>Documents, privacy, and communication</h3>
+              <p>Review agreements, upload optional documents, and choose how reminders should reach you.</p>
+            </div>
+            <div className="auth-form-grid auth-form-grid--single">
               <div className="form-group">
-                <label htmlFor="password">Password *</label>
-                <div className="password-input-wrapper">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    id="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    placeholder="Create a password"
-                    required
-                    disabled={loading}
-                    className={errors.password ? "error" : ""}
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                        <line x1="1" y1="1" x2="23" y2="23"></line>
-                      </svg>
-                    ) : (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                      </svg>
-                    )}
-                  </button>
-                </div>
-                {formData.password && (
-                  <div className={`password-requirements ${passwordValidation.isValid ? "valid" : ""}`}>
-                    <div className="requirement-title">Password must contain:</div>
-                    <ul className="requirement-list">
-                      <li className={formData.password.length >= 10 ? "met" : ""}>
-                        At least 10 characters
-                      </li>
-                      <li className={/[A-Z]/.test(formData.password) ? "met" : ""}>
-                        One capital letter
-                      </li>
-                      <li className={/[a-z]/.test(formData.password) ? "met" : ""}>
-                        One lowercase letter
-                      </li>
-                      <li className={/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(formData.password) ? "met" : ""}>
-                        One special character
-                      </li>
-                    </ul>
-                  </div>
-                )}
-                {errors.password && <span className="field-error">{errors.password}</span>}
+                <FileUpload
+                  onFileSelect={setUploadedFile}
+                  accept="image/*,.pdf"
+                  label="Upload Document (Optional)"
+                  disabled={loading}
+                />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="confirmPassword">Confirm Password *</label>
-                <div className="password-input-wrapper">
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                    placeholder="Confirm your password"
-                    required
-                    disabled={loading}
-                    className={errors.confirmPassword ? "error" : ""}
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    disabled={loading}
-                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                  >
-                    {showConfirmPassword ? (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                        <line x1="1" y1="1" x2="23" y2="23"></line>
-                      </svg>
-                    ) : (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                      </svg>
-                    )}
-                  </button>
-                </div>
-                {errors.confirmPassword && <span className="field-error">{errors.confirmPassword}</span>}
-              </div>
-
-              {/* Feature 1: Consent Section */}
               <ConsentSection consents={ONBOARDING_CONSENTS} onChange={setConsentState} disabled={loading} />
               {errors.consents && <span className="field-error">{errors.consents}</span>}
 
-              {/* Feature 1: Communication Preferences */}
               <CommPreferences value={commPrefs} onChange={setCommPrefs} disabled={loading} />
-
-              <button
-                type="submit"
-                className="btn-signup-submit"
-                disabled={loading || !passwordValidation.isValid}
-              >
-                {loading ? "Creating account..." : "Create Account"}
-              </button>
-            </form>
-
-            <div className="signup-divider">
-              <span>Already have an account?</span>
             </div>
+          </section>
 
-            <Link to="/login" className="btn-login-link">
-              Sign In
-            </Link>
-          </div>
+          <button type="submit" className="btn-signup-submit" disabled={loading || !passwordValidation.isValid}>
+            {loading ? "Creating account..." : "Create Account"}
+          </button>
+        </form>
+
+        <div className="auth-divider">
+          <span>Already have an account?</span>
         </div>
+
+        <Link to="/login" className="btn-login-link">
+          Sign In
+        </Link>
       </div>
-    </div>
+    </AuthPageShell>
   );
 }

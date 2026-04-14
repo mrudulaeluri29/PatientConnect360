@@ -5,28 +5,30 @@
 
 .address-input {
   width: 100%;
+  min-height: 44px;
   padding: 0.875rem 1rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1rem;
-  transition: all 0.3s;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
   box-sizing: border-box;
   font-family: inherit;
+  color: var(--text-strong);
+  background: var(--bg-surface);
 }
 
 .address-input:focus {
   outline: none;
-  border-color: #B29CE4;
-  box-shadow: 0 0 0 3px rgba(178, 156, 228, 0.2);
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .address-input.error,
 .address-autocomplete.error .address-input {
-  border-color: #ef4444;
+  border-color: var(--danger);
 }
 
 .address-input:disabled {
-  background-color: #f3f4f6;
+  background-color: var(--bg-muted);
   cursor: not-allowed;
 }
 
@@ -35,22 +37,20 @@
   top: 100%;
   left: 0;
   right: 0;
-  background: white;
-  border: 2px solid #e5e7eb;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-top: none;
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   max-height: 200px;
   overflow-y: auto;
   z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  margin-top: -2px;
+  box-shadow: var(--shadow-medium);
 }
 
 .address-suggestion-item {
   padding: 0.75rem 1rem;
   cursor: pointer;
-  transition: background-color 0.2s;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .address-suggestion-item:last-child {
@@ -58,7 +58,7 @@
 }
 
 .address-suggestion-item:hover {
-  background-color: #E0D4FC;
+  background-color: var(--brand-primary-soft);
 }
 
 .address-loading {
@@ -67,11 +67,11 @@
   left: 0;
   right: 0;
   padding: 0.5rem 1rem;
-  background: white;
-  border: 2px solid #e5e7eb;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
   border-top: none;
-  border-radius: 0 0 8px 8px;
-  color: #6b7280;
-  font-size: 0.875rem;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 

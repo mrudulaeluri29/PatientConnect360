@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api } from "../lib/axios";
+import AuthPageShell from "../components/auth/AuthPageShell";
+import StatusMessage from "../components/ui/StatusMessage";
+import "./Auth.css";
 import "./Login.css";
 
 type ForgotPasswordStep = "email" | "otp" | "newPassword" | "success";
@@ -128,53 +131,32 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-container">
-        {/* Left Side - Branding */}
-        <div className="login-left">
-          <div className="login-branding">
-            <div className="brand-logo">
-              <span className="logo-text">MediHealth</span>
+    <AuthPageShell
+      eyebrow="Password reset"
+      title="Reset your password"
+      description="Recover access securely with a verification code sent to your email before choosing a new password."
+      highlights={[
+        "Email verification protects your account before reset",
+        "Reset codes expire quickly for added security",
+        "You can return to sign in as soon as the password is updated",
+      ]}
+    >
+      <div className="auth-panel auth-panel--compact login-form-container">
+        {step === "email" && (
+          <>
+            <div className="auth-panel__header">
+              <h2 className="auth-panel__title">Password Reset</h2>
+              <p className="auth-panel__subtitle">Enter your email address to receive a reset code.</p>
             </div>
-            <h1 className="login-title">Reset Your Password</h1>
-            <p className="login-subtitle">
-              Secure your account by creating a new password. We'll send you a verification code via email.
-            </p>
-          </div>
 
-          <div className="login-features">
-            <div className="feature-item">
-              <span>✓ Secure reset process</span>
+            <div className="auth-status-stack">
+              {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
+              {success ? <StatusMessage tone="success">{success}</StatusMessage> : null}
             </div>
-            <div className="feature-item">
-              <span>✓ Email verification</span>
-            </div>
-            <div className="feature-item">
-              <span>✓ 15-minute code expiry</span>
-            </div>
-            <div className="feature-item">
-              <span>✓ Instant access recovery</span>
-            </div>
-          </div>
-        </div>
 
-        {/* Right Side - Form */}
-        <div className="login-right">
-          <div className="login-form-container">
-            {/* STEP 1: Email Entry */}
-            {step === "email" && (
-              <>
-                <h2 className="form-title">Password Reset</h2>
-                <p className="form-subtitle">Enter your email address to receive a reset code</p>
-
-                {error && (
-                  <div className="error-message">
-                    <span>{error}</span>
-                  </div>
-                )}
-                {success && <div style={{ background: "#d4edda", border: "1px solid #c3e6cb", borderRadius: "8px", padding: "12px", color: "#155724", marginBottom: "1.5rem" }}>{success}</div>}
-
-                <form onSubmit={handleRequestReset} className="login-form">
+            <form onSubmit={handleRequestReset} className="login-form auth-form">
+              <div className="auth-form-section">
+                <div className="auth-form-grid auth-form-grid--single">
                   <div className="form-group">
                     <label htmlFor="email">Email Address</label>
                     <input
@@ -187,46 +169,47 @@ export default function ForgotPassword() {
                       disabled={loading}
                     />
                   </div>
+                </div>
+              </div>
 
-                  <button type="submit" className="btn-login-submit" disabled={loading}>
-                    {loading ? "Sending..." : "Send Reset Code"}
-                  </button>
-                </form>
+              <button type="submit" className="btn-login-submit" disabled={loading}>
+                {loading ? "Sending..." : "Send Reset Code"}
+              </button>
+            </form>
 
-                {error && error.includes("No account found") && (
-                  <>
-                    <div className="login-divider">
-                      <span>Don't have an account yet?</span>
-                    </div>
-                    <Link to="/register" className="btn-signup-link" style={{ textAlign: "center" }}>
-                      Sign Up Now
-                    </Link>
-                  </>
-                )}
+            <div className="auth-divider">
+              <span>{error && error.includes("No account found") ? "Need an account first?" : "Remember your password?"}</span>
+            </div>
 
-                {!error && (
-                  <>
-                    <div className="login-divider">
-                      <span>Remember your password?</span>
-                    </div>
-                    <Link to="/" className="btn-signup-link" style={{ textAlign: "center" }}>
-                      Back to Login
-                    </Link>
-                  </>
-                )}
-              </>
-            )}
+            <div className="auth-link-stack">
+              {error && error.includes("No account found") ? (
+                <Link to="/register" className="btn-signup-link">
+                  Sign Up Now
+                </Link>
+              ) : (
+                <Link to="/login" className="btn-signup-link">
+                  Back to Login
+                </Link>
+              )}
+            </div>
+          </>
+        )}
 
-            {/* STEP 2: OTP Verification */}
-            {step === "otp" && (
-              <>
-                <h2 className="form-title">Verify Code</h2>
-                <p className="form-subtitle">Enter the 6-digit code sent to {email}</p>
+        {step === "otp" && (
+          <>
+            <div className="auth-panel__header">
+              <h2 className="auth-panel__title">Verify Code</h2>
+              <p className="auth-panel__subtitle">Enter the 6-digit code sent to {email}.</p>
+            </div>
 
-                {otpError && <div className="error-message"><span>{otpError}</span></div>}
-                {success && <div style={{ background: "#d4edda", border: "1px solid #c3e6cb", borderRadius: "8px", padding: "12px", color: "#155724", marginBottom: "1.5rem" }}>{success}</div>}
+            <div className="auth-status-stack">
+              {otpError ? <StatusMessage tone="danger">{otpError}</StatusMessage> : null}
+              {success ? <StatusMessage tone="success">{success}</StatusMessage> : null}
+            </div>
 
-                <form onSubmit={handleVerifyOtp} className="login-form">
+            <form onSubmit={handleVerifyOtp} className="login-form auth-form">
+              <div className="auth-form-section">
+                <div className="auth-form-grid auth-form-grid--single">
                   <div className="form-group">
                     <label htmlFor="otp">Verification Code</label>
                     <input
@@ -237,166 +220,144 @@ export default function ForgotPassword() {
                       placeholder="000000"
                       maxLength={6}
                       disabled={loading}
-                      style={{
-                        fontSize: "2rem",
-                        letterSpacing: "0.5rem",
-                        textAlign: "center",
-                        fontWeight: "bold",
-                        fontFamily: "'Courier New', monospace",
-                      }}
+                      className={`auth-code-input ${otpError ? "auth-code-input--error" : ""}`}
                       required
                     />
-                    <p style={{ fontSize: "0.85rem", color: "#666", marginTop: "0.5rem" }}>
-                      Didn't receive the code? Check your spam folder or <button
-                        type="button"
-                        onClick={() => setStep("email")}
-                        style={{ background: "none", border: "none", color: "#667eea", cursor: "pointer", textDecoration: "underline" }}
-                      >
-                        request a new code
-                      </button>
+                    <p className="auth-note">
+                      Didn&apos;t receive the code? Check your spam folder or <button type="button" onClick={() => setStep("email")} className="auth-link-button">request a new code</button>.
                     </p>
                   </div>
-
-                  <button type="submit" className="btn-login-submit" disabled={loading || otp.length !== 6}>
-                    {loading ? "Verifying..." : "Verify Code"}
-                  </button>
-                </form>
-
-                <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => { setStep("email"); setOtp(""); setOtpError(""); }}
-                    style={{ background: "none", border: "none", color: "#667eea", cursor: "pointer", textDecoration: "underline" }}
-                  >
-                    ← Use a different email
-                  </button>
                 </div>
-              </>
-            )}
+              </div>
 
-            {/* STEP 3: New Password */}
-            {step === "newPassword" && (
-              <>
-                <h2 className="form-title">Create New Password</h2>
-                <p className="form-subtitle">Enter your new password</p>
+              <button type="submit" className="btn-login-submit" disabled={loading || otp.length !== 6}>
+                {loading ? "Verifying..." : "Verify Code"}
+              </button>
+            </form>
 
-                {passwordError && <div className="error-message"><span>{passwordError}</span></div>}
+            <div className="auth-note auth-note--center">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("email");
+                  setOtp("");
+                  setOtpError("");
+                }}
+                className="auth-link-button"
+              >
+                Use a different email
+              </button>
+            </div>
+          </>
+        )}
 
-                <form onSubmit={handleResetPassword} className="login-form">
-                  <div className="form-group">
-                    <label htmlFor="newPassword">New Password</label>
-                    <div className="password-input-wrapper">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        id="newPassword"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="At least 6 characters"
-                        required
-                        disabled={loading}
-                      />
-                      <button
-                        type="button"
-                        className="password-toggle"
-                        onClick={() => setShowPassword(!showPassword)}
-                        disabled={loading}
-                      >
-                        {showPassword ? (
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                            <line x1="1" y1="1" x2="23" y2="23"></line>
-                          </svg>
-                        ) : (
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                          </svg>
-                        )}
-                      </button>
-                    </div>
+        {step === "newPassword" && (
+          <>
+            <div className="auth-panel__header">
+              <h2 className="auth-panel__title">Create New Password</h2>
+              <p className="auth-panel__subtitle">Choose a new password for this account.</p>
+            </div>
+
+            {passwordError ? (
+              <div className="auth-status-stack">
+                <StatusMessage tone="danger">{passwordError}</StatusMessage>
+              </div>
+            ) : null}
+
+            <form onSubmit={handleResetPassword} className="login-form auth-form">
+              <div className="auth-form-section">
+                <div className="form-group">
+                  <label htmlFor="newPassword">New Password</label>
+                  <div className="password-input-wrapper">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      id="newPassword"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="At least 6 characters"
+                      required
+                      disabled={loading}
+                    />
+                    <button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} disabled={loading}>
+                      {showPassword ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                          <line x1="1" y1="1" x2="23" y2="23"></line>
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                      )}
+                    </button>
                   </div>
-
-                  <div className="form-group">
-                    <label htmlFor="confirmPassword">Confirm Password</label>
-                    <div className="password-input-wrapper">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        id="confirmPassword"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Re-enter your password"
-                        required
-                        disabled={loading}
-                      />
-                      <button
-                        type="button"
-                        className="password-toggle"
-                        onClick={() => setShowPassword(!showPassword)}
-                        disabled={loading}
-                      >
-                        {showPassword ? (
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                            <line x1="1" y1="1" x2="23" y2="23"></line>
-                          </svg>
-                        ) : (
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button type="submit" className="btn-login-submit" disabled={loading}>
-                    {loading ? "Updating..." : "Update Password"}
-                  </button>
-                </form>
-
-                <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => { setStep("otp"); setPasswordError(""); }}
-                    style={{ background: "none", border: "none", color: "#667eea", cursor: "pointer", textDecoration: "underline" }}
-                  >
-                    ← Verify code again
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* STEP 4: Success */}
-            {step === "success" && (
-              <>
-                <div style={{ textAlign: "center", padding: "2rem 0" }}>
-                  <div style={{
-                    width: "80px",
-                    height: "80px",
-                    background: "#d4edda",
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto 1.5rem",
-                  }}>
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#28a745" strokeWidth="3">
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                  </div>
-                  <h2 className="form-title">Password Updated!</h2>
-                  <p style={{ color: "#666", marginBottom: "2rem" }}>Your password has been successfully changed.</p>
-                  <p style={{ color: "#28a745", marginBottom: "2rem", fontSize: "1rem" }}>{success}</p>
                 </div>
 
-                <button onClick={handleBackToLogin} className="btn-login-submit">
-                  Back to Login
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+                <div className="form-group">
+                  <label htmlFor="confirmPassword">Confirm Password</label>
+                  <div className="password-input-wrapper">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      id="confirmPassword"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Re-enter your password"
+                      required
+                      disabled={loading}
+                    />
+                    <button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} disabled={loading}>
+                      {showPassword ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                          <line x1="1" y1="1" x2="23" y2="23"></line>
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" className="btn-login-submit" disabled={loading}>
+                {loading ? "Updating..." : "Update Password"}
+              </button>
+            </form>
+
+            <div className="auth-note auth-note--center">
+              <button type="button" onClick={() => {
+                setStep("otp");
+                setPasswordError("");
+              }} className="auth-link-button">
+                Verify code again
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "success" && (
+          <>
+            <div className="auth-success-state">
+              <div className="auth-success-state__icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <h2 className="auth-panel__title">Password Updated</h2>
+              <p className="auth-panel__subtitle">Your password has been successfully changed.</p>
+              <StatusMessage tone="success">{success}</StatusMessage>
+            </div>
+
+            <button onClick={handleBackToLogin} className="btn-login-submit">
+              Back to Login
+            </button>
+          </>
+        )}
       </div>
-    </div>
+    </AuthPageShell>
   );
 }

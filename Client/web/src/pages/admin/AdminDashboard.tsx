@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
-import NotificationBell from "../../components/NotificationBell";
+import DashboardShell from "../../components/dashboard-shell/DashboardShell";
+import { dashboardNavConfig } from "../../components/dashboard-shell/navConfig";
 import NotificationCenter from "../../components/notifications/NotificationCenter";
 import { isAxiosError } from "axios";
 import { api } from "../../lib/axios";
@@ -96,7 +97,6 @@ function formatAvailabilityGuidanceBody(hint: AvailabilityHint, durationMinutes:
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const { user, logout } = useAuth();
-  const { settings } = useAgencyBranding();
 
   const handleLogout = async () => {
     await logout();
@@ -104,77 +104,18 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="admin-dashboard">
-      {/* Header */}
-      <header className="admin-header">
-        <div className="admin-header-left">
-          <h1 className="admin-logo">
-            {settings.logoUrl ? (
-              <img src={settings.logoUrl} alt={settings.portalName} style={{ width: 34, height: 34, objectFit: "contain", borderRadius: 8, marginRight: 10, verticalAlign: "middle" }} />
-            ) : null}
-            {settings.portalName}
-          </h1>
-          <nav className="admin-nav">
-            <button className={`nav-item ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-              Overview
-            </button>
-            <button className={`nav-item ${activeTab === "users" ? "active" : ""}`} onClick={() => setActiveTab("users")}>
-              Users
-            </button>
-            <button className={`nav-item ${activeTab === "invitations" ? "active" : ""}`} onClick={() => setActiveTab("invitations")}>
-              Invitations
-            </button>
-            <button className={`nav-item ${activeTab === "assign" ? "active" : ""}`} onClick={() => setActiveTab("assign")}>
-              Assign Patients
-            </button>
-            <button className={`nav-item ${activeTab === "availability" ? "active" : ""}`} onClick={() => setActiveTab("availability")}>
-              Availability
-            </button>
-            <button className={`nav-item ${activeTab === "appointments" ? "active" : ""}`} onClick={() => setActiveTab("appointments")}>
-              Appointments
-            </button>
-            <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
-              Messages
-            </button>
-            <button className={`nav-item ${activeTab === "reports" ? "active" : ""}`} onClick={() => setActiveTab("reports")}>
-              Reports
-            </button>
-            <button className={`nav-item ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>
-              Settings
-            </button>
-            <button className={`nav-item ${activeTab === "audit" ? "active" : ""}`} onClick={() => setActiveTab("audit")}>
-              Audit Log
-            </button>
-            <button className={`nav-item ${activeTab === "feedback" ? "active" : ""}`} onClick={() => setActiveTab("feedback")}>
-              Family Feedback
-            </button>
-            <button className={`nav-item ${activeTab === "records" ? "active" : ""}`} onClick={() => setActiveTab("records")}>
-              Patient records
-            </button>
-            <button className={`nav-item ${activeTab === "notifications" ? "active" : ""}`} onClick={() => setActiveTab("notifications")}>
-              Notifications
-            </button>
-          </nav>
-        </div>
-        <div className="admin-header-right">
-          <NotificationBell onMessageClick={(view) => setActiveTab(view)} />
-          <div className="admin-user-info">
-            <span className="admin-user-name">{user?.username || user?.email || "Admin User"}</span>
-            <div className="admin-user-badges">
-              <span className="badge badge-admin">Admin</span>
-            </div>
-          </div>
-          <button
-            className="btn-logout"
-            onClick={handleLogout}
-          >
-            Logout
-          </button>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="admin-main">
+    <DashboardShell
+      role="admin"
+      className="admin-dashboard"
+      navGroups={dashboardNavConfig.admin}
+      activeItem={activeTab}
+      onSelectItem={setActiveTab}
+      onLogout={handleLogout}
+      onNotificationMessageClick={(view) => setActiveTab(view)}
+      userName={user?.username || user?.email || "Admin User"}
+      roleLabel="Admin"
+    >
+      <div className="admin-main">
         {activeTab === "overview" && (
           <div className="admin-content">
             <AdminOverview />
@@ -248,8 +189,8 @@ export default function AdminDashboard() {
             <NotificationCenter />
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </DashboardShell>
   );
 }
 

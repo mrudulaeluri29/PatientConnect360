@@ -1,18 +1,18 @@
 .signup-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #E0D4FC 0%, #D7C8ED 100%);
+  background: linear-gradient(180deg, var(--brand-primary-soft) 0%, var(--bg-app) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: var(--space-5);
 }
 
 .signup-container {
   max-width: 1200px;
   width: 100%;
-  background: white;
-  border-radius: 24px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-medium);
   display: grid;
   grid-template-columns: 1fr 1fr;
   overflow: hidden;
@@ -20,8 +20,8 @@
 }
 
 .signup-left {
-  background: linear-gradient(135deg, #6E5B9A 0%, #42326E 100%);
-  padding: 3rem;
+  background: linear-gradient(180deg, var(--brand-primary-strong) 0%, var(--brand-primary) 100%);
+  padding: var(--space-7);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -38,18 +38,7 @@
   width: 200%;
   height: 200%;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
-  animation: pulse 20s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.5;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 0.3;
-  }
+  opacity: 0.55;
 }
 
 .brand-logo {
@@ -98,12 +87,10 @@
 }
 
 .signup-right {
-  padding: 3rem;
+  padding: var(--space-7);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  overflow-y: auto;
-  max-height: 100vh;
 }
 
 .signup-form-container {
@@ -114,22 +101,22 @@
 .form-title {
   font-size: 2rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--text-strong);
   margin-bottom: 0.5rem;
 }
 
 .form-subtitle {
-  color: #6b7280;
+  color: var(--text-muted);
   margin-bottom: 2rem;
   font-size: 0.95rem;
 }
 
 .error-message {
-  background-color: #fee2e2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
+  background-color: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 20%, white);
+  color: var(--danger);
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   margin-bottom: 1.5rem;
   display: flex;
   align-items: center;
@@ -139,27 +126,6 @@
 
 .signup-form {
   margin-bottom: 2rem;
-  max-height: calc(100vh - 300px);
-  overflow-y: auto;
-  padding-right: 0.5rem;
-}
-
-.signup-form::-webkit-scrollbar {
-  width: 6px;
-}
-
-.signup-form::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 10px;
-}
-
-.signup-form::-webkit-scrollbar-thumb {
-  background: #B29CE4;
-  border-radius: 10px;
-}
-
-.signup-form::-webkit-scrollbar-thumb:hover {
-  background: #6E5B9A;
 }
 
 .form-group {
@@ -169,7 +135,7 @@
 .form-group label {
   display: block;
   font-weight: 500;
-  color: #374151;
+  color: var(--text-strong);
   margin-bottom: 0.5rem;
   font-size: 0.95rem;
 }
@@ -178,34 +144,35 @@
 .form-group select {
   width: 100%;
   padding: 0.875rem 1rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   font-size: 1rem;
-  transition: all 0.3s;
   box-sizing: border-box;
   font-family: inherit;
+  color: var(--text-strong);
+  background: var(--bg-surface);
 }
 
 .form-group input.error,
 .form-group select.error {
-  border-color: #ef4444;
+  border-color: var(--danger);
 }
 
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #B29CE4;
-  box-shadow: 0 0 0 3px rgba(178, 156, 228, 0.2);
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .form-group input:disabled,
 .form-group select:disabled {
-  background-color: #f3f4f6;
+  background-color: var(--bg-muted);
   cursor: not-allowed;
 }
 
 .form-group input::placeholder {
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .role-select {
@@ -234,7 +201,7 @@
   border: none;
   cursor: pointer;
   padding: 0.5rem;
-  color: #6b7280;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -242,7 +209,7 @@
 }
 
 .password-toggle:hover:not(:disabled) {
-  color: #6E5B9A;
+  color: var(--brand-primary);
 }
 
 .password-toggle:disabled {
@@ -252,7 +219,7 @@
 
 .field-error {
   display: block;
-  color: #ef4444;
+  color: var(--danger);
   font-size: 0.875rem;
   margin-top: 0.25rem;
 }
@@ -260,9 +227,9 @@
 .password-requirements {
   margin-top: 0.75rem;
   padding: 1rem;
-  background-color: #f9fafb;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
+  background-color: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   font-size: 0.875rem;
 }
 
@@ -273,7 +240,7 @@
 
 .requirement-title {
   font-weight: 600;
-  color: #374151;
+  color: var(--text-strong);
   margin-bottom: 0.5rem;
 }
 
@@ -285,7 +252,7 @@
 
 .requirement-list li {
   padding: 0.25rem 0;
-  color: #6b7280;
+  color: var(--text-muted);
   position: relative;
   padding-left: 1.5rem;
 }
@@ -309,10 +276,10 @@
 .btn-signup-submit {
   width: 100%;
   padding: 0.875rem;
-  background: linear-gradient(135deg, #6E5B9A 0%, #42326E 100%);
-  color: white;
+  background: var(--brand-primary);
+  color: var(--text-inverse);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -322,7 +289,8 @@
 
 .btn-signup-submit:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(110, 91, 154, 0.4);
+  box-shadow: var(--shadow-low);
+  background: var(--brand-primary-strong);
 }
 
 .btn-signup-submit:disabled {
@@ -332,7 +300,7 @@
 
 .signup-divider {
   text-align: center;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 0.9rem;
   margin: 1.5rem 0;
   position: relative;
@@ -345,7 +313,7 @@
   top: 50%;
   width: 40%;
   height: 1px;
-  background-color: #e5e7eb;
+  background-color: var(--border-subtle);
 }
 
 .signup-divider::before {
@@ -360,10 +328,10 @@
   display: block;
   width: 100%;
   padding: 0.875rem;
-  background-color: white;
-  color: #6E5B9A;
-  border: 2px solid #B29CE4;
-  border-radius: 8px;
+  background-color: var(--bg-surface);
+  color: var(--brand-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   font-size: 1rem;
   font-weight: 600;
   text-align: center;
@@ -372,8 +340,8 @@
 }
 
 .btn-login-link:hover {
-  background-color: #6E5B9A;
-  color: white;
+  background-color: var(--brand-primary);
+  color: var(--text-inverse);
 }
 
 /* Date Picker Styles */
@@ -384,8 +352,8 @@
 .date-picker {
   width: 100%;
   padding: 0.875rem 1rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   font-size: 1rem;
   transition: all 0.3s;
   box-sizing: border-box;
@@ -394,8 +362,8 @@
 
 .date-picker:focus {
   outline: none;
-  border-color: #B29CE4;
-  box-shadow: 0 0 0 3px rgba(178, 156, 228, 0.2);
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .otp-input-row {

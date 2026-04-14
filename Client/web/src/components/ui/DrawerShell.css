@@ -1,0 +1,18 @@
+.ui-drawer-shell {
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-overlay);
+}
+
+.ui-drawer-shell__header,
+.ui-drawer-shell__body {
+  padding: var(--space-5);
+}
+
+.ui-drawer-shell__header {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ui-drawer-shell__header h3 {
+  margin: 0;
+}

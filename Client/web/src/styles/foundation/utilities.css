@@ -1,0 +1,39 @@
+.u-muted {
+  color: var(--text-muted);
+}
+
+.u-stack-sm,
+.u-stack-md,
+.u-stack-lg {
+  display: flex;
+  flex-direction: column;
+}
+
+.u-stack-sm {
+  gap: var(--space-2);
+}
+
+.u-stack-md {
+  gap: var(--space-4);
+}
+
+.u-stack-lg {
+  gap: var(--space-5);
+}
+
+.u-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.u-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}

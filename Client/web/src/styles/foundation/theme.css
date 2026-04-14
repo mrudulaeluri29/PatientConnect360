@@ -1,0 +1,31 @@
+:root {
+  --brand-primary: #6e5b9a;
+  --brand-primary-strong: color-mix(in srgb, var(--brand-primary) 82%, #211b2d);
+  --brand-primary-soft: color-mix(in srgb, var(--brand-primary) 12%, #ffffff);
+  --brand-primary-muted: color-mix(in srgb, var(--brand-primary) 6%, #f6f3f9);
+
+  --bg-app: #f6f4f8;
+  --bg-surface: #fffdfd;
+  --bg-surface-raised: #ffffff;
+  --bg-muted: #f1eef5;
+  --bg-strong: #27212f;
+
+  --border-subtle: #e6e0ed;
+  --border-strong: #cfc4dc;
+
+  --text-strong: #221c2c;
+  --text-default: #41374f;
+  --text-muted: #6d647d;
+  --text-inverse: #fffdfd;
+
+  --success: #1f8f58;
+  --success-soft: #e8f7ef;
+  --warning: #9d6a12;
+  --warning-soft: #fff5dd;
+  --danger: #b53a46;
+  --danger-soft: #fff0f2;
+  --info: #3268a5;
+  --info-soft: #edf5ff;
+
+  --focus-ring: color-mix(in srgb, var(--brand-primary) 25%, transparent);
+}
