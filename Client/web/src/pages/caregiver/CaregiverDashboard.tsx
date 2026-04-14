@@ -5,6 +5,7 @@ import CaregiverHEPTab from "./CaregiverHEPTab";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import NotificationBell from "../../components/NotificationBell";
 import NotificationCenter from "../../components/notifications/NotificationCenter";
+import MessageCenter from "../../components/messages/MessageCenter";
 import { api } from "../../lib/axios";
 import {
   getVisits,
@@ -250,11 +251,11 @@ export default function CaregiverDashboard() {
               Messages
             </button>
             <button
-  className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
-  onClick={() => setActiveTab("exercises")}
->
-  Exercises & Tasks
-</button>
+              className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
+              onClick={() => setActiveTab("exercises")}
+            >
+              Exercises & Tasks
+            </button>
             <button className={`nav-item ${activeTab === "notifications" ? "active" : ""}`} onClick={() => setActiveTab("notifications")}>
               Notifications
             </button>
@@ -292,7 +293,7 @@ export default function CaregiverDashboard() {
         {activeTab === "access" && <CaregiverAccess />}
         {activeTab === "safety" && <CaregiverSafety onNavigate={setActiveTab} />}
         {activeTab === "feedback" && <CaregiverFeedback />}
-        {activeTab === "messages" && <CaregiverMessages />}
+        {activeTab === "messages" && <MessageCenter />}
         {activeTab === "exercises" && (
           <CaregiverHEPTab
             selectedPatientId={sharedSelectedPatientId}
@@ -375,42 +376,6 @@ function CaregiverRecordsTab({
   );
 }
 
-// ─── Types for messaging ─────────────────────────────────────────────────────
-
-type AssignedClinician = {
-  id: string;
-  username: string;
-  email: string;
-  specialization?: string | null;
-};
-
-type SimpleMessageListItem = {
-  id: string;
-  conversationId: string;
-  subject: string;
-  from?: string;
-  fromEmail?: string;
-  to?: string;
-  toEmail?: string;
-  preview: string;
-  time: string;
-  unread?: boolean;
-};
-
-type SimpleConversation = {
-  id: string;
-  subject: string | null;
-  participants: Array<{ userId: string; user: { id: string; username: string; email: string; role: string } }>;
-  messages: Array<{
-    id: string;
-    senderId: string;
-    content: string;
-    isRead: boolean;
-    createdAt: string;
-    sender: { id: string; username: string; email: string };
-  }>;
-};
-
 type AlertSeverity = "red" | "yellow" | "green";
 type AlertAction = "messages" | "schedule" | "medications";
 type CaregiverAlertItem = {
@@ -425,259 +390,6 @@ type CaregiverAlertItem = {
   action: AlertAction;
   createdAt: string;
 };
-
-function CaregiverMessages() {
-  const { user } = useAuth();
-  const [activeFolder, setActiveFolder] = useState<"inbox" | "sent">("inbox");
-  const [inbox, setInbox] = useState<SimpleMessageListItem[]>([]);
-  const [sent, setSent] = useState<SimpleMessageListItem[]>([]);
-  const [loadingList, setLoadingList] = useState(false);
-  const [selectedConversation, setSelectedConversation] = useState<SimpleConversation | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const [showNewMessage, setShowNewMessage] = useState(false);
-  const [clinicians, setClinicians] = useState<AssignedClinician[]>([]);
-  const [recipientId, setRecipientId] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  const [sending, setSending] = useState(false);
-  const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
-  const [filterStarred, setFilterStarred] = useState(false);
-
-  const fetchStarredStatus = async () => {
-    try {
-      const res = await api.get("/api/simple-messages/conversations?starred=true");
-      const ids = new Set(
-        (res.data.conversations ?? []).map((c: { id: string }) => c.id),
-      );
-      setStarredIds(ids);
-    } catch { /* ignore */ }
-  };
-
-  const toggleStar = async (conversationId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const isCurrentlyStarred = starredIds.has(conversationId);
-    try {
-      if (isCurrentlyStarred) {
-        await api.delete(`/api/simple-messages/conversations/${conversationId}/star`);
-        setStarredIds(prev => { const next = new Set(prev); next.delete(conversationId); return next; });
-      } else {
-        await api.post(`/api/simple-messages/conversations/${conversationId}/star`);
-        setStarredIds(prev => new Set(prev).add(conversationId));
-      }
-    } catch { /* ignore */ }
-  };
-
-  const refreshInbox = async () => {
-    const res = await api.get("/api/simple-messages/inbox");
-    setInbox(res.data?.conversations || []);
-  };
-
-  const refreshSent = async () => {
-    const res = await api.get("/api/simple-messages/sent");
-    setSent(res.data?.conversations || []);
-  };
-
-  const loadFolder = async (folder: "inbox" | "sent") => {
-    setLoadingList(true);
-    try {
-      if (folder === "inbox") await refreshInbox();
-      else await refreshSent();
-    } finally {
-      setLoadingList(false);
-    }
-  };
-
-  useEffect(() => {
-    loadFolder("inbox");
-    fetchStarredStatus();
-    api
-      .get("/api/simple-messages/assigned-clinicians")
-      .then((res) => setClinicians(res.data?.clinicians || []))
-      .catch(() => setClinicians([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    loadFolder(activeFolder);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFolder]);
-
-  const openConversation = async (conversationId: string) => {
-    setSelectedId(conversationId);
-    const res = await api.get(`/api/simple-messages/conversation/${conversationId}`);
-    const conv = res.data?.conversation as SimpleConversation;
-    setSelectedConversation(conv);
-
-    const unreadIds = (conv.messages || [])
-      .filter((m) => !m.isRead && m.senderId !== user?.id)
-      .map((m) => m.id);
-
-    if (unreadIds.length) {
-      await api.post("/api/simple-messages/mark-read", { messageIds: unreadIds, conversationId });
-      await refreshInbox();
-    }
-  };
-
-  const sendNewMessage = async () => {
-    if (!recipientId || !subject.trim() || !body.trim()) return;
-    setSending(true);
-    try {
-      await api.post("/api/simple-messages/send", {
-        recipientId,
-        subject: subject.trim(),
-        body: body.trim(),
-      });
-      setShowNewMessage(false);
-      setRecipientId("");
-      setSubject("");
-      setBody("");
-      await refreshInbox();
-      await refreshSent();
-      setActiveFolder("sent");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const visibleRows = activeFolder === "inbox" ? inbox : sent;
-
-  return (
-    <div className="cg-content">
-      <div className="cg-section-header">
-        <h2 className="cg-section-title">Secure Messaging</h2>
-        <button className="btn-primary" onClick={() => setShowNewMessage(true)}>
-          New Message
-        </button>
-      </div>
-
-      {!selectedId && (
-        <>
-          <div className="cg-msg-tabs">
-            <button className={`cg-msg-tab ${activeFolder === "inbox" ? "active" : ""}`} onClick={() => setActiveFolder("inbox")}>
-              Inbox
-            </button>
-            <button className={`cg-msg-tab ${activeFolder === "sent" ? "active" : ""}`} onClick={() => setActiveFolder("sent")}>
-              Sent
-            </button>
-          </div>
-          {activeFolder === "inbox" && (
-            <div style={{ display: "flex", gap: 8, padding: "0.5rem 0", flexWrap: "wrap", alignItems: "center" }}>
-              <button
-                className="cg-btn"
-                style={{ fontSize: "0.8rem", padding: "4px 12px", background: !filterStarred ? "#6E5B9A" : undefined, color: !filterStarred ? "#fff" : undefined }}
-                onClick={() => setFilterStarred(false)}
-              >All</button>
-              <button
-                className="cg-btn"
-                style={{ fontSize: "0.8rem", padding: "4px 12px", background: filterStarred ? "#6E5B9A" : undefined, color: filterStarred ? "#fff" : undefined }}
-                onClick={() => setFilterStarred(!filterStarred)}
-              >Starred</button>
-            </div>
-          )}
-        </>
-      )}
-
-      {selectedId ? (
-        <div className="cg-card info">
-          <div className="cg-card-header">
-            <h3 className="cg-card-title">{selectedConversation?.subject || "Conversation"}</h3>
-            <button className="cg-btn cg-btn-resched" onClick={() => setSelectedId(null)}>
-              Back
-            </button>
-          </div>
-          <div className="cg-msg-thread">
-            {(selectedConversation?.messages || []).map((m) => (
-              <div key={m.id} className="cg-msg-thread-item">
-                <div className="cg-msg-thread-head">
-                  <strong>{m.sender.username}</strong>
-                  <span>{new Date(m.createdAt).toLocaleString()}</span>
-                </div>
-                <div className="cg-msg-thread-body">{m.content}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : loadingList ? (
-        <div className="cg-loading">Loading messages...</div>
-      ) : (
-        <div className="cg-card info">
-          {visibleRows.length === 0 ? (
-            <div className="cg-empty">No messages in this folder.</div>
-          ) : (
-            <div className="cg-msg-list">
-              {visibleRows
-                .filter((row) => {
-                  if (activeFolder === "inbox" && filterStarred && !starredIds.has(row.conversationId)) return false;
-                  return true;
-                })
-                .map((row) => (
-                <button key={row.id} className={`cg-msg-row ${row.unread ? "unread" : ""}`} onClick={() => openConversation(row.conversationId)}>
-                  <div className="cg-msg-row-top">
-                    <span
-                      onClick={(e) => toggleStar(row.conversationId, e)}
-                      style={{ cursor: "pointer", fontSize: "1.1rem", color: starredIds.has(row.conversationId) ? "#f59e0b" : "#d1d5db", marginRight: 8 }}
-                      title={starredIds.has(row.conversationId) ? "Unstar" : "Star"}
-                    >{starredIds.has(row.conversationId) ? "\u2605" : "\u2606"}</span>
-                    <strong>{activeFolder === "inbox" ? row.from || "Unknown" : row.to || "Unknown"}</strong>
-                    <span>{new Date(row.time).toLocaleString()}</span>
-                  </div>
-                  <div className="cg-msg-row-subject">{row.subject}</div>
-                  <div className="cg-msg-row-preview">{row.preview}</div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {showNewMessage && (
-        <div className="modal-overlay" onClick={() => setShowNewMessage(false)}>
-          <div className="modal-content cg-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>New Message</h3>
-              <button className="modal-close" onClick={() => setShowNewMessage(false)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label>To (Assigned Clinician)</label>
-                <select className="form-select" value={recipientId} onChange={(e) => setRecipientId(e.target.value)}>
-                  <option value="">Select clinician...</option>
-                  {clinicians.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.username} ({c.specialization || "Clinician"})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Subject</label>
-                <input className="form-input" value={subject} onChange={(e) => setSubject(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Message</label>
-                <textarea className="form-textarea" rows={6} value={body} onChange={(e) => setBody(e.target.value)} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowNewMessage(false)} disabled={sending}>
-                Cancel
-              </button>
-              <button className="btn-primary" onClick={sendNewMessage} disabled={sending || !recipientId || !subject.trim() || !body.trim()}>
-                {sending ? "Sending..." : "Send"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function CaregiverAlerts({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const [alerts, setAlerts] = useState<CaregiverAlertItem[]>([]);
@@ -1291,11 +1003,11 @@ function HomeOverview() {
 
   const data: OverviewData | null = patients.length > 0
     ? {
-        patients,
-        upcomingVisits: patientDetail?.upcomingVisits || [],
-        medications: patientDetail?.medications || [],
-        alerts: patientDetail?.alerts || [],
-      }
+      patients,
+      upcomingVisits: patientDetail?.upcomingVisits || [],
+      medications: patientDetail?.medications || [],
+      alerts: patientDetail?.alerts || [],
+    }
     : null;
 
   if (loading) {
