@@ -1,52 +1,27 @@
 import { prisma } from "../db";
 
-export type PatientPrivacySettings = {
+/** JSON shape returned by GET/PATCH /api/patients/me/privacy and embedded in other APIs. */
+export type PrivacySettingsDTO = {
   shareDocumentsWithCaregivers: boolean;
   carePlanVisibleToCaregivers: boolean;
   consentRecordedAt: string | null;
   consentVersion: string | null;
 };
 
-let ensured = false;
+/** API error messages when a linked caregiver is blocked by patient privacy toggles. */
+export const ERR_CAREGIVER_CARE_PLAN_DISABLED =
+  "Care plan visibility is disabled by the patient.";
+export const ERR_CAREGIVER_DOCUMENTS_DISABLED =
+  "Document sharing is disabled by the patient.";
 
-async function ensureTable(): Promise<void> {
-  if (ensured) return;
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "PatientPrivacySettings" (
-      "patientId" TEXT PRIMARY KEY REFERENCES "User"("id") ON DELETE CASCADE,
-      "shareDocumentsWithCaregivers" BOOLEAN NOT NULL DEFAULT true,
-      "carePlanVisibleToCaregivers" BOOLEAN NOT NULL DEFAULT true,
-      "consentRecordedAt" TIMESTAMP(3),
-      "consentVersion" TEXT,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-  ensured = true;
-}
-
-export async function getPatientPrivacySettings(patientId: string): Promise<PatientPrivacySettings> {
-  await ensureTable();
-  const rows = await prisma.$queryRawUnsafe<
-    Array<{
-      shareDocumentsWithCaregivers: boolean;
-      carePlanVisibleToCaregivers: boolean;
-      consentRecordedAt: Date | null;
-      consentVersion: string | null;
-    }>
-  >(
-    `SELECT
-      "shareDocumentsWithCaregivers",
-      "carePlanVisibleToCaregivers",
-      "consentRecordedAt",
-      "consentVersion"
-     FROM "PatientPrivacySettings"
-     WHERE "patientId" = $1
-     LIMIT 1`,
-    patientId
-  );
-
-  const row = rows[0];
+/**
+ * When `isHidden` is true on a document, it is omitted from patient and caregiver portal
+ * list/download; clinicians and admins may still see and manage it (see patientDocuments routes).
+ */
+export async function getPatientPrivacySettings(patientId: string): Promise<PrivacySettingsDTO> {
+  const row = await prisma.patientPrivacySettings.findUnique({
+    where: { patientId },
+  });
   if (!row) {
     return {
       shareDocumentsWithCaregivers: true,
@@ -55,11 +30,10 @@ export async function getPatientPrivacySettings(patientId: string): Promise<Pati
       consentVersion: null,
     };
   }
-
   return {
-    shareDocumentsWithCaregivers: Boolean(row.shareDocumentsWithCaregivers),
-    carePlanVisibleToCaregivers: Boolean(row.carePlanVisibleToCaregivers),
-    consentRecordedAt: row.consentRecordedAt ? new Date(row.consentRecordedAt).toISOString() : null,
+    shareDocumentsWithCaregivers: row.shareDocumentsWithCaregivers,
+    carePlanVisibleToCaregivers: row.carePlanVisibleToCaregivers,
+    consentRecordedAt: row.consentRecordedAt ? row.consentRecordedAt.toISOString() : null,
     consentVersion: row.consentVersion ?? null,
   };
 }
@@ -72,9 +46,7 @@ export async function upsertPatientPrivacySettings(
     consentRecordedAt: string | null;
     consentVersion: string | null;
   }>
-): Promise<PatientPrivacySettings> {
-  await ensureTable();
-
+): Promise<PrivacySettingsDTO> {
   const current = await getPatientPrivacySettings(patientId);
   const next = {
     shareDocumentsWithCaregivers:
@@ -83,25 +55,26 @@ export async function upsertPatientPrivacySettings(
       patch.carePlanVisibleToCaregivers ?? current.carePlanVisibleToCaregivers,
     consentRecordedAt:
       patch.consentRecordedAt !== undefined ? patch.consentRecordedAt : current.consentRecordedAt,
-    consentVersion: patch.consentVersion !== undefined ? patch.consentVersion : current.consentVersion,
+    consentVersion:
+      patch.consentVersion !== undefined ? patch.consentVersion : current.consentVersion,
   };
 
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO "PatientPrivacySettings"
-      ("patientId", "shareDocumentsWithCaregivers", "carePlanVisibleToCaregivers", "consentRecordedAt", "consentVersion", "createdAt", "updatedAt")
-     VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-     ON CONFLICT ("patientId") DO UPDATE SET
-      "shareDocumentsWithCaregivers" = EXCLUDED."shareDocumentsWithCaregivers",
-      "carePlanVisibleToCaregivers" = EXCLUDED."carePlanVisibleToCaregivers",
-      "consentRecordedAt" = EXCLUDED."consentRecordedAt",
-      "consentVersion" = EXCLUDED."consentVersion",
-      "updatedAt" = CURRENT_TIMESTAMP`,
-    patientId,
-    next.shareDocumentsWithCaregivers,
-    next.carePlanVisibleToCaregivers,
-    next.consentRecordedAt ? new Date(next.consentRecordedAt) : null,
-    next.consentVersion
-  );
+  await prisma.patientPrivacySettings.upsert({
+    where: { patientId },
+    create: {
+      patientId,
+      shareDocumentsWithCaregivers: next.shareDocumentsWithCaregivers,
+      carePlanVisibleToCaregivers: next.carePlanVisibleToCaregivers,
+      consentRecordedAt: next.consentRecordedAt ? new Date(next.consentRecordedAt) : null,
+      consentVersion: next.consentVersion,
+    },
+    update: {
+      shareDocumentsWithCaregivers: next.shareDocumentsWithCaregivers,
+      carePlanVisibleToCaregivers: next.carePlanVisibleToCaregivers,
+      consentRecordedAt: next.consentRecordedAt ? new Date(next.consentRecordedAt) : null,
+      consentVersion: next.consentVersion,
+    },
+  });
 
   return getPatientPrivacySettings(patientId);
 }

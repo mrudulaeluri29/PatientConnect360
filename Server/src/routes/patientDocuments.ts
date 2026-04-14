@@ -3,7 +3,10 @@ import multer from "multer";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
 import { getPatientAccessLevel, canManageDocuments } from "../lib/patientAccess";
-import { getPatientPrivacySettings } from "../lib/privacySettings";
+import {
+  ERR_CAREGIVER_DOCUMENTS_DISABLED,
+  getPatientPrivacySettings,
+} from "../lib/privacySettings";
 import { uploadBufferToBlob, getBlobReadSasUrl, isAzureBlobConfigured } from "../storage/blob";
 import { randomUUID } from "crypto";
 
@@ -60,7 +63,7 @@ router.get("/", async (req: Request, res: Response) => {
     if (level === "CAREGIVER") {
       const privacy = await getPatientPrivacySettings(patientId);
       if (!privacy.shareDocumentsWithCaregivers) {
-        return res.status(403).json({ error: "Document sharing is disabled by the patient." });
+        return res.status(403).json({ error: ERR_CAREGIVER_DOCUMENTS_DISABLED });
       }
     }
 
@@ -104,14 +107,16 @@ router.post("/", (req: Request, res: Response, next) => {
   try {
     if (!isAzureBlobConfigured()) {
       return res.status(503).json({
-        error: "File storage is not configured. Set AZURE_STORAGE_CONNECTION_STRING on the server.",
+        error:
+          "File storage is not configured. Set AZURE_STORAGE_CONNECTION_STRING on the server to enable uploads.",
       });
     }
 
     const u = actor(req);
     const file = req.file;
     const patientId = String(req.body?.patientId || "").trim();
-    const docType = String(req.body?.docType || "OTHER").trim() || "OTHER";
+    const rawDocType = String(req.body?.docType || "OTHER").trim() || "OTHER";
+    const docType = rawDocType.replace(/\s+/g, "_").toUpperCase().slice(0, 80) || "OTHER";
 
     if (!file || !patientId) {
       return res.status(400).json({ error: "file and patientId are required" });
@@ -203,7 +208,10 @@ router.patch("/:id", async (req: Request, res: Response) => {
 router.post("/:id/download-url", async (req: Request, res: Response) => {
   try {
     if (!isAzureBlobConfigured()) {
-      return res.status(503).json({ error: "File storage is not configured." });
+      return res.status(503).json({
+        error:
+          "File storage is not configured. Downloads require AZURE_STORAGE_CONNECTION_STRING on the server.",
+      });
     }
 
     const u = actor(req);

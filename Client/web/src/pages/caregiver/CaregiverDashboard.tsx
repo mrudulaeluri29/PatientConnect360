@@ -22,6 +22,7 @@ import {
   type ApiMedication,
 } from "../../api/medications";
 import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
+import { Activity, CalendarCheck2, CalendarClock, CalendarX, ClipboardList } from "lucide-react";
 import "./CaregiverDashboard.css";
 
 import ScheduleCalendar from "../../components/schedule/ScheduleCalendar";
@@ -175,6 +176,16 @@ function patientDisplayName(p: OverviewPatient): string {
   return p.patientProfile?.legalName || p.username;
 }
 
+/** Progress (and similar) dropdowns: legal name + username, no link relationship label. */
+function patientNameUsernameLabel(p: OverviewPatient): string {
+  const legal = p.patientProfile?.legalName?.trim();
+  const un = p.username?.trim() || "";
+  if (legal && un && legal.toLowerCase() !== un.toLowerCase()) {
+    return `${legal} (${un})`;
+  }
+  return un || legal || "Patient";
+}
+
 function calculateAge(dob: string | null): string | null {
   if (!dob) return null;
   const birth = new Date(dob);
@@ -194,6 +205,7 @@ function medDisplayName(m: ApiMedication): string {
 
 export default function CaregiverDashboard() {
   const [activeTab, setActiveTab] = useState("home");
+  const [sharedSelectedPatientId, setSharedSelectedPatientId] = useState<string | null>(null);
   const { user, logout } = useAuth();
 
   const handleLogout = async () => {
@@ -264,23 +276,43 @@ export default function CaregiverDashboard() {
         {activeTab === "home" && <HomeOverview />}
         {activeTab === "schedule" && <CaregiverSchedule />}
         {activeTab === "medications" && <CaregiverMedications />}
-        {activeTab === "progress" && <CaregiverProgress />}
-        {activeTab === "records" && <CaregiverRecordsTab />}
+        {activeTab === "progress" && (
+          <CaregiverProgress
+            selectedPatientId={sharedSelectedPatientId}
+            onSelectedPatientIdChange={setSharedSelectedPatientId}
+          />
+        )}
+        {activeTab === "records" && (
+          <CaregiverRecordsTab
+            selectedPatientId={sharedSelectedPatientId}
+            onSelectedPatientIdChange={setSharedSelectedPatientId}
+          />
+        )}
         {activeTab === "alerts" && <CaregiverAlerts onNavigate={setActiveTab} />}
         {activeTab === "access" && <CaregiverAccess />}
         {activeTab === "safety" && <CaregiverSafety onNavigate={setActiveTab} />}
         {activeTab === "feedback" && <CaregiverFeedback />}
         {activeTab === "messages" && <CaregiverMessages />}
-        {activeTab === "exercises" && <CaregiverHEPTab />}
+        {activeTab === "exercises" && (
+          <CaregiverHEPTab
+            selectedPatientId={sharedSelectedPatientId}
+            onSelectedPatientIdChange={setSharedSelectedPatientId}
+          />
+        )}
         {activeTab === "notifications" && <NotificationCenter />}
       </main>
     </div>
   );
 }
 
-function CaregiverRecordsTab() {
+function CaregiverRecordsTab({
+  selectedPatientId,
+  onSelectedPatientIdChange,
+}: {
+  selectedPatientId: string | null;
+  onSelectedPatientIdChange: (patientId: string | null) => void;
+}) {
   const [overview, setOverview] = useState<OverviewData | null>(null);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -290,15 +322,19 @@ function CaregiverRecordsTab() {
         const data: OverviewData = { patients: pts, upcomingVisits: [], medications: [], alerts: [] };
         setOverview(data);
         if (pts.length === 1) {
-          setSelectedPatientId(pts[0].id);
+          onSelectedPatientIdChange(pts[0].id);
+        } else if (pts.length === 0) {
+          onSelectedPatientIdChange(null);
         } else {
-          setSelectedPatientId(null);
+          const stillValid =
+            selectedPatientId != null && pts.some((p) => p.id === selectedPatientId);
+          if (!stillValid) onSelectedPatientIdChange(pts[0].id);
         }
       })
       .catch(() =>
         setOverview({ patients: [], upcomingVisits: [], medications: [], alerts: [] })
       );
-  }, []);
+  }, [onSelectedPatientIdChange, selectedPatientId]);
 
   if (!overview) {
     return <p style={{ padding: "2rem", color: "#6b7280" }}>Loading…</p>;
@@ -324,7 +360,7 @@ function CaregiverRecordsTab() {
               key={p.id}
               type="button"
               className={`f1-chip ${selectedPatientId === p.id ? "active" : ""}`}
-              onClick={() => setSelectedPatientId(p.id)}
+              onClick={() => onSelectedPatientIdChange(p.id)}
             >
               {patientDisplayName(p)}
             </button>
@@ -2113,22 +2149,35 @@ type ProgressPatientBundle = {
   education: { id: string; title: string; type: string }[];
 };
 
-function CaregiverProgress() {
+function CaregiverProgress({
+  selectedPatientId,
+  onSelectedPatientIdChange,
+}: {
+  selectedPatientId: string | null;
+  onSelectedPatientIdChange: (patientId: string | null) => void;
+}) {
   const [bundles, setBundles] = useState<ProgressPatientBundle[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
 
-  useEffect(() => {
-    api
+  const fetchProgress = useCallback(() => {
+    return api
       .get("/api/caregiver/progress")
       .then((res) => {
         const items: ProgressPatientBundle[] = res.data?.patients || [];
         setBundles(items);
-        if (items.length > 0) setSelectedPatientId(items[0].patient.id);
+        if (items.length === 0) {
+          onSelectedPatientIdChange(null);
+          return;
+        }
+        if (selectedPatientId && items.some((b) => b.patient.id === selectedPatientId)) return;
+        onSelectedPatientIdChange(items[0].patient.id);
       })
       .catch(() => setBundles([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [onSelectedPatientIdChange, selectedPatientId]);
+
+  /** Re-fetch when tab visible again + periodic poll so privacy / care-plan changes are not stuck on first paint. */
+  useRefetchOnIntervalAndFocus(() => void fetchProgress(), 30000);
 
   if (loading) return <div className="cg-loading">Loading progress updates...</div>;
   if (bundles.length === 0) {
@@ -2152,67 +2201,107 @@ function CaregiverProgress() {
         ? "warning"
         : "danger";
 
+  const carePlanGoal = selected.goals.find((g) => g.title === "Care plan progress");
+
   return (
-    <div className="cg-content">
-      <div className="cg-section-header">
-        <h2 className="cg-section-title">Care Plan &amp; Progress</h2>
+    <div className="cg-content cg-progress-page">
+      <div className="cg-section-header cg-progress-hero">
+        <div className="cg-progress-hero-text">
+          <h2 className="cg-section-title cg-section-title--progress">Care Plan &amp; Progress</h2>
+          <p className="cg-progress-subhead">
+            Pick a linked patient below. Metrics update for that person only — aligned with what the care team uses.
+          </p>
+        </div>
+        <div className="cg-progress-patient-field">
+          <label className="cg-progress-patient-label" htmlFor="cg-progress-patient-select">
+            Patient
+          </label>
+          <select
+            id="cg-progress-patient-select"
+            className="cg-progress-patient-select"
+            value={selected.patient.id}
+            onChange={(e) => onSelectedPatientIdChange(e.target.value)}
+            aria-label="Select linked patient for care plan and progress metrics"
+          >
+            {bundles.map((b) => (
+              <option key={b.patient.id} value={b.patient.id}>
+                {patientNameUsernameLabel(b.patient)}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {bundles.length > 1 && (
-        <div className="cg-patient-selector">
-          {bundles.map((b) => (
-            <div
-              key={b.patient.id}
-              className={`cg-patient-chip ${b.patient.id === selected.patient.id ? "active" : ""}`}
-              onClick={() => setSelectedPatientId(b.patient.id)}
-            >
-              <div className="cg-patient-chip-avatar">{patientInitials(b.patient)}</div>
-              <div className="cg-patient-chip-info">
-                <span className="cg-patient-chip-name">{patientDisplayName(b.patient)}</span>
-                <span className="cg-patient-chip-rel">{b.patient.relationship || "MPOA/Family"}</span>
-              </div>
-              {b.patient.isPrimary && <span className="cg-primary-tag">MPOA</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
       <div className="cg-progress-grid">
-        <div className="cg-card info">
+        <div className="cg-card info cg-progress-card cg-progress-card--snapshot">
           <div className="cg-card-header">
-            <h3 className="cg-card-title">Weekly Update</h3>
+            <h3 className="cg-card-title">At a glance</h3>
           </div>
-          <p className="cg-progress-summary">{selected.weeklyUpdate.summary}</p>
-          <div className="cg-progress-kpis">
-            <div className="cg-progress-kpi">
-              <span className="cg-info-label">Completed Visits (30d)</span>
-              <span className="cg-info-value">{selected.weeklyUpdate.completedVisitsLast30d}</span>
+          <p className="cg-progress-lead">
+            Each tile is a quick readout. Full context lives in <strong>Patient goals</strong> on the right.
+          </p>
+          <div className="cg-progress-kpis cg-progress-kpis--tiles">
+            <div
+              className="cg-progress-kpi cg-progress-kpi--tile"
+              title={carePlanGoal?.target ?? "Care plan average across active items"}
+            >
+              <span className="cg-progress-kpi-icon" aria-hidden>
+                <ClipboardList size={20} strokeWidth={2} />
+              </span>
+              <span className="cg-info-label">Care plan (avg.)</span>
+              <span className="cg-progress-kpi-metric">{carePlanGoal != null ? `${carePlanGoal.progress}%` : "—"}</span>
             </div>
-            <div className="cg-progress-kpi">
-              <span className="cg-info-label">Missed Visits (30d)</span>
-              <span className="cg-info-value">{selected.weeklyUpdate.missedVisitsLast30d}</span>
+            <div
+              className="cg-progress-kpi cg-progress-kpi--tile"
+              title="Visits marked completed in the last 30 days (uses completion time when recorded)"
+            >
+              <span className="cg-progress-kpi-icon" aria-hidden>
+                <CalendarCheck2 size={20} strokeWidth={2} />
+              </span>
+              <span className="cg-info-label">Completed (30d)</span>
+              <span className="cg-progress-kpi-metric">{selected.weeklyUpdate.completedVisitsLast30d}</span>
             </div>
-            <div className="cg-progress-kpi">
-              <span className="cg-info-label">Upcoming Visits</span>
-              <span className="cg-info-value">{selected.weeklyUpdate.upcomingVisits}</span>
+            <div
+              className="cg-progress-kpi cg-progress-kpi--tile"
+              title="Visits marked missed whose scheduled time was in the last 30 days"
+            >
+              <span className="cg-progress-kpi-icon" aria-hidden>
+                <CalendarX size={20} strokeWidth={2} />
+              </span>
+              <span className="cg-info-label">Missed (30d)</span>
+              <span className="cg-progress-kpi-metric">{selected.weeklyUpdate.missedVisitsLast30d}</span>
             </div>
-            <div className="cg-progress-kpi">
-              <span className="cg-info-label">Vital Trend</span>
-              <span className={`cg-order-status ${trendClass}`}>
+            <div
+              className="cg-progress-kpi cg-progress-kpi--tile"
+              title="Open visits (same rules as the patient portal): not completed, cancelled, missed, rejected, or rescheduled — includes past-due until closed"
+            >
+              <span className="cg-progress-kpi-icon" aria-hidden>
+                <CalendarClock size={20} strokeWidth={2} />
+              </span>
+              <span className="cg-info-label">Upcoming</span>
+              <span className="cg-progress-kpi-metric">{selected.weeklyUpdate.upcomingVisits}</span>
+            </div>
+            <div className="cg-progress-kpi cg-progress-kpi--tile" title="Trend from recent vital sign readings">
+              <span className="cg-progress-kpi-icon" aria-hidden>
+                <Activity size={20} strokeWidth={2} />
+              </span>
+              <span className="cg-info-label">Vital trend</span>
+              <span className={`cg-progress-kpi-trend cg-order-status ${trendClass}`}>
                 {selected.weeklyUpdate.vitalTrend}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="cg-card meds">
+        <div className="cg-card meds cg-progress-card cg-progress-card--goals">
           <div className="cg-card-header">
-            <h3 className="cg-card-title">Patient Goals</h3>
+            <h3 className="cg-card-title">Patient goals</h3>
             <span className="cg-card-count">{selected.goals.length}</span>
           </div>
+          <p className="cg-progress-lead cg-progress-lead--tight">Detailed progress bars — hover a row for emphasis.</p>
           <div className="cg-goal-list">
             {selected.goals.map((g) => (
-              <div key={g.id} className="cg-goal-item">
+              <div key={g.id} className="cg-goal-item cg-goal-item--interactive">
                 <div className="cg-goal-top">
                   <div>
                     <div className="cg-goal-title">{g.title}</div>
@@ -2231,15 +2320,17 @@ function CaregiverProgress() {
           </div>
         </div>
 
-        <div className="cg-card visits">
+        <div className="cg-card visits cg-progress-card cg-progress-card--education">
           <div className="cg-card-header">
-            <h3 className="cg-card-title">Education & Tips</h3>
+            <h3 className="cg-card-title">Education &amp; tips</h3>
           </div>
-          <div className="cg-order-list">
+          <div className="cg-edu-list">
             {selected.education.map((item) => (
-              <div key={item.id} className="cg-order-item">
-                <div className="cg-order-name">{item.title}</div>
-                <div className="cg-order-sub">Type: {item.type}</div>
+              <div key={item.id} className="cg-edu-tile">
+                <div className="cg-edu-tile-body">
+                  <div className="cg-edu-tile-title">{item.title}</div>
+                  <div className="cg-edu-tile-type">{item.type}</div>
+                </div>
               </div>
             ))}
           </div>

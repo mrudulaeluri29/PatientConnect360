@@ -27,6 +27,7 @@ import carePlanRoutes from "./routes/carePlans";
 import patientDocumentRoutes from "./routes/patientDocuments";
 import patientPrivacyRoutes from "./routes/patientPrivacy";
 import hepRoutes from "./routes/hep";
+import recordsOverviewRoutes from "./routes/recordsOverview";
 import visitPrepTaskRoutes from "./routes/visitPrepTasks";
 import onboardingInvitationRoutes from "./routes/onboardingInvitations";
 
@@ -131,6 +132,7 @@ app.use("/api/schedule", scheduleRouter);
 // Message upgrades merged into existing messages routes to avoid collision
 app.use("/api/messages-v2", messageUpgradeRoutes);
 app.use("/api/hep", hepRoutes);
+app.use("/api/records", recordsOverviewRoutes);
 app.use("/api/onboarding-invitations", onboardingInvitationRoutes);
 
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).

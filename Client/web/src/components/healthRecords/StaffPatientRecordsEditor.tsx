@@ -14,7 +14,14 @@ import {
   uploadPatientDocument,
   updatePatientDocument,
   openPatientDocumentDownload,
+  getPatientDocumentDownloadErrorMessage,
+  DOCUMENT_TYPE_SELECT_OPTIONS,
+  formatDocumentTypeLabel,
 } from "../../api/patientDocuments";
+import {
+  CARE_PLAN_ITEM_TYPE_SELECT_OPTIONS,
+  formatCarePlanItemTypeLabel,
+} from "../../lib/carePlanItemLabels";
 import { getVisits, updateVisitSummary, type ApiVisit } from "../../api/visits";
 import {
   createVital,
@@ -110,7 +117,8 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
   const [itemTitle, setItemTitle] = useState("");
   const [itemDetails, setItemDetails] = useState("");
 
-  const [docType, setDocType] = useState("CLINICAL");
+  const [docTypeSelect, setDocTypeSelect] = useState("CLINICAL");
+  const [docTypeCustom, setDocTypeCustom] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -340,6 +348,14 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
     }
   };
 
+  const resolvedUploadDocType = (): string => {
+    if (docTypeSelect === "OTHER") {
+      const t = docTypeCustom.trim().toUpperCase().replace(/\s+/g, "_");
+      return t || "OTHER";
+    }
+    return docTypeSelect;
+  };
+
   const handleUpload = async () => {
     if (!file) {
       setBanner({ type: "err", text: "Choose a file." });
@@ -347,14 +363,17 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
     }
     setUploading(true);
     try {
-      await uploadPatientDocument({ patientId, docType: docType.trim() || "OTHER", file });
+      await uploadPatientDocument({ patientId, docType: resolvedUploadDocType(), file });
       setFile(null);
       show("Document uploaded.");
       await refresh();
     } catch (e: unknown) {
+      const ax = e as { response?: { status?: number; data?: { error?: string } } };
       const msg =
-        (e as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        "Upload failed (Azure storage must be configured on the server).";
+        ax.response?.data?.error ||
+        (ax.response?.status === 503
+          ? "Upload unavailable: file storage is not configured. Set AZURE_STORAGE_CONNECTION_STRING on the server."
+          : "Upload failed. Check file type (PDF, images, or plain text) and try again.");
       setBanner({ type: "err", text: msg });
     } finally {
       setUploading(false);
@@ -519,6 +538,10 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
       <div className="f1-staff-layout">
       <section className="overview-card f1-staff-col f1-staff-col-plans">
         <h3>Care plans</h3>
+        <p className="f1-staff-portal-hint">
+          Patient portal preview: active items and goals appear on the patient&apos;s Health Records tab; progress
+          check-ins reflect what they submit. Documents only appear when not marked hidden from portal view.
+        </p>
         <div className="f1-row" style={{ marginBottom: 12 }}>
           <button type="button" className="f1-btn" onClick={handleCreatePlan}>
             New care plan
@@ -551,7 +574,9 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
         </div>
 
         {plans.length === 0 ? (
-          <p style={{ color: "#6b7280" }}>No plans yet — click &quot;New care plan&quot;, then add Problem / Goal / Intervention items.</p>
+          <p style={{ color: "#6b7280" }}>
+            No plans yet — click &quot;New care plan&quot;, then add problem, goal, or intervention items.
+          </p>
         ) : (
           plans
             .filter((plan) => {
@@ -700,7 +725,7 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
                           .join(" ")}
                       >
                         <div className="f1-row" style={{ flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-                          <span className="f1-badge">{it.type}</span>
+                          <span className="f1-badge">{formatCarePlanItemTypeLabel(it.type)}</span>
                           {!it.isActive ? (
                             <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#7c3aed" }}>
                               INACTIVE
@@ -718,9 +743,11 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
                                 }))
                               }
                             >
-                              <option value="PROBLEM">PROBLEM</option>
-                              <option value="GOAL">GOAL</option>
-                              <option value="INTERVENTION">INTERVENTION</option>
+                              {CARE_PLAN_ITEM_TYPE_SELECT_OPTIONS.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
                             </select>
                           </label>
                           <label>
@@ -866,9 +893,11 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
             <label>
               Type{" "}
               <select value={itemType} onChange={(e) => setItemType(e.target.value as CarePlanItemType)}>
-                <option value="PROBLEM">PROBLEM</option>
-                <option value="GOAL">GOAL</option>
-                <option value="INTERVENTION">INTERVENTION</option>
+                {CARE_PLAN_ITEM_TYPE_SELECT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </label>
             <input
@@ -888,14 +917,40 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
       <div className="f1-staff-col f1-staff-col-side">
       <section className="overview-card">
         <h3>Documents</h3>
-        <div className="f1-row" style={{ flexWrap: "wrap", marginBottom: 12 }}>
+        <p style={{ color: "#6b7280", fontSize: "0.88rem", margin: "0 0 0.75rem", lineHeight: 1.45 }}>
+          Only clinicians and admins can upload here. Patient and caregiver portals are read-only for documents — they
+          download what you share.
+        </p>
+        <p style={{ color: "#6b7280", fontSize: "0.82rem", margin: "0 0 0.75rem", lineHeight: 1.45 }}>
+          If upload or download fails with a storage error, the server needs{" "}
+          <code style={{ fontSize: "0.85em" }}>AZURE_STORAGE_CONNECTION_STRING</code> (Azure Blob Storage).
+        </p>
+        <div className="f1-row" style={{ flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
           <input type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          <input
-            placeholder="Doc type (e.g. INSURANCE, DISCHARGE)"
-            value={docType}
-            onChange={(e) => setDocType(e.target.value)}
-            style={{ padding: "0.35rem 0.5rem", minWidth: 180 }}
-          />
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span className="f1-muted" style={{ fontSize: "0.75rem" }}>
+              Document type
+            </span>
+            <select
+              value={docTypeSelect}
+              onChange={(e) => setDocTypeSelect(e.target.value)}
+              style={{ padding: "0.35rem 0.5rem", minWidth: 200 }}
+            >
+              {DOCUMENT_TYPE_SELECT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {docTypeSelect === "OTHER" ? (
+            <input
+              placeholder="Custom type (e.g. workers_comp)"
+              value={docTypeCustom}
+              onChange={(e) => setDocTypeCustom(e.target.value)}
+              style={{ padding: "0.35rem 0.5rem", minWidth: 180 }}
+            />
+          ) : null}
           <button type="button" className="f1-btn" disabled={uploading} onClick={handleUpload}>
             {uploading ? "Uploading…" : "Upload"}
           </button>
@@ -905,20 +960,38 @@ export function StaffPatientRecordsEditor({ patientId }: Props) {
         ) : (
           <ul className="f1-doc-list">
             {docs.map((d) => (
-              <li key={d.id}>
-                <span style={{ fontWeight: 500 }}>{d.filename}</span>
-                <span className="f1-muted">{d.docType}</span>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={d.isHidden}
-                    onChange={(e) => toggleHidden(d.id, e.target.checked)}
-                  />{" "}
-                  Hidden from patient
-                </label>
-                <button type="button" className="f1-btn f1-btn-outline" onClick={() => openPatientDocumentDownload(d.id)}>
-                  Open
-                </button>
+              <li key={d.id} className="f1-doc-row">
+                <div className="f1-doc-main">
+                  <div className="f1-doc-name">{d.filename}</div>
+                  <span className="f1-doc-type-chip" title={d.docType}>
+                    {formatDocumentTypeLabel(d.docType)}
+                  </span>
+                </div>
+                <div className="f1-doc-actions" style={{ flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                  <label style={{ fontSize: "0.82rem", color: "#4b5563" }}>
+                    <input
+                      type="checkbox"
+                      checked={d.isHidden}
+                      onChange={(e) => toggleHidden(d.id, e.target.checked)}
+                    />{" "}
+                    Hidden from patient &amp; caregiver portal view
+                  </label>
+                  <button
+                    type="button"
+                    className="f1-btn f1-btn-outline"
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await openPatientDocumentDownload(d.id);
+                        } catch (e: unknown) {
+                          setBanner({ type: "err", text: getPatientDocumentDownloadErrorMessage(e) });
+                        }
+                      })();
+                    }}
+                  >
+                    Open
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

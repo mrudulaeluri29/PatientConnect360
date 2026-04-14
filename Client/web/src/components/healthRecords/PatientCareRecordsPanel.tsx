@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "../../auth/AuthContext";
+import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import {
   getCarePlans,
   postCarePlanItemProgress,
@@ -8,8 +10,14 @@ import {
   type CarePlanItemProgressStatus,
   type CarePlanCheckInStatus,
 } from "../../api/carePlans";
-import { getPatientDocuments, openPatientDocumentDownload } from "../../api/patientDocuments";
+import { getPatientDocuments } from "../../api/patientDocuments";
 import type { ApiPatientDocumentListItem } from "../../api/patientDocuments";
+import { getRecordsOverview, type RecordsOverviewResponse } from "../../api/recordsOverview";
+import { TherapyProgressWidget } from "./TherapyProgressWidget";
+import { formatCarePlanItemTypeLabel } from "../../lib/carePlanItemLabels";
+import { RecordsDocumentList } from "./RecordsDocumentList";
+import { PrivacyConsentPanel } from "./PrivacyConsentPanel";
+import { isCaregiverPrivacyBlockedMessage } from "../../lib/privacyMessages";
 import "./PatientCareRecordsPanel.css";
 
 function progressForPatient(item: ApiCarePlanItem, patientId: string) {
@@ -56,7 +64,7 @@ function CarePlanItemRow({
   return (
     <div className="f1-item">
       <div className="f1-item-header">
-        <span className="f1-badge">{item.type}</span>
+        <span className="f1-badge">{formatCarePlanItemTypeLabel(item.type)}</span>
         <span className="f1-item-title">{item.title}</span>
       </div>
       {item.details ? <div className="f1-item-details">{item.details}</div> : null}
@@ -203,8 +211,12 @@ export function PatientCareRecordsPanel({
   patientId,
   emptyMessage = "Select a linked patient to view care plans and documents.",
 }: Props) {
+  const { user } = useAuth();
+  const viewerIsCaregiver = user?.role === "CAREGIVER";
   const [carePlans, setCarePlans] = useState<ApiCarePlan[]>([]);
   const [documents, setDocuments] = useState<ApiPatientDocumentListItem[]>([]);
+  const [therapyOverview, setTherapyOverview] = useState<RecordsOverviewResponse | null>(null);
+  const [therapyOverviewError, setTherapyOverviewError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [carePlanError, setCarePlanError] = useState<string | null>(null);
@@ -214,6 +226,8 @@ export function PatientCareRecordsPanel({
     if (!patientId) {
       setCarePlans([]);
       setDocuments([]);
+      setTherapyOverview(null);
+      setTherapyOverviewError(null);
       setLoading(false);
       return;
     }
@@ -221,9 +235,12 @@ export function PatientCareRecordsPanel({
     setError(null);
     setCarePlanError(null);
     setDocumentError(null);
-    const [cpRes, docsRes] = await Promise.allSettled([
+    setTherapyOverviewError(null);
+
+    const [cpRes, docsRes, ovRes] = await Promise.allSettled([
       getCarePlans(patientId),
       getPatientDocuments(patientId),
+      getRecordsOverview(patientId),
     ]);
 
     const errors: string[] = [];
@@ -250,13 +267,27 @@ export function PatientCareRecordsPanel({
       setDocuments([]);
     }
 
-    if (errors.length) setError(errors.join(" "));
+    if (ovRes.status === "fulfilled") {
+      setTherapyOverview(ovRes.value);
+    } else {
+      setTherapyOverview(null);
+      setTherapyOverviewError(
+        (ovRes.reason as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+          "Could not load therapy snapshot."
+      );
+    }
+
+    const onlyCaregiverPrivacyErrors = errors.every((msg) => isCaregiverPrivacyBlockedMessage(msg));
+    if (errors.length && !onlyCaregiverPrivacyErrors) setError(errors.join(" "));
+    else setError(null);
     setLoading(false);
   }, [patientId]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
+
+  useRefetchOnIntervalAndFocus(() => void refresh(), 30000);
 
   if (!patientId) {
     return (
@@ -274,17 +305,44 @@ export function PatientCareRecordsPanel({
     );
   }
 
+  const carePlanBlockedCopy =
+    (therapyOverview?.carePlan.blocked && therapyOverview.carePlan.blockMessage) ||
+    carePlanError ||
+    (viewerIsCaregiver ? "Care plan visibility is disabled by the patient." : "Care plan access is disabled by the patient.");
+  const documentsBlockedCopy =
+    (therapyOverview?.documents.blocked && therapyOverview.documents.blockMessage) ||
+    documentError ||
+    (viewerIsCaregiver ? "Document sharing is disabled by the patient." : "Document access is disabled by the patient.");
+
   return (
     <div className="f1-records f1-records--patient">
       {error ? <div className="f1-error">{error}</div> : null}
+
+      {viewerIsCaregiver && therapyOverview && !therapyOverviewError ? (
+        <PrivacyConsentPanel variant="caregiver" privacy={therapyOverview.privacy} />
+      ) : null}
+
+      {therapyOverview && !therapyOverviewError ? (
+        <div className="f1-records-therapy-wrap">
+          <TherapyProgressWidget
+            therapy={therapyOverview.therapyProgress}
+            recentVitals={therapyOverview.recentVitals}
+          />
+        </div>
+      ) : therapyOverviewError ? (
+        <div className="f1-records-therapy-wrap">
+          <div className="overview-card f1-therapy-snapshot">
+            <h3 className="card-title">Therapy &amp; recovery snapshot</h3>
+            <p className="f1-therapy-snapshot-error">{therapyOverviewError}</p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="f1-patient-layout">
         <section className="overview-card">
           <h3>Care plan</h3>
           {carePlanError ? (
-            <p style={{ color: "#6b7280", margin: 0 }}>
-              Care plan access is disabled by the patient.
-            </p>
+            <p className="f1-records-privacy-block">{carePlanBlockedCopy}</p>
           ) : carePlans.length === 0 ? (
             <p style={{ color: "#6b7280", margin: 0 }}>
               No care plan yet. Your care team will add one here when ready.
@@ -323,33 +381,15 @@ export function PatientCareRecordsPanel({
         <section className="overview-card">
           <h3>Documents</h3>
           {documentError ? (
-            <p style={{ color: "#6b7280", margin: 0 }}>
-              Document access is disabled by the patient.
-            </p>
+            <p className="f1-records-privacy-block">{documentsBlockedCopy}</p>
           ) : documents.length === 0 ? (
             <p style={{ color: "#6b7280", margin: 0 }}>
-              No documents yet. Visible documents from your care team will appear here.
+              {viewerIsCaregiver
+                ? "No documents available. The care team may not have uploaded any yet, or the patient may not share documents with caregivers."
+                : "No documents yet. Your care team uploads files for you — patient and caregiver accounts cannot upload documents from this portal."}
             </p>
           ) : (
-            <ul className="f1-doc-list">
-              {documents.map((d) => (
-                <li key={d.id} className="f1-doc-row">
-                  <div className="f1-doc-main">
-                    <div className="f1-doc-name">{d.filename}</div>
-                    <span className="f1-doc-type-chip">{d.docType}</span>
-                  </div>
-                  <div className="f1-doc-actions">
-                    <button
-                      type="button"
-                      className="f1-btn f1-btn-outline"
-                      onClick={() => openPatientDocumentDownload(d.id)}
-                    >
-                      Download
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <RecordsDocumentList documents={documents} />
           )}
         </section>
       </div>

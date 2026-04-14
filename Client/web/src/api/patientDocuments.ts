@@ -1,5 +1,7 @@
 import { api } from "../lib/axios";
 
+export { formatDocumentTypeLabel, DOCUMENT_TYPE_SELECT_OPTIONS } from "../lib/documentTypeLabels";
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** List row (server omits blob paths for GET list) */
@@ -64,7 +66,27 @@ export async function getPatientDocumentDownloadUrl(
   return res.data;
 }
 
-/** Request SAS URL and open in a new tab (or trigger download). */
+/** Maps axios/API errors from download-url to a short user-facing message. */
+export function getPatientDocumentDownloadErrorMessage(err: unknown): string {
+  const ax = err as { response?: { status?: number; data?: { error?: string } } };
+  const status = ax.response?.status;
+  const body = ax.response?.data?.error;
+  if (status === 503) {
+    return "Download is unavailable: file storage is not configured on the server. Contact your administrator or try again later.";
+  }
+  if (status === 403) {
+    return typeof body === "string" && body.trim()
+      ? body
+      : "You do not have permission to download this document.";
+  }
+  if (status === 404) {
+    return "This document could not be found.";
+  }
+  if (typeof body === "string" && body.trim()) return body;
+  return "Could not download this document. Please try again.";
+}
+
+/** Request SAS URL and open in a new tab. Throws if the API call fails. */
 export async function openPatientDocumentDownload(documentId: string): Promise<void> {
   const { url } = await getPatientDocumentDownloadUrl(documentId);
   window.open(url, "_blank", "noopener,noreferrer");
