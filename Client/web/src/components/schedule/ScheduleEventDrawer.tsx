@@ -42,6 +42,11 @@ const ScheduleEventDrawer: React.FC<Props> = ({ event, onClose, onAction }) => {
           <p><strong>Location:</strong> {event.location}</p>
         )}
 
+        <p style={{ fontSize: "0.8rem", color: "#6E5B9A", marginTop: "1rem", cursor: "pointer" }}
+           onClick={() => { window.location.hash = "notifications"; onClose(); }}>
+          ⚙️ Manage reminder preferences →
+        </p>
+        
         <div className="schedule-drawer-actions">
           {event.canConfirm && (
             <button className="btn-sched-confirm" onClick={() => onAction("confirm")}>
