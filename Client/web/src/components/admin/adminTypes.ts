@@ -1,0 +1,15 @@
+export type AdminTab =
+  | "overview"
+  | "users"
+  | "invitations"
+  | "assign"
+  | "availability"
+  | "appointments"
+  | "messages"
+  | "reports"
+  | "settings"
+  | "audit"
+  | "feedback"
+  | "pilot"
+  | "records"
+  | "notifications";

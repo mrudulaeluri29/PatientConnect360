@@ -49,6 +49,14 @@ export default function AdminRoutes() {
           </RequireAdmin>
         }
       />
+      <Route
+        path="/admin/pilot"
+        element={
+          <RequireAdmin>
+            <AdminDashboard initialTab="pilot" />
+          </RequireAdmin>
+        }
+      />
       
       {/* Default redirect */}
       <Route path="/admin" element={<AdminLogin />} />
