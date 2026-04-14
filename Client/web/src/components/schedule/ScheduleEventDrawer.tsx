@@ -42,11 +42,21 @@ const ScheduleEventDrawer: React.FC<Props> = ({ event, onClose, onAction }) => {
           <p><strong>Location:</strong> {event.location}</p>
         )}
 
-        <p style={{ fontSize: "0.8rem", color: "#6E5B9A", marginTop: "1rem", cursor: "pointer" }}
-           onClick={() => { window.location.hash = "notifications"; onClose(); }}>
+<p style={{ fontSize: "0.8rem", color: "#6E5B9A", marginTop: "1rem", cursor: "pointer" }}
+           onClick={() => {
+             onClose();
+             // Find and click the Notifications tab button
+             setTimeout(() => {
+               const tabs = Array.from(document.querySelectorAll("button, a"));
+               const notifTab = tabs.find(
+                 (el) => el.textContent?.toLowerCase().includes("notification")
+               );
+               if (notifTab) (notifTab as HTMLElement).click();
+             }, 100);
+           }}>
           ⚙️ Manage reminder preferences →
         </p>
-        
+
         <div className="schedule-drawer-actions">
           {event.canConfirm && (
             <button className="btn-sched-confirm" onClick={() => onAction("confirm")}>
