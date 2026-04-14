@@ -30,12 +30,14 @@ const carePlans_1 = __importDefault(require("./routes/carePlans"));
 const patientDocuments_1 = __importDefault(require("./routes/patientDocuments"));
 const patientPrivacy_1 = __importDefault(require("./routes/patientPrivacy"));
 const hep_1 = __importDefault(require("./routes/hep"));
+const recordsOverview_1 = __importDefault(require("./routes/recordsOverview"));
 const visitPrepTasks_1 = __importDefault(require("./routes/visitPrepTasks"));
 const onboardingInvitations_1 = __importDefault(require("./routes/onboardingInvitations"));
 // Feature 2 imports
 const notifications_1 = __importDefault(require("./routes/notifications"));
 const messageUpgrades_1 = __importDefault(require("./routes/messageUpgrades"));
 const visitReminders_1 = require("./jobs/visitReminders");
+const schedule_1 = __importDefault(require("./routes/schedule"));
 // Import our Prisma database client
 const db_1 = require("./db");
 // No mailer in use since SendGrid was removed
@@ -112,9 +114,11 @@ app.use("/api/patient-documents", patientDocuments_1.default);
 app.use("/api/patients", patientPrivacy_1.default);
 // Feature 2 routes
 app.use("/api/notifications", notifications_1.default);
+app.use("/api/schedule", schedule_1.default);
 // Message upgrades merged into existing messages routes to avoid collision
 app.use("/api/messages-v2", messageUpgrades_1.default);
 app.use("/api/hep", hep_1.default);
+app.use("/api/records", recordsOverview_1.default);
 app.use("/api/onboarding-invitations", onboardingInvitations_1.default);
 const PORT = Number(process.env.PORT || 4000); //Reads the port from .env (if not set, uses 4000 by default).
 // Start server immediately (no email dependency)

@@ -1,65 +1,5 @@
-# Dependencies
+# dependencies
 node_modules/
-**/node_modules/
-
-# Environment files and local secrets
-.env
-.env.*
-**/.env
-**/.env.*
-!.env.example
-!**/.env.example
-
-# Build outputs
-dist/
-build/
-coverage/
-**/dist/
-**/build/
-**/coverage/
-*.tsbuildinfo
-**/*.tsbuildinfo
-
-# Vite / React / web tooling
-.vite/
-**/.vite/
-Client/web/.vercel/
-Client/web/node_modules/.tmp/
-
-# Expo / React Native / Metro
-.expo/
-.expo-shared/
-**/.expo/
-**/.expo-shared/
-.metro-cache/
-**/.metro-cache/
-Client/mobile/web-build/
-Client/mobile/.expo/
-
-# Logs and runtime dumps
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-*.pid
-*.seed
-*.pid.lock
-
-# Test / cache artifacts
-.cache/
-**/.cache/
-.nyc_output/
-**/.nyc_output/
-jest-junit.xml
-
-# Prisma / database local artifacts
-*.db
-*.db-journal
-*.sqlite
-*.sqlite3
 
 # OS files
 .DS_Store
@@ -67,16 +7,17 @@ jest-junit.xml
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
-Thumbs.db
-Desktop.ini
+
+# Environment variables
+.env
+.env.local
+.env.*.local
 
 # IDE/workspace-local config
 .vscode/
-.idea/
-.cursor/
-*.code-workspace
 
 # Local helper/test scripts generated during development
 Server/seed_phase*.js
 Server/test_*.ps1
+
+

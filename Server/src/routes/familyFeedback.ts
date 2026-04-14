@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../db";
 import { requireAuth } from "../middleware/requireAuth";
+import { getFamilyFeedbackReadout } from "../lib/adminKpis";
 
 const router = Router();
 router.use(requireAuth);
@@ -87,87 +88,16 @@ router.get("/admin", async (req: Request, res: Response) => {
       return res.status(403).json({ error: "Admin role required" });
     }
 
-    const { patientId, from, to, eventType } = req.query;
-
-    const where: any = {};
-    if (patientId && typeof patientId === "string") {
-      where.patientId = patientId;
-    }
-    if (eventType && typeof eventType === "string") {
-      where.eventType = eventType;
-    }
-    if (from || to) {
-      where.createdAt = {};
-      if (from && typeof from === "string") {
-        where.createdAt.gte = new Date(from);
-      }
-      if (to && typeof to === "string") {
-        where.createdAt.lte = new Date(to);
-      }
-    }
-
-    const [feedbackList, aggregates] = await Promise.all([
-      // Recent feedback with patient info (anonymized submitter)
-      prisma.familyFeedback.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: 50,
-        select: {
-          id: true,
-          patientId: true,
-          eventType: true,
-          relatedId: true,
-          ratingHelpfulness: true,
-          ratingCommunication: true,
-          comment: true,
-          createdAt: true,
-          patient: {
-            select: {
-              username: true,
-              patientProfile: {
-                select: { legalName: true },
-              },
-            },
-          },
-          // Do NOT include submittedBy for anonymity
-        },
-      }),
-
-      // Aggregate statistics
-      prisma.familyFeedback.aggregate({
-        where,
-        _avg: {
-          ratingHelpfulness: true,
-          ratingCommunication: true,
-        },
-        _count: {
-          id: true,
-        },
-      }),
-    ]);
-
-    // Count by event type
-    const countByEventType = await prisma.familyFeedback.groupBy({
-      by: ["eventType"],
-      where,
-      _count: { id: true },
+    const readout = await getFamilyFeedbackReadout({
+      patientId: typeof req.query.patientId === "string" ? req.query.patientId : undefined,
+      eventType: typeof req.query.eventType === "string" ? req.query.eventType : undefined,
+      from: typeof req.query.from === "string" ? new Date(req.query.from) : undefined,
+      to: typeof req.query.to === "string" ? new Date(req.query.to) : undefined,
     });
 
     return res.json({
-      feedback: feedbackList.map((f) => ({
-        ...f,
-        patientName: f.patient.patientProfile?.legalName || f.patient.username,
-        patient: undefined, // Remove nested patient object
-      })),
-      aggregates: {
-        total: aggregates._count.id,
-        avgHelpfulness: aggregates._avg.ratingHelpfulness,
-        avgCommunication: aggregates._avg.ratingCommunication,
-        byEventType: countByEventType.reduce((acc, item) => {
-          acc[item.eventType] = item._count.id;
-          return acc;
-        }, {} as Record<string, number>),
-      },
+      feedback: readout.feedback,
+      aggregates: readout.aggregates,
     });
   } catch (e) {
     console.error("family feedback admin error:", e);

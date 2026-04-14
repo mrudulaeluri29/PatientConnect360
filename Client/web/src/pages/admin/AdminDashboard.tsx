@@ -28,18 +28,27 @@ import {
   getAdminStats,
   getAgencySettings,
   getAuditLogs,
+  getPilotReadiness,
   updateAgencySettings,
   getDailyAnalytics,
   type AdminAnalytics,
   type AgencySettings,
   type AuditLogRecord,
   type DailyAnalyticsData,
+  type PilotReadiness,
 } from "../../api/admin";
 import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
 import InvitationsManagement from "./InvitationsManagement";
 import ScheduleCalendar from "../../components/schedule/ScheduleCalendar";
 import { getSchedule } from "../../api/schedule";
 import type { ScheduleEvent } from "../../components/schedule/scheduleTypes";
+import { AdminOverviewPanel } from "../../components/admin/AdminOverviewPanel";
+import { FeatureFlagsPanel } from "../../components/admin/FeatureFlagsPanel";
+import { AuditExportButton } from "../../components/admin/AuditExportButton";
+import { AdminAssignmentsPanel } from "../../components/admin/AdminAssignmentsPanel";
+import { AdminFeedbackPanel } from "../../components/admin/AdminFeedbackPanel";
+import { PilotReadinessPanel } from "../../components/admin/PilotReadinessPanel";
+import type { AdminTab } from "../../components/admin/adminTypes";
 
 function getApiErrorMessage(err: unknown, fallback: string): string {
   if (isAxiosError(err)) {
@@ -93,10 +102,18 @@ function formatAvailabilityGuidanceBody(hint: AvailabilityHint, durationMinutes:
   return `Choose a start time so the entire visit fits inside the approved window.\n\n• Day: ${hint.date}\n• Time zone: ${tz}\n• Approved hours: ${hint.startTime} – ${hint.endTime}\n• Visit duration: ${durationMinutes} minutes\n\nAdjust the date/time field above, then try Approve/Schedule again.`;
 }
 
-export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState("overview");
+type AdminDashboardProps = {
+  initialTab?: AdminTab;
+};
+
+export default function AdminDashboard({ initialTab = "overview" }: AdminDashboardProps) {
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const { user, logout } = useAuth();
   const { settings } = useAgencyBranding();
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const handleLogout = async () => {
     await logout();
@@ -139,6 +156,9 @@ export default function AdminDashboard() {
             <button className={`nav-item ${activeTab === "reports" ? "active" : ""}`} onClick={() => setActiveTab("reports")}>
               Reports
             </button>
+            <button className={`nav-item ${activeTab === "pilot" ? "active" : ""}`} onClick={() => setActiveTab("pilot")}>
+              Pilot readiness
+            </button>
             <button className={`nav-item ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>
               Settings
             </button>
@@ -177,7 +197,7 @@ export default function AdminDashboard() {
       <main className="admin-main">
         {activeTab === "overview" && (
           <div className="admin-content">
-            <AdminOverview />
+            <AdminOverviewPanel onNavigate={(tab) => setActiveTab(tab as AdminTab)} />
           </div>
         )}
 
@@ -195,7 +215,7 @@ export default function AdminDashboard() {
 
         {activeTab === "assign" && (
           <div className="admin-content">
-            <AssignmentManager />
+            <AdminAssignmentsPanel />
           </div>
         )}
         {activeTab === "availability" && (
@@ -225,6 +245,12 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {activeTab === "pilot" && (
+          <div className="admin-content">
+            <PilotReadinessTab onNavigate={(tab) => setActiveTab(tab as AdminTab)} />
+          </div>
+        )}
+
         {activeTab === "audit" && (
           <div className="admin-content">
             <AuditLogPanel />
@@ -233,7 +259,7 @@ export default function AdminDashboard() {
 
         {activeTab === "feedback" && (
           <div className="admin-content">
-            <FamilyFeedbackPanel />
+            <AdminFeedbackPanel />
           </div>
         )}
 
@@ -565,7 +591,7 @@ function SystemSettings() {
     };
   }, []);
 
-  const handleChange = (field: keyof AgencySettings, value: string) => {
+  const handleChange = (field: keyof AgencySettings, value: string | boolean) => {
     setSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
   };
 
@@ -636,11 +662,89 @@ function SystemSettings() {
             </div>
           </div>
         </div>
+        <FeatureFlagsPanel settings={settings} onToggle={handleChange} />
+        <div className="settings-card">
+          <h3 className="card-title">Operational Defaults</h3>
+          <div className="settings-content">
+            <div className="setting-item">
+              <label>Notification Default Copy</label>
+              <textarea
+                value={settings.notificationDefaults || ""}
+                onChange={(e) => handleChange("notificationDefaults", e.target.value)}
+                rows={4}
+                placeholder="Default reminder and escalation guidance for pilot operations"
+              />
+            </div>
+            <div className="setting-item">
+              <label>Pilot Launch Notes</label>
+              <textarea
+                value={settings.pilotLaunchNotes || ""}
+                onChange={(e) => handleChange("pilotLaunchNotes", e.target.value)}
+                rows={4}
+                placeholder="What the agency should validate during the pilot"
+              />
+            </div>
+          </div>
+        </div>
       </div>
       {notice ? <div className="settings-notice">{notice}</div> : null}
       <button className="btn-save" onClick={handleSave} disabled={saving}>
         {saving ? "Saving..." : "Save Changes"}
       </button>
+    </div>
+  );
+}
+
+function PilotReadinessTab({ onNavigate }: { onNavigate?: (tab: string) => void }) {
+  const [data, setData] = useState<PilotReadiness | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      try {
+        const next = await getPilotReadiness();
+        if (mounted) setData(next);
+      } catch (error) {
+        console.error("Failed to load pilot readiness:", error);
+        if (mounted) setData(null);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return (
+    <div className="system-settings">
+      <div className="section-header">
+        <div>
+          <h2 className="section-title">Pilot Readiness Kit</h2>
+          <p className="section-subtitle">A concrete launch checklist, operational guide, and confidence readout for agency pilots.</p>
+        </div>
+      </div>
+      <PilotReadinessPanel data={data} loading={loading} onNavigate={onNavigate} />
+      {data ? (
+        <div className="settings-grid" style={{ marginTop: "1.5rem" }}>
+          <div className="settings-card">
+            <h3 className="card-title">Launch Notes</h3>
+            <p style={{ color: "#4b5563", whiteSpace: "pre-wrap" }}>{data.pilotGuide.launchNotes || "No pilot launch notes configured yet."}</p>
+          </div>
+          <div className="settings-card">
+            <h3 className="card-title">Notification Defaults</h3>
+            <p style={{ color: "#4b5563", whiteSpace: "pre-wrap" }}>{data.pilotGuide.notificationDefaults || "No notification default copy configured yet."}</p>
+          </div>
+          <div className="settings-card">
+            <h3 className="card-title">Environment Notes</h3>
+            <p style={{ color: "#4b5563" }}>{data.environment.telemetry}</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -702,6 +806,15 @@ function AuditLogPanel() {
           <h2 className="section-title">Audit Log</h2>
           <p className="section-subtitle">Operational trace for logins, appointments, medication changes, caregiver links, and settings updates.</p>
         </div>
+        <AuditExportButton
+          filters={{
+            search: search || undefined,
+            actionType: actionType || undefined,
+            actorRole: actorRole || undefined,
+            from: fromDate || undefined,
+            to: toDate || undefined,
+          }}
+        />
       </div>
       <div className="assign-form">
         <div className="assign-form-row">
@@ -802,9 +915,9 @@ function AuditLogPanel() {
                     <td>{new Date(log.createdAt).toLocaleString()}</td>
                     <td>{log.actor?.username || log.actor?.email || log.actorId || "System"}</td>
                     <td>{log.actorRole || "SYSTEM"}</td>
-                    <td>{log.actionType}</td>
+                    <td>{log.actionLabel || log.actionType}</td>
                     <td>{[log.targetType, log.targetId].filter(Boolean).join(" • ") || "—"}</td>
-                    <td>{log.description || "—"}</td>
+                    <td>{log.summary || log.description || "—"}</td>
                   </tr>
                 ))}
               </tbody>

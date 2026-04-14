@@ -24,6 +24,7 @@
     "test:additional-audit": "ts-node scripts/testAdditionalAudit.ts",
     "seed:feature4": "ts-node src/scripts/seedFeature4.ts",
     "smoke:feature2:schedule": "ts-node src/scripts/smokeFeature2Schedule.ts",
+    "smoke:feature5:admin": "ts-node src/scripts/smokeFeature5Admin.ts",
     "seed:demo": "npm run seed:admin && npm run seed:comprehensive && npm run seed:feature1 && npm run seed:feature4 && npm run seed:feedback"
   },
   "keywords": [],
