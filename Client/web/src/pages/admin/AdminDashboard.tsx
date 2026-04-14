@@ -37,6 +37,9 @@ import {
 } from "../../api/admin";
 import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
 import InvitationsManagement from "./InvitationsManagement";
+import ScheduleCalendar from "../../components/schedule/ScheduleCalendar";
+import { getSchedule } from "../../api/schedule";
+import type { ScheduleEvent } from "../../components/schedule/scheduleTypes";
 
 function getApiErrorMessage(err: unknown, fallback: string): string {
   if (isAxiosError(err)) {
@@ -1802,6 +1805,18 @@ function AppointmentsReview() {
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [scheduleOverrides, setScheduleOverrides] = useState<Record<string, string>>({});
 
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([]);
+
+  useEffect(() => {
+    const now = new Date();
+    const fourWeeks = new Date(now.getTime() + 28 * 24 * 60 * 60 * 1000);
+    getSchedule({
+      from: now.toISOString(),
+      to: fourWeeks.toISOString(),
+      includeAvailability: true,
+    }).then(setScheduleEvents).catch(console.error);
+  }, []);
+
   const refresh = async () => {
     setLoading(true);
     try {
@@ -1942,6 +1957,13 @@ function AppointmentsReview() {
       <div className="content-header" style={{ marginBottom: "1.5rem" }}>
         <h2 className="section-title">Appointment Requests</h2>
       </div>
+
+
+      <ScheduleCalendar
+        events={scheduleEvents}
+        initialView="dayGridMonth"
+        onAction={() => {}}
+      />
 
       <div className="avail-kpi-row" style={{ marginBottom: "1rem" }}>
         <div className="avail-kpi-chip pending">

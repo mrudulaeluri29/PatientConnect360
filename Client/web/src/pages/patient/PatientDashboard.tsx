@@ -60,6 +60,15 @@ import {
   type ApiInvitation,
   type ApiCaregiverLink,
 } from "../../api/caregiverInvitations";
+import {
+  getMyPrivacySettings,
+  updateMyPrivacySettings,
+  type ApiPrivacySettings,
+} from "../../api/privacy";
+
+import ScheduleCalendar from "../../components/schedule/ScheduleCalendar";
+import { getSchedule } from "../../api/schedule";
+import type { ScheduleEvent } from "../../components/schedule/scheduleTypes";
 declare global {
   interface Window {
     refreshNotifications?: () => void;
@@ -680,6 +689,18 @@ function UpcomingVisits() {
   const [rescheduleError, setRescheduleError] = useState("");
   const [careTeam, setCareTeam] = useState<{ id: string; username: string; specialization: string | null }[]>([]);
 
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([]);
+
+  useEffect(() => {
+    const now = new Date();
+    const fourWeeks = new Date(now.getTime() + 28 * 24 * 60 * 60 * 1000);
+    getSchedule({
+      from: now.toISOString(),
+      to: fourWeeks.toISOString(),
+      includePrepTasks: true,
+    }).then(setScheduleEvents).catch(console.error);
+  }, []);
+
   const fetchVisits = useCallback((silent = false) => {
     if (!silent) setLoading(true);
     return getVisits()
@@ -815,6 +836,19 @@ function UpcomingVisits() {
         </button>
       </div>
       <HEPBanner />
+
+      <ScheduleCalendar
+        events={scheduleEvents}
+        initialView="timeGridWeek"
+        onAction={(action, event) => {
+          if (action === "confirm") handleConfirm(event.id);
+          if (action === "cancel") handleCancel(event.id);
+          if (action === "reschedule") openReschedule(
+            visits.find((v) => v.id === event.id) ?? visits[0]
+          );
+        }}
+      />
+
       {/* Upcoming */}
       <h3 style={{ fontSize: "1rem", color: "#374151", margin: "1rem 0 0.5rem" }}>Upcoming</h3>
       <div className="visits-container">
