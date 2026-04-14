@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../db");
 const requireAuth_1 = require("../middleware/requireAuth");
+const adminKpis_1 = require("../lib/adminKpis");
 const router = (0, express_1.Router)();
 router.use(requireAuth_1.requireAuth);
 function getUser(req) {
@@ -70,82 +71,15 @@ router.get("/admin", async (req, res) => {
         if (user.role !== "ADMIN") {
             return res.status(403).json({ error: "Admin role required" });
         }
-        const { patientId, from, to, eventType } = req.query;
-        const where = {};
-        if (patientId && typeof patientId === "string") {
-            where.patientId = patientId;
-        }
-        if (eventType && typeof eventType === "string") {
-            where.eventType = eventType;
-        }
-        if (from || to) {
-            where.createdAt = {};
-            if (from && typeof from === "string") {
-                where.createdAt.gte = new Date(from);
-            }
-            if (to && typeof to === "string") {
-                where.createdAt.lte = new Date(to);
-            }
-        }
-        const [feedbackList, aggregates] = await Promise.all([
-            // Recent feedback with patient info (anonymized submitter)
-            db_1.prisma.familyFeedback.findMany({
-                where,
-                orderBy: { createdAt: "desc" },
-                take: 50,
-                select: {
-                    id: true,
-                    patientId: true,
-                    eventType: true,
-                    relatedId: true,
-                    ratingHelpfulness: true,
-                    ratingCommunication: true,
-                    comment: true,
-                    createdAt: true,
-                    patient: {
-                        select: {
-                            username: true,
-                            patientProfile: {
-                                select: { legalName: true },
-                            },
-                        },
-                    },
-                    // Do NOT include submittedBy for anonymity
-                },
-            }),
-            // Aggregate statistics
-            db_1.prisma.familyFeedback.aggregate({
-                where,
-                _avg: {
-                    ratingHelpfulness: true,
-                    ratingCommunication: true,
-                },
-                _count: {
-                    id: true,
-                },
-            }),
-        ]);
-        // Count by event type
-        const countByEventType = await db_1.prisma.familyFeedback.groupBy({
-            by: ["eventType"],
-            where,
-            _count: { id: true },
+        const readout = await (0, adminKpis_1.getFamilyFeedbackReadout)({
+            patientId: typeof req.query.patientId === "string" ? req.query.patientId : undefined,
+            eventType: typeof req.query.eventType === "string" ? req.query.eventType : undefined,
+            from: typeof req.query.from === "string" ? new Date(req.query.from) : undefined,
+            to: typeof req.query.to === "string" ? new Date(req.query.to) : undefined,
         });
         return res.json({
-            feedback: feedbackList.map((f) => ({
-                ...f,
-                patientName: f.patient.patientProfile?.legalName || f.patient.username,
-                patient: undefined, // Remove nested patient object
-            })),
-            aggregates: {
-                total: aggregates._count.id,
-                avgHelpfulness: aggregates._avg.ratingHelpfulness,
-                avgCommunication: aggregates._avg.ratingCommunication,
-                byEventType: countByEventType.reduce((acc, item) => {
-                    acc[item.eventType] = item._count.id;
-                    return acc;
-                }, {}),
-            },
+            feedback: readout.feedback,
+            aggregates: readout.aggregates,
         });
     }
     catch (e) {

@@ -1,12 +1,25 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
+const client_1 = require("@prisma/client");
 const db_1 = require("../db");
 const requireAuth_1 = require("../middleware/requireAuth");
+const privacySettings_1 = require("../lib/privacySettings");
+const therapyProgress_1 = require("../lib/therapyProgress");
+const visitProgressKpis_1 = require("../lib/visitProgressKpis");
 const router = (0, express_1.Router)();
 router.use(requireAuth_1.requireAuth);
 function getUser(req) {
     return req.user;
+}
+function goalStatusFromPercent(pct, empty) {
+    if (empty)
+        return "attention";
+    if (pct >= 70)
+        return "on_track";
+    if (pct >= 40)
+        return "attention";
+    return "risk";
 }
 router.get("/", async (req, res) => {
     try {
@@ -39,14 +52,44 @@ router.get("/", async (req, res) => {
         const now = new Date();
         const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+        /** Same terminal statuses as patient web upcoming filter (`PatientDashboard`). */
+        const upcomingTerminal = [
+            client_1.VisitStatus.COMPLETED,
+            client_1.VisitStatus.CANCELLED,
+            client_1.VisitStatus.MISSED,
+            client_1.VisitStatus.REJECTED,
+            client_1.VisitStatus.RESCHEDULED,
+        ];
+        // Load visits for KPIs without dropping old still-open rows: a global `take` + `orderBy scheduledAt`
+        // can exclude pipeline visits scheduled long ago. Pull (1) every non-terminal visit for linked
+        // patients, plus (2) completed/missed rows needed for 30-day counts.
         const [visits, vitals, meds] = await Promise.all([
             db_1.prisma.visit.findMany({
-                where: { patientId: { in: patientIds }, scheduledAt: { gte: thirtyDaysAgo } },
+                where: {
+                    patientId: { in: patientIds },
+                    OR: [
+                        { status: { notIn: upcomingTerminal } },
+                        {
+                            status: client_1.VisitStatus.COMPLETED,
+                            OR: [
+                                { completedAt: { gte: thirtyDaysAgo, lte: now } },
+                                {
+                                    AND: [{ completedAt: null }, { scheduledAt: { gte: thirtyDaysAgo, lte: now } }],
+                                },
+                            ],
+                        },
+                        {
+                            status: client_1.VisitStatus.MISSED,
+                            scheduledAt: { gte: thirtyDaysAgo, lte: now },
+                        },
+                    ],
+                },
                 select: {
                     id: true,
                     patientId: true,
                     status: true,
                     scheduledAt: true,
+                    completedAt: true,
                     visitType: true,
                     purpose: true,
                 },
@@ -77,14 +120,14 @@ router.get("/", async (req, res) => {
                 orderBy: { name: "asc" },
             }),
         ]);
-        const patients = links.map((link) => {
+        const patients = await Promise.all(links.map(async (link) => {
             const pId = link.patientId;
             const pVisits = visits.filter((v) => v.patientId === pId);
             const pVitals = vitals.filter((v) => v.patientId === pId);
             const pMeds = meds.filter((m) => m.patientId === pId);
-            const completedCount = pVisits.filter((v) => v.status === "COMPLETED").length;
-            const missedCount = pVisits.filter((v) => v.status === "MISSED").length;
-            const upcomingCount = pVisits.filter((v) => (v.status === "SCHEDULED" || v.status === "CONFIRMED") && new Date(v.scheduledAt) >= now).length;
+            const completedCount = (0, visitProgressKpis_1.countCompletedVisitsInRollingWindow)(pVisits, 30, now);
+            const missedCount = (0, visitProgressKpis_1.countMissedVisitsInRollingWindow)(pVisits, 30, now);
+            const upcomingCount = (0, visitProgressKpis_1.countUpcomingVisits)(pVisits);
             const trendCounts = pVitals.reduce((acc, v) => {
                 acc[v.trend] = (acc[v.trend] ?? 0) + 1;
                 return acc;
@@ -96,22 +139,54 @@ router.get("/", async (req, res) => {
                 overallTrend = "DECLINING";
             else if ((trendCounts.IMPROVING ?? 0) > 0)
                 overallTrend = "IMPROVING";
+            const privacy = await (0, privacySettings_1.getPatientPrivacySettings)(pId);
+            const carePlanAllowed = privacy.carePlanVisibleToCaregivers;
+            const primaryPlan = carePlanAllowed ? await (0, therapyProgress_1.loadPrimaryPlanForTherapy)(pId) : null;
+            const therapy = await (0, therapyProgress_1.buildTherapyProgressOverview)({
+                patientId: pId,
+                carePlanAllowed,
+                primaryPlan,
+            });
+            const cpPct = therapy.carePlanItemProgressPercent ?? 0;
+            const cpEmpty = therapy.carePlanItemCounts.total === 0;
+            const hepPct = therapy.hep.adherencePercent ?? 0;
             const highRiskMeds = pMeds.filter((m) => m.riskLevel === "HIGH_RISK").length;
             const changedMeds = pMeds.filter((m) => m.riskLevel === "CHANGED").length;
             const goals = [
+                carePlanAllowed
+                    ? {
+                        id: `${pId}-goal-care-plan`,
+                        title: "Care plan progress",
+                        target: "Average progress across active plan items",
+                        progress: cpPct,
+                        status: goalStatusFromPercent(cpPct, cpEmpty),
+                    }
+                    : {
+                        id: `${pId}-goal-care-plan`,
+                        title: "Care plan progress",
+                        target: "The patient has not shared care plan details with caregivers",
+                        progress: 0,
+                        status: "attention",
+                    },
+                {
+                    id: `${pId}-goal-hep`,
+                    title: "Therapy exercise adherence",
+                    target: therapy.hep.expectedCompletionsThisWeek > 0
+                        ? `${therapy.hep.actualCompletionsLast7Days} of ${therapy.hep.expectedCompletionsThisWeek} expected sessions logged in the last 7 days`
+                        : therapy.hep.activeAssignmentCount === 0
+                            ? "No active home exercise assignments"
+                            : "Log sessions to build adherence",
+                    progress: therapy.hep.activeAssignmentCount === 0 ? 0 : hepPct,
+                    status: therapy.hep.activeAssignmentCount === 0
+                        ? "attention"
+                        : goalStatusFromPercent(hepPct, false),
+                },
                 {
                     id: `${pId}-goal-visit-consistency`,
-                    title: "Maintain visit consistency",
+                    title: "Visit consistency",
                     target: "0 missed visits this month",
                     progress: Math.max(0, 100 - missedCount * 25),
                     status: missedCount === 0 ? "on_track" : missedCount <= 2 ? "attention" : "risk",
-                },
-                {
-                    id: `${pId}-goal-vitals`,
-                    title: "Stabilize health vitals",
-                    target: "Trend remains stable or improving",
-                    progress: overallTrend === "IMPROVING" ? 90 : overallTrend === "STABLE" ? 75 : overallTrend === "DECLINING" ? 45 : 25,
-                    status: overallTrend === "CRITICAL" ? "risk" : overallTrend === "DECLINING" ? "attention" : "on_track",
                 },
                 {
                     id: `${pId}-goal-med-safety`,
@@ -122,13 +197,7 @@ router.get("/", async (req, res) => {
                 },
             ];
             const weeklyUpdate = {
-                summary: overallTrend === "CRITICAL"
-                    ? "Critical trend detected in recent vitals. Prompt clinician follow-up is recommended."
-                    : overallTrend === "DECLINING"
-                        ? "Recent data shows some decline. Continue close monitoring and proactive communication."
-                        : overallTrend === "IMPROVING"
-                            ? "Patient progress is improving based on recent vitals and visit adherence."
-                            : "Patient remains generally stable with no major care disruptions.",
+                summary: `${therapy.supportingNote} Vital trend from recent readings: ${overallTrend}. Visits (30d): ${completedCount} completed, ${missedCount} missed, ${upcomingCount} upcoming.`,
                 completedVisitsLast30d: completedCount,
                 missedVisitsLast30d: missedCount,
                 upcomingVisits: upcomingCount,
@@ -160,7 +229,7 @@ router.get("/", async (req, res) => {
                     },
                 ],
             };
-        });
+        }));
         res.json({ patients });
     }
     catch (e) {

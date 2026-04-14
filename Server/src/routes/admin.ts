@@ -7,242 +7,102 @@ import { prisma } from "../db";
 import { requireAdmin } from "../middleware/requireRole";
 import { AuditActionType, VisitStatus } from "@prisma/client";
 import { getAgencySettings } from "../lib/agencySettings";
-import { getActorFromRequest, logAuditEvent } from "../lib/audit";
+import {
+  getActorFromRequest,
+  getAuditActionLabel,
+  logAuditEvent,
+  summarizeAuditMetadata,
+} from "../lib/audit";
+import { buildAdminAnalytics, buildDailyAnalytics, getFamilyFeedbackReadout } from "../lib/adminKpis";
+import { buildPilotReadiness } from "../lib/pilotReadiness";
 
 const router = Router();
 
-function startOfWeek(input: Date) {
-  const date = new Date(input);
-  const day = date.getUTCDay();
-  const diff = (day + 6) % 7;
-  date.setUTCDate(date.getUTCDate() - diff);
-  date.setUTCHours(0, 0, 0, 0);
-  return date;
+function parseDateRangeInput(value: unknown, endOfDay = false): Date | undefined {
+  if (!value || typeof value !== "string") return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  if (endOfDay) parsed.setUTCHours(23, 59, 59, 999);
+  else parsed.setUTCHours(0, 0, 0, 0);
+  return parsed;
 }
 
-function weekLabel(input: Date) {
-  return input.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-}
+function buildAuditWhereClause(req: Request) {
+  const { actionType, actorRole, search, from, to } = req.query;
+  const where: any = {};
 
-async function buildAdminAnalytics() {
-  const now = new Date();
-  const analyticsWindowStart = new Date(now);
-  analyticsWindowStart.setUTCDate(analyticsWindowStart.getUTCDate() - 90);
-
-  const weekBuckets = Array.from({ length: 6 }, (_, index) => {
-    const date = startOfWeek(new Date(now.getTime() - (5 - index) * 7 * 24 * 60 * 60 * 1000));
-    return {
-      key: date.toISOString(),
-      date,
-      label: weekLabel(date),
-      visits: 0,
-    };
-  });
-
-  const weekBucketMap = new Map(weekBuckets.map((bucket) => [bucket.key, bucket]));
-
-  const [
-    activePatients,
-    linkedCaregivers,
-    visits,
-    messages,
-    pendingAvailability,
-    pendingVisitRequests,
-  ] = await Promise.all([
-    prisma.user.count({ where: { role: "PATIENT" } }),
-    prisma.caregiverPatientLink.count({ where: { isActive: true } }),
-    prisma.visit.findMany({
-      where: { scheduledAt: { gte: analyticsWindowStart } },
-      select: {
-        id: true,
-        scheduledAt: true,
-        status: true,
-        requestType: true,
-        cancelReason: true,
+  if (actionType && typeof actionType === "string") {
+    where.actionType = actionType.toUpperCase();
+  }
+  if (actorRole && typeof actorRole === "string") {
+    where.actorRole = actorRole.toUpperCase();
+  }
+  if (search && typeof search === "string" && search.trim()) {
+    const term = search.trim();
+    where.OR = [
+      { description: { contains: term, mode: "insensitive" } },
+      { targetType: { contains: term, mode: "insensitive" } },
+      { targetId: { contains: term, mode: "insensitive" } },
+      {
+        actor: {
+          OR: [
+            { username: { contains: term, mode: "insensitive" } },
+            { email: { contains: term, mode: "insensitive" } },
+          ],
+        },
       },
-      orderBy: { scheduledAt: "asc" },
-    }),
-    prisma.message.findMany({
-      select: { id: true, createdAt: true, sender: { select: { role: true } } },
-      where: { createdAt: { gte: analyticsWindowStart } },
-    }),
-    prisma.clinicianAvailability.count({ where: { status: "PENDING" } }),
-    prisma.visit.count({
-      where: {
-        status: { in: [VisitStatus.REQUESTED, VisitStatus.RESCHEDULE_REQUESTED] },
-      },
-    }),
-  ]);
-
-  const cancellationReasonCounts = new Map<string, number>();
-  const messageRoleCounts = new Map<string, number>([
-    ["patientCaregiver", 0],
-    ["clinician", 0],
-    ["admin", 0],
-  ]);
-
-  let rescheduledVisits = 0;
-  let cancelledVisits = 0;
-
-  for (const visit of visits) {
-    const bucketKey = startOfWeek(new Date(visit.scheduledAt)).toISOString();
-    const bucket = weekBucketMap.get(bucketKey);
-    if (bucket) bucket.visits += 1;
-
-    if (visit.requestType === "RESCHEDULE" || visit.status === VisitStatus.RESCHEDULE_REQUESTED || visit.status === VisitStatus.RESCHEDULED) {
-      rescheduledVisits += 1;
-    }
-    if (visit.status === VisitStatus.CANCELLED) {
-      cancelledVisits += 1;
-      const key = (visit.cancelReason || "Unspecified").trim() || "Unspecified";
-      cancellationReasonCounts.set(key, (cancellationReasonCounts.get(key) || 0) + 1);
-    }
+    ];
   }
 
-  for (const message of messages) {
-    if (message.sender.role === "CLINICIAN") {
-      messageRoleCounts.set("clinician", (messageRoleCounts.get("clinician") || 0) + 1);
-    } else if (message.sender.role === "ADMIN") {
-      messageRoleCounts.set("admin", (messageRoleCounts.get("admin") || 0) + 1);
-    } else {
-      messageRoleCounts.set("patientCaregiver", (messageRoleCounts.get("patientCaregiver") || 0) + 1);
-    }
+  const fromDate = parseDateRangeInput(from);
+  const toDate = parseDateRangeInput(to, true);
+  if (fromDate || toDate) {
+    where.createdAt = {};
+    if (fromDate) where.createdAt.gte = fromDate;
+    if (toDate) where.createdAt.lte = toDate;
   }
 
-  const totalVisits = visits.length || 1;
-  const totalWeeks = weekBuckets.length || 1;
-  const visitsPerWeek = Math.round((visits.length / totalWeeks) * 10) / 10;
-  const rescheduleRate = Math.round((rescheduledVisits / totalVisits) * 1000) / 10;
-  const cancellationRate = Math.round((cancelledVisits / totalVisits) * 1000) / 10;
-
-  return {
-    summary: {
-      activePatients,
-      linkedCaregivers,
-      visitsPerWeek,
-      rescheduleRate,
-      cancellationRate,
-      pendingAvailability,
-      pendingVisitRequests,
-      messagesLast90Days: messages.length,
-    },
-    charts: {
-      visitsByWeek: weekBuckets.map((bucket) => ({
-        label: bucket.label,
-        visits: bucket.visits,
-      })),
-      cancellationReasons: Array.from(cancellationReasonCounts.entries())
-        .map(([reason, count]) => ({ reason, count }))
-        .sort((a, b) => b.count - a.count),
-      messagesByRole: [
-        { role: "Patients & Caregivers", count: messageRoleCounts.get("patientCaregiver") || 0 },
-        { role: "Clinicians", count: messageRoleCounts.get("clinician") || 0 },
-        { role: "Admins", count: messageRoleCounts.get("admin") || 0 },
-      ],
-    },
-    windowDays: 90,
-  };
+  return where;
 }
 
-// ── Feature 5: Build DAU and Daily Appointment Analytics ──
-async function buildDailyAnalytics(fromDate: Date, toDate: Date) {
-  const dayBuckets: Array<{
-    date: string;
-    loginBasedDAU: number;
-    activityBasedDAU: number;
-    appointmentsApproved: number;
-    appointmentsFulfilled: number;
-    appointmentsCancelled: number;
-    appointmentsRescheduled: number;
-  }> = [];
+function escapeCsvCell(value: unknown): string {
+  const text = String(value ?? "");
+  return `"${text.split(`"`).join(`""`)}"`;
+}
 
-  const bucketMap = new Map<string, (typeof dayBuckets)[number]>();
-  const currentDate = new Date(fromDate);
-  while (currentDate <= toDate) {
-    const key = currentDate.toISOString().split('T')[0];
-    const entry = {
-      date: key,
-      loginBasedDAU: 0,
-      activityBasedDAU: 0,
-      appointmentsApproved: 0,
-      appointmentsFulfilled: 0,
-      appointmentsCancelled: 0,
-      appointmentsRescheduled: 0,
-    };
-    dayBuckets.push(entry);
-    bucketMap.set(key, entry);
-    currentDate.setUTCDate(currentDate.getUTCDate() + 1);
-  }
+function toAuditCsv(logs: Array<{
+  createdAt: Date;
+  actorRole: string | null;
+  actionType: AuditActionType;
+  targetType: string | null;
+  targetId: string | null;
+  description: string | null;
+  actor: { username: string; email: string } | null;
+  metadata: unknown;
+}>) {
+  const header = [
+    "When",
+    "Actor",
+    "Role",
+    "Action",
+    "Target",
+    "Description",
+    "Summary",
+  ].map(escapeCsvCell).join(",");
 
-  // ── DAU from UserActivityDaily rollups (accurate per-day) ──
-  const rollups = await prisma.userActivityDaily.findMany({
-    where: { day: { gte: fromDate, lte: toDate } },
-    select: { userId: true, day: true },
-  });
+  const rows = logs.map((log) =>
+    [
+      log.createdAt.toISOString(),
+      log.actor?.username || log.actor?.email || "System",
+      log.actorRole || "SYSTEM",
+      getAuditActionLabel(log.actionType),
+      [log.targetType, log.targetId].filter(Boolean).join(" • "),
+      log.description || "",
+      summarizeAuditMetadata(log.metadata) || "",
+    ].map(escapeCsvCell).join(",")
+  );
 
-  const dauByDay = new Map<string, Set<string>>();
-  for (const r of rollups) {
-    const dateKey = r.day.toISOString().split('T')[0];
-    if (!dauByDay.has(dateKey)) dauByDay.set(dateKey, new Set());
-    dauByDay.get(dateKey)!.add(r.userId);
-  }
-  for (const [dateKey, userIds] of dauByDay.entries()) {
-    const bucket = bucketMap.get(dateKey);
-    if (bucket) {
-      bucket.loginBasedDAU = userIds.size;
-      bucket.activityBasedDAU = userIds.size;
-    }
-  }
-
-  // ── Daily appointment outcomes (approved, fulfilled, cancelled) ──
-  const visits = await prisma.visit.findMany({
-    where: {
-      OR: [
-        { reviewedAt: { gte: fromDate, lte: toDate } },
-        { completedAt: { gte: fromDate, lte: toDate } },
-        { cancelledAt: { gte: fromDate, lte: toDate } },
-      ],
-    },
-    select: {
-      id: true,
-      status: true,
-      reviewedAt: true,
-      completedAt: true,
-      cancelledAt: true,
-      requestType: true,
-    },
-  });
-
-  for (const visit of visits) {
-    if (visit.reviewedAt && visit.status === VisitStatus.CONFIRMED) {
-      const bucket = bucketMap.get(visit.reviewedAt.toISOString().split('T')[0]);
-      if (bucket) bucket.appointmentsApproved += 1;
-    }
-    if (visit.completedAt && visit.status === VisitStatus.COMPLETED) {
-      const bucket = bucketMap.get(visit.completedAt.toISOString().split('T')[0]);
-      if (bucket) bucket.appointmentsFulfilled += 1;
-    }
-    if (visit.cancelledAt && visit.status === VisitStatus.CANCELLED) {
-      const bucket = bucketMap.get(visit.cancelledAt.toISOString().split('T')[0]);
-      if (bucket) bucket.appointmentsCancelled += 1;
-    }
-  }
-
-  // ── Rescheduled: count from AuditLog VISIT_RESCHEDULE_APPROVED events ──
-  const rescheduleAuditLogs = await prisma.auditLog.findMany({
-    where: {
-      actionType: AuditActionType.VISIT_RESCHEDULE_APPROVED,
-      createdAt: { gte: fromDate, lte: toDate },
-    },
-    select: { createdAt: true },
-  });
-
-  for (const log of rescheduleAuditLogs) {
-    const bucket = bucketMap.get(log.createdAt.toISOString().split('T')[0]);
-    if (bucket) bucket.appointmentsRescheduled += 1;
-  }
-
-  return dayBuckets;
+  return `\ufeff${[header, ...rows].join("\n")}`;
 }
 
 // TODO: Import admin middleware
@@ -459,9 +319,84 @@ router.get("/users/:id", requireAdmin, async (req: Request, res: Response) => {
 // PUT /api/admin/users/:id
 // Update user (admin only)
 router.put("/users/:id", requireAdmin, async (req: Request, res: Response) => {
-  // TODO: Implement update user
-  // TODO: Allow role changes, email updates, etc.
-  res.json({ message: "Update user - Implementation coming soon" });
+  try {
+    const actor = getActorFromRequest(req);
+    const { id } = req.params;
+    const { username, email, role } = req.body || {};
+
+    const existing = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, username: true, email: true, role: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (role && role !== existing.role) {
+      return res.status(400).json({
+        error: "Role changes are not supported in this MVP. Remove and re-invite the user if role reassignment is needed.",
+      });
+    }
+
+    const nextUsername = typeof username === "string" ? username.trim() : existing.username;
+    const nextEmail = typeof email === "string" ? email.trim().toLowerCase() : existing.email;
+
+    if (!nextUsername || !nextEmail) {
+      return res.status(400).json({ error: "username and email are required" });
+    }
+
+    const duplicate = await prisma.user.findFirst({
+      where: {
+        id: { not: id },
+        OR: [{ username: nextUsername }, { email: nextEmail }],
+      },
+      select: { id: true },
+    });
+
+    if (duplicate) {
+      return res.status(409).json({ error: "email or username already in use" });
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: {
+        username: nextUsername,
+        email: nextEmail,
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
+    });
+
+    await logAuditEvent({
+      actorId: actor.id,
+      actorRole: actor.role,
+      actionType: AuditActionType.SETTINGS_UPDATED,
+      targetType: "User",
+      targetId: user.id,
+      description: "Updated user identity details",
+      metadata: {
+        before: {
+          username: existing.username,
+          email: existing.email,
+        },
+        after: {
+          username: user.username,
+          email: user.email,
+        },
+      },
+    });
+
+    res.json({ user });
+  } catch (e) {
+    console.error("Admin update user failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 // DELETE /api/admin/users/:id
@@ -504,7 +439,13 @@ router.delete("/users/:id", requireAdmin, async (_req: Request, res: Response) =
 router.get("/stats", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const analytics = await buildAdminAnalytics();
-    res.json({ summary: analytics.summary, windowDays: analytics.windowDays });
+    res.json({
+      summary: analytics.summary,
+      operationalQueues: analytics.operationalQueues,
+      engagement: analytics.engagement,
+      familyFeedbackSummary: analytics.familyFeedbackSummary,
+      windowDays: analytics.windowDays,
+    });
   } catch (e) {
     console.error("Admin get stats failed:", e);
     res.status(500).json({ error: "Server error" });
@@ -529,19 +470,45 @@ router.get("/analytics", requireAdmin, async (_req: Request, res: Response) => {
 router.get("/daily-analytics", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { from, to } = req.query;
-    
+
     // Default to last 30 days if not specified
     const toDate = to ? new Date(to as string) : new Date();
     const fromDate = from ? new Date(from as string) : new Date(toDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-    
+
     // Set to end of day for toDate
     toDate.setUTCHours(23, 59, 59, 999);
     fromDate.setUTCHours(0, 0, 0, 0);
 
     const dailyData = await buildDailyAnalytics(fromDate, toDate);
-    res.json({ dailyAnalytics: dailyData, from: fromDate, to: toDate });
+    res.json({ dailyAnalytics: dailyData, from: fromDate.toISOString(), to: toDate.toISOString() });
   } catch (e) {
     console.error("Daily analytics failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/pilot-readiness", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const payload = await buildPilotReadiness();
+    res.json(payload);
+  } catch (e) {
+    console.error("Pilot readiness failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/family-feedback", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const readout = await getFamilyFeedbackReadout({
+      patientId: typeof req.query.patientId === "string" ? req.query.patientId : undefined,
+      eventType: typeof req.query.eventType === "string" ? req.query.eventType : undefined,
+      from: parseDateRangeInput(req.query.from),
+      to: parseDateRangeInput(req.query.to, true),
+    });
+
+    res.json(readout);
+  } catch (e) {
+    console.error("Admin family feedback failed:", e);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -580,6 +547,12 @@ router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
       supportPhone,
       supportName,
       supportHours,
+      notificationDefaults,
+      pilotLaunchNotes,
+      messagingEnabled,
+      notificationsEnabled,
+      recordsEnabled,
+      feedbackEnabled,
     } = req.body || {};
 
     const settings = await prisma.agencySettings.upsert({
@@ -592,6 +565,12 @@ router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
         supportPhone: supportPhone ? String(supportPhone).trim() : null,
         supportName: supportName ? String(supportName).trim() : null,
         supportHours: supportHours ? String(supportHours).trim() : null,
+        notificationDefaults: notificationDefaults ? String(notificationDefaults).trim() : null,
+        pilotLaunchNotes: pilotLaunchNotes ? String(pilotLaunchNotes).trim() : null,
+        messagingEnabled: typeof messagingEnabled === "boolean" ? messagingEnabled : true,
+        notificationsEnabled: typeof notificationsEnabled === "boolean" ? notificationsEnabled : true,
+        recordsEnabled: typeof recordsEnabled === "boolean" ? recordsEnabled : true,
+        feedbackEnabled: typeof feedbackEnabled === "boolean" ? feedbackEnabled : true,
       },
       create: {
         id: "default",
@@ -602,6 +581,12 @@ router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
         supportPhone: supportPhone ? String(supportPhone).trim() : null,
         supportName: supportName ? String(supportName).trim() : null,
         supportHours: supportHours ? String(supportHours).trim() : null,
+        notificationDefaults: notificationDefaults ? String(notificationDefaults).trim() : null,
+        pilotLaunchNotes: pilotLaunchNotes ? String(pilotLaunchNotes).trim() : null,
+        messagingEnabled: typeof messagingEnabled === "boolean" ? messagingEnabled : true,
+        notificationsEnabled: typeof notificationsEnabled === "boolean" ? notificationsEnabled : true,
+        recordsEnabled: typeof recordsEnabled === "boolean" ? recordsEnabled : true,
+        feedbackEnabled: typeof feedbackEnabled === "boolean" ? feedbackEnabled : true,
       },
     });
 
@@ -617,6 +602,12 @@ router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
         primaryColor: settings.primaryColor,
         supportEmail: settings.supportEmail,
         supportPhone: settings.supportPhone,
+        featureFlags: {
+          messagingEnabled: settings.messagingEnabled,
+          notificationsEnabled: settings.notificationsEnabled,
+          recordsEnabled: settings.recordsEnabled,
+          feedbackEnabled: settings.feedbackEnabled,
+        },
       },
     });
 
@@ -630,47 +621,10 @@ router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
 // GET /api/admin/audit-logs
 router.get("/audit-logs", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { actionType, actorRole, search, limit, offset, from, to } = req.query;
+    const { limit, offset } = req.query;
     const take = Math.min(Math.max(Number(limit) || 50, 1), 200);
     const skip = Math.max(Number(offset) || 0, 0);
-
-    const where: any = {};
-    if (actionType && typeof actionType === "string") {
-      where.actionType = actionType.toUpperCase();
-    }
-    if (actorRole && typeof actorRole === "string") {
-      where.actorRole = actorRole.toUpperCase();
-    }
-    if (search && typeof search === "string" && search.trim()) {
-      const term = search.trim();
-      where.OR = [
-        { description: { contains: term, mode: "insensitive" } },
-        { targetType: { contains: term, mode: "insensitive" } },
-        { targetId: { contains: term, mode: "insensitive" } },
-        {
-          actor: {
-            OR: [
-              { username: { contains: term, mode: "insensitive" } },
-              { email: { contains: term, mode: "insensitive" } },
-            ],
-          },
-        },
-      ];
-    }
-
-    // Date range filtering
-    if (from || to) {
-      where.createdAt = {};
-      if (from && typeof from === "string") {
-        where.createdAt.gte = new Date(from);
-      }
-      if (to && typeof to === "string") {
-        // Add one day to include the entire 'to' date
-        const toDate = new Date(to);
-        toDate.setDate(toDate.getDate() + 1);
-        where.createdAt.lt = toDate;
-      }
-    }
+    const where = buildAuditWhereClause(req);
 
     // Get total count for pagination
     const total = await prisma.auditLog.count({ where });
@@ -691,9 +645,44 @@ router.get("/audit-logs", requireAdmin, async (req: Request, res: Response) => {
       skip,
     });
 
-    res.json({ logs, total, limit: take, offset: skip });
+    res.json({
+      logs: logs.map((log) => ({
+        ...log,
+        actionLabel: getAuditActionLabel(log.actionType),
+        summary: summarizeAuditMetadata(log.metadata) || log.description,
+      })),
+      total,
+      limit: take,
+      offset: skip,
+    });
   } catch (e) {
     console.error("Admin get audit logs failed:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.get("/audit-logs/export", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const where = buildAuditWhereClause(req);
+    const logs = await prisma.auditLog.findMany({
+      where,
+      include: {
+        actor: {
+          select: {
+            username: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5000,
+    });
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="admin-audit-log-export.csv"');
+    res.send(toAuditCsv(logs));
+  } catch (e) {
+    console.error("Admin audit export failed:", e);
     res.status(500).json({ error: "Server error" });
   }
 });
