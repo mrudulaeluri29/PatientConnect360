@@ -11,6 +11,96 @@ PatientConnect360 is a healthcare portal monorepo centered on a **web applicatio
 
 ---
 
+## Original Product Concept and Positioning
+
+PatientConnect360 was originally conceived as **“MyChart for Home Health”**: a patient- and family-facing portal that extends hospital-style transparency into the post-discharge home-health setting.
+
+The founding concept is that patients often lose digital visibility once care transitions from hospitals and clinics into home health. Traditional portals such as MyChart and Healow provide access to records, appointments, and provider messaging in clinical settings, but that transparency usually stops once care moves into the home. Home-health agencies then fall back on fragmented systems, phone calls, paper instructions, and manual updates.
+
+PatientConnect360 is intended to close that gap by giving patients, families, caregivers, clinicians, and agencies a shared digital surface for:
+
+- care plan visibility
+- visit schedule transparency
+- therapy and recovery progress visibility
+- secure communication
+- role-based family/caregiver participation
+
+At the concept level, the platform is meant to act as a **continuity-of-care bridge** between hospital discharge and in-home care delivery.
+
+---
+
+## Target Users and Market Context
+
+The original concept materials describe a layered audience:
+
+### Primary users
+- Home-health patients
+- Families / MPOAs
+- Caregivers who need real-time updates and reliable communication
+
+### Secondary users
+- Home-health clinicians such as nurses, therapists, and aides who benefit from a secure, structured patient-facing communication channel
+
+### Tertiary stakeholders
+- Home-health agencies and administrators
+- Physicians and oversight stakeholders who need visibility into communication, satisfaction, compliance, and care coordination
+
+### Market thesis from the concept docs
+- The U.S. home-health market includes thousands of agencies and millions of patients annually.
+- The aging population will continue increasing demand for home-health support.
+- The core business thesis is that there is no dominant home-health equivalent of **MyChart / Healow** for patients and families today.
+
+## Concept Feature Pillars
+
+The original concept overview emphasized these major product pillars:
+
+- **Care Plan Access** — patient/family visibility into care plans, goals, and medication-related information
+- **Visit Schedule Transparency** — real-time schedule visibility with immediate updates for reschedules, cancellations, and delays
+- **Therapy Progress Tracking** — patient-friendly progress indicators and milestone-style recovery visibility
+- **Secure Messaging** — HIPAA-aligned two-way communication between patients/families and care teams
+- **Role-Based Access Controls** — especially for caregivers and MPOAs
+- **Mobile + Web Access** — conceptually designed for patient-friendly access across devices, even though the current authoritative implementation is web-first
+- **SDK / White-Label Architecture** — long-term ability to integrate with or be embedded into agency/EMR ecosystems
+
+
+---
+
+## Concept-Driven Onboarding Intent
+
+The original registration-flow materials are especially important because they explain why Feature 1 is structured the way it is.
+
+### Patient onboarding intent
+The concept docs describe patient registration as:
+
+1. invitation or redemption code
+2. account creation
+3. OTP verification
+4. consent capture
+5. communication preference selection
+6. access to the patient dashboard
+
+### Clinician onboarding intent
+The concept docs describe clinician registration as invitation-driven and more structured than ordinary self-signup, including:
+
+- invitation / redemption code
+- employment details
+- personal details
+- OTP verification
+- consent capture
+- communication preferences
+
+### Admin onboarding intent
+The concept docs describe admin onboarding as invitation-driven, including:
+
+- invitation code
+- OTP / 2FA verification
+- organization setup details
+- role/security defaults
+- consent capture
+- communication preferences
+
+
+
 ## Current State Snapshot
 
 This repository is **well beyond a starter MVP skeleton**. It already contains substantial backend and web functionality across authentication, onboarding, visits, notifications, messaging, records, and admin tooling.
@@ -30,12 +120,6 @@ This repository is **well beyond a starter MVP skeleton**. It already contains s
   - HEP / prep tasks / therapy progress workflows
   - admin analytics / audit / branding / invitations
 
-### What is also true right now
-
-- The repo is still in an active **consolidation and hardening** phase.
-- Several features are **partially implemented but not fully unified**.
-- Some areas are polished and demoable; others still need consistency work, deeper tests, and UX cleanup.
-- The current sprint anchor is still **Feature 1**, but the codebase already contains meaningful work from Features 2–5 as well.
 
 ---
 
@@ -167,95 +251,7 @@ The repo includes five implementation plans. Those plans are still useful, but t
   - clinician
   - admin
 
-### Biggest remaining gap
-- **Patient onboarding is still effectively public** in the current web/backend flow unless an invitation code is optionally provided.
 
-### Practical sprint conclusion
-Feature 1 is close, but not fully closed if the intended final scope is **invite-first onboarding for patients too**.
-
----
-
-## Feature 2 — Visit schedule transparency + notifications + polished scheduling UX
-
-### Status
-**Backend-heavy foundation is already present; web experience exists but is still partly fragmented.**
-
-### Already implemented in the repo
-- Robust visit lifecycle APIs
-- Clinician availability APIs
-- Reminder preferences
-- In-app notifications
-- Background visit reminder scheduler
-- Role-aware visit visibility
-
-### Remaining direction
-- Further unify schedule/calendar experiences across roles
-- Continue moving from list-based scheduling UI toward a more coherent calendar-grade experience
-
----
-
-## Feature 3 — Secure messaging starter
-
-### Status
-**Functionality exists, but architecture is not yet fully consolidated.**
-
-### Already implemented in the repo
-- Multiple message route families exist today:
-  - `/api/messages`
-  - `/api/simple-messages`
-  - `/api/messages-v2`
-- Inbox/sent/thread behavior exists on web
-- Unread state and starring exist
-- Role gating is already partly enforced
-
-### Main remaining problem
-- Messaging is implemented, but still needs canonicalization so the app has **one clearly authoritative messaging system** instead of overlapping route families.
-
----
-
-## Feature 4 — Patient records experience: care plans, documents, privacy, and therapy progress
-
-### Status
-**A large amount of Feature 4 functionality is already implemented.**
-
-### Already implemented in the repo
-- Care plan APIs and supporting schema
-- Document upload/list/download pipeline
-- Caregiver privacy gating for records visibility
-- HEP assignments and completions
-- Visit prep tasks
-- Visit documentation gating
-- Feature 4 tests already exist:
-  - `feature4.hep.test.ts`
-  - `feature4.prepTasks.test.ts`
-  - `feature4.documentationGating.test.ts`
-- Feature 4 smoke checklist exists under `docs/feature4-smoke-checklist.md`
-
-### Main remaining direction
-- Keep unifying these pieces into a cleaner patient/family records-and-recovery story
-- Maintain caregiver scoping and privacy consistency
-
----
-
-## Feature 5 — Admin / agency pilot-readiness & operational readout
-
-### Status
-**Substantial admin infrastructure already exists.**
-
-### Already implemented in the repo
-- Admin analytics endpoints
-- Daily activity rollups
-- Audit log querying
-- Assignment management
-- Branding/settings persistence
-- Feedback review support
-- Invitation management
-
-### Main remaining direction
-- Continue packaging admin functionality into a more operationally polished, pilot-ready agency surface
-- Improve KPI framing, readout clarity, and admin UX cohesion
-
----
 
 ## What the Current Web App Already Exposes
 
@@ -329,10 +325,6 @@ This is not a concept-only backend; it is a real application backend with substa
 - Direct registration is restricted in production.
 - Secure document download flow uses blob storage + temporary URL generation.
 
-### Current repo caveat
-- The codebase includes some duplicated or overlapping route families and partially overlapping UI flows.
-- The main engineering theme now is **unify, harden, and polish** rather than rebuild from scratch.
-
 ---
 
 ## Local Development
@@ -387,52 +379,6 @@ Important environment variables include:
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
 - `ALLOW_DEV_ADMIN_BOOTSTRAP`
-
----
-
-## Seeding and Smoke Commands
-
-Run from `Server/` unless noted otherwise.
-
-### Seeds
-- `npm run seed:admin`
-- `npm run seed:feature1`
-- `npm run seed:feature4`
-- `npm run seed:feedback`
-- `npm run seed:comprehensive`
-- `npm run seed:demo`
-
-### Smokes / tests
-- `npm run smoke:feature1`
-- `npm run smoke:feature1-onboarding`
-- `npm test`
-
-There are also targeted audit/analytics scripts in `Server/scripts/`.
-
----
-
-## Current Recommended Mental Model for the Repo
-
-Treat PatientConnect360 as:
-
-1. a **real, partially productized healthcare portal**, not a blank MVP starter,
-2. a **web-first application** backed by a substantial Express/Prisma API,
-3. a codebase where the main development work is now:
-   - unifying overlapping implementations,
-   - tightening role-safe behavior,
-   - polishing UX,
-   - and improving test/smoke confidence.
-
----
-
-## Immediate Development Priority
-
-The immediate sprint priority remains **Feature 1 completion/hardening**.
-
-### Most important open question
-- Should **patients also be invite-only**, or are they intentionally the one public self-registration exception?
-
-That decision determines whether Feature 1 is effectively in final cleanup or still missing a core onboarding requirement.
 
 ---
 
