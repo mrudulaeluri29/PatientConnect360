@@ -1,0 +1,33 @@
+.schedule-calendar-wrapper {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  margin-bottom: 1.5rem;
+}
+
+.fc-event {
+  cursor: pointer !important;
+  border-radius: 4px !important;
+  font-size: 12px !important;
+  padding: 2px 4px !important;
+}
+
+.fc-toolbar-title {
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+}
+
+.fc-button {
+  background: #6E5B9A !important;
+  border-color: #6E5B9A !important;
+  font-size: 0.8rem !important;
+}
+
+.fc-button:hover {
+  background: #5a4a80 !important;
+}
+
+.fc-button-active {
+  background: #4a3a70 !important;
+}

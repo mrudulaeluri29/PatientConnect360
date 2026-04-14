@@ -1,0 +1,83 @@
+.schedule-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.schedule-drawer {
+  background: white;
+  border-radius: 14px;
+  padding: 28px;
+  min-width: 340px;
+  max-width: 500px;
+  width: 90%;
+  position: relative;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.schedule-drawer h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #1f2937;
+  padding-right: 2rem;
+}
+
+.schedule-drawer p {
+  margin: 0.4rem 0;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.schedule-drawer-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #6b7280;
+  line-height: 1;
+}
+
+.schedule-drawer-close:hover {
+  color: #111827;
+}
+
+.schedule-drawer-status {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 1rem;
+}
+
+.schedule-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f3f4f6;
+}
+
+.schedule-drawer-actions button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: white;
+}
+
+.btn-sched-confirm   { background: #22c55e; }
+.btn-sched-checkin   { background: #06b6d4; }
+.btn-sched-reschedule { background: #a855f7; }
+.btn-sched-cancel    { background: #ef4444; }

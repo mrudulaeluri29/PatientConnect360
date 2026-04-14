@@ -1,5 +1,6 @@
 import "dotenv/config";  //loads .env file automatically 
 
+
 //imports libraries for building server 
 import express from "express";
 import cors from "cors";
@@ -33,6 +34,7 @@ import onboardingInvitationRoutes from "./routes/onboardingInvitations";
 import notificationRoutes from "./routes/notifications";
 import messageUpgradeRoutes from "./routes/messageUpgrades";
 import { startReminderScheduler } from "./jobs/visitReminders";
+import scheduleRouter from "./routes/schedule";
 
 
 // Import our Prisma database client
@@ -125,6 +127,7 @@ app.use("/api/patients", patientPrivacyRoutes);
 
 // Feature 2 routes
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/schedule", scheduleRouter);
 // Message upgrades merged into existing messages routes to avoid collision
 app.use("/api/messages-v2", messageUpgradeRoutes);
 app.use("/api/hep", hepRoutes);

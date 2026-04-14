@@ -24,6 +24,10 @@ import {
 import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
 import "./CaregiverDashboard.css";
 
+import ScheduleCalendar from "../../components/schedule/ScheduleCalendar";
+import { getSchedule } from "../../api/schedule";
+import type { ScheduleEvent } from "../../components/schedule/scheduleTypes";
+
 // ─── Types for the overview payload ──────────────────────────────────────────
 
 interface OverviewPatient {
@@ -1532,6 +1536,18 @@ function CaregiverSchedule() {
   const [reschedSubmitting, setReschedSubmitting] = useState(false);
   const [reschedError, setReschedError] = useState("");
 
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([]);
+
+  useEffect(() => {
+    const now = new Date();
+    const fourWeeks = new Date(now.getTime() + 28 * 24 * 60 * 60 * 1000);
+    getSchedule({
+      from: now.toISOString(),
+      to: fourWeeks.toISOString(),
+      patientId: selectedPatientId ?? undefined,
+    }).then(setScheduleEvents).catch(console.error);
+  }, [selectedPatientId]);
+
   const refreshVisits = useCallback(async (silent = false) => {
     if (!silent) setLoadingVisits(true);
     try {
@@ -1674,6 +1690,16 @@ function CaregiverSchedule() {
       <div className="cg-section-header">
         <h2 className="cg-section-title">Visit Schedule &amp; Care Timeline</h2>
       </div>
+
+      <ScheduleCalendar
+        events={scheduleEvents}
+        initialView="timeGridWeek"
+        onAction={(action, event) => {
+          if (action === "confirm") handleConfirm(visits.find((v) => v.id === event.id)!);
+          if (action === "cancel") handleCancel(visits.find((v) => v.id === event.id)!);
+          if (action === "reschedule") openReschedule(visits.find((v) => v.id === event.id)!);
+        }}
+      />
 
       {overview.patients.length > 1 && selectedPatient && (
         <div className="cg-patient-selector">
