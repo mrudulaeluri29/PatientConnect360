@@ -7,7 +7,10 @@ import {
   canEditCarePlanDefinition,
   canUpdateCarePlanProgress,
 } from "../lib/patientAccess";
-import { getPatientPrivacySettings } from "../lib/privacySettings";
+import {
+  ERR_CAREGIVER_CARE_PLAN_DISABLED,
+  getPatientPrivacySettings,
+} from "../lib/privacySettings";
 import {
   CarePlanStatus,
   CarePlanItemType,
@@ -51,7 +54,7 @@ router.get("/", async (req: Request, res: Response) => {
     if (level === "CAREGIVER") {
       const privacy = await getPatientPrivacySettings(patientId);
       if (!privacy.carePlanVisibleToCaregivers) {
-        return res.status(403).json({ error: "Care plan visibility is disabled by the patient." });
+        return res.status(403).json({ error: ERR_CAREGIVER_CARE_PLAN_DISABLED });
       }
     }
 
@@ -201,6 +204,12 @@ router.post("/items/:itemId/progress", async (req: Request, res: Response) => {
     const patientId = item.carePlan.patientId;
     const level = await getPatientAccessLevel(u.id, u.role, patientId);
     if (!canUpdateCarePlanProgress(level)) return res.status(403).json({ error: "Forbidden" });
+    if (level === "CAREGIVER") {
+      const privacy = await getPatientPrivacySettings(patientId);
+      if (!privacy.carePlanVisibleToCaregivers) {
+        return res.status(403).json({ error: ERR_CAREGIVER_CARE_PLAN_DISABLED });
+      }
+    }
 
     if (status == null || !PROGRESS_STATUSES.includes(status)) {
       return res.status(400).json({ error: `status required; one of: ${PROGRESS_STATUSES.join(", ")}` });
@@ -241,8 +250,15 @@ router.post("/:id/checkins", async (req: Request, res: Response) => {
     const plan = await prisma.carePlan.findUnique({ where: { id: carePlanId } });
     if (!plan) return res.status(404).json({ error: "Care plan not found" });
 
-    const level = await getPatientAccessLevel(u.id, u.role, plan.patientId);
+    const patientId = plan.patientId;
+    const level = await getPatientAccessLevel(u.id, u.role, patientId);
     if (!canUpdateCarePlanProgress(level)) return res.status(403).json({ error: "Forbidden" });
+    if (level === "CAREGIVER") {
+      const privacy = await getPatientPrivacySettings(patientId);
+      if (!privacy.carePlanVisibleToCaregivers) {
+        return res.status(403).json({ error: ERR_CAREGIVER_CARE_PLAN_DISABLED });
+      }
+    }
 
     if (status == null || !CHECKIN_STATUSES.includes(status)) {
       return res.status(400).json({ error: `status required; one of: ${CHECKIN_STATUSES.join(", ")}` });

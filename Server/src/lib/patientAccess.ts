@@ -27,6 +27,7 @@ export async function getPatientAccessLevel(
   return "NONE";
 }
 
+/** Care plans and items: patient (SELF) and linked caregiver (CAREGIVER) may read unless blocked by privacy (see carePlans routes). */
 export function canReadCarePlanData(level: PatientAccessLevel): boolean {
   return level !== "NONE";
 }
@@ -35,10 +36,12 @@ export function canEditCarePlanDefinition(level: PatientAccessLevel): boolean {
   return level === "CLINICIAN" || level === "ADMIN";
 }
 
+/** Progress and check-ins: patient and linked caregiver; caregiver path also enforces `carePlanVisibleToCaregivers`. */
 export function canUpdateCarePlanProgress(level: PatientAccessLevel): boolean {
   return level === "SELF" || level === "CAREGIVER";
 }
 
+/** Upload/patch patient documents: clinicians and admins only. `isHidden` hides from patient & caregiver portal lists/downloads. */
 export function canManageDocuments(level: PatientAccessLevel): boolean {
   return level === "CLINICIAN" || level === "ADMIN";
 }

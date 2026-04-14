@@ -37,15 +37,22 @@ function getApiErrorMessage(err: unknown, fallback: string): string {
 }
 
 const CAREGIVER_HEP_SECTIONS: { key: CaregiverHEPSection; label: string }[] = [
-  { key: "exercises", label: "🏋️ Home Exercises" },
+  { key: "exercises", label: "🏋️ Home Exercises (HEP)" },
   { key: "prep", label: "📋 Visit Prep Tasks" },
 ];
 
-export default function CaregiverHEPTab() {
+export default function CaregiverHEPTab({
+  selectedPatientId,
+  onSelectedPatientIdChange,
+}: {
+  selectedPatientId?: string | null;
+  onSelectedPatientIdChange?: (patientId: string | null) => void;
+}) {
   const [patients, setPatients] = useState<LinkedPatient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>("");
+  const [localSelectedPatientId, setLocalSelectedPatientId] = useState<string>("");
   const [activeSection, setActiveSection] = useState<CaregiverHEPSection>("exercises");
   const [loading, setLoading] = useState(true);
+  const effectiveSelectedPatientId = selectedPatientId ?? localSelectedPatientId;
 
   useEffect(() => {
     async function load() {
@@ -57,7 +64,16 @@ export default function CaregiverHEPTab() {
           email: p.email,
         }));
         setPatients(pts);
-        if (pts.length > 0) setSelectedPatientId(pts[0].id);
+        if (pts.length === 0) {
+          if (selectedPatientId != null) onSelectedPatientIdChange?.(null);
+          setLocalSelectedPatientId("");
+        } else if (selectedPatientId && pts.some((p) => p.id === selectedPatientId)) {
+          // keep controlled selection
+        } else if (onSelectedPatientIdChange) {
+          onSelectedPatientIdChange(pts[0].id);
+        } else {
+          setLocalSelectedPatientId(pts[0].id);
+        }
       } catch (e) {
         console.error(e);
       } finally {
@@ -65,7 +81,12 @@ export default function CaregiverHEPTab() {
       }
     }
     load();
-  }, []);
+  }, [onSelectedPatientIdChange, selectedPatientId]);
+
+  useEffect(() => {
+    if (!selectedPatientId) return;
+    setLocalSelectedPatientId(selectedPatientId);
+  }, [selectedPatientId]);
 
   if (loading) return <p style={{ padding: "2rem" }}>Loading...</p>;
 
@@ -86,15 +107,18 @@ export default function CaregiverHEPTab() {
           {patients.map((p) => (
             <button
               key={p.id}
-              onClick={() => setSelectedPatientId(p.id)}
+              onClick={() => {
+                if (onSelectedPatientIdChange) onSelectedPatientIdChange(p.id);
+                else setLocalSelectedPatientId(p.id);
+              }}
               style={{
                 padding: "0.4rem 0.8rem",
                 borderRadius: "9999px",
                 border: "none",
                 cursor: "pointer",
-                background: selectedPatientId === p.id ? "#6E5B9A" : "#f3f4f6",
-                color: selectedPatientId === p.id ? "white" : "#374151",
-                fontWeight: selectedPatientId === p.id ? 700 : 400,
+                background: effectiveSelectedPatientId === p.id ? "#6E5B9A" : "#f3f4f6",
+                color: effectiveSelectedPatientId === p.id ? "white" : "#374151",
+                fontWeight: effectiveSelectedPatientId === p.id ? 700 : 400,
               }}
             >
               {p.username}
@@ -124,11 +148,11 @@ export default function CaregiverHEPTab() {
         ))}
       </div>
 
-      {selectedPatientId && activeSection === "exercises" && (
-        <CaregiverExercises patientId={selectedPatientId} />
+      {effectiveSelectedPatientId && activeSection === "exercises" && (
+        <CaregiverExercises patientId={effectiveSelectedPatientId} />
       )}
-      {selectedPatientId && activeSection === "prep" && (
-        <CaregiverPrepTasks patientId={selectedPatientId} />
+      {effectiveSelectedPatientId && activeSection === "prep" && (
+        <CaregiverPrepTasks patientId={effectiveSelectedPatientId} />
       )}
     </div>
   );
@@ -182,7 +206,7 @@ function CaregiverExercises({ patientId }: { patientId: string }) {
 
   return (
     <div>
-      <h2 style={{ marginBottom: "0.5rem", color: "#374151" }}>Home Exercise Program</h2>
+      <h2 style={{ marginBottom: "0.5rem", color: "#374151" }}>Home Exercises (HEP)</h2>
       <p style={{ color: "#6b7280", marginBottom: "1.5rem", fontSize: "0.875rem" }}>
         Help your family member complete their prescribed exercises.
       </p>

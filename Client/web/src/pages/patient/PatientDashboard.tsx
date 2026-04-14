@@ -8,6 +8,7 @@ import NotificationCenter from "../../components/notifications/NotificationCente
 import "./PatientDashboard.css";
 import PatientHEPTab from "./PatientHEPTab";
 import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
+import { PrivacyConsentPanel } from "../../components/healthRecords/PrivacyConsentPanel";
 import {
   getVisits,
   updateVisitStatus,
@@ -35,11 +36,12 @@ import {
   type VitalType,
 } from "../../api/vitals";
 import {
-  getCarePlans,
-  type ApiCarePlan,
-  type ApiCarePlanItem,
   type CarePlanItemProgressStatus,
 } from "../../api/carePlans";
+import {
+  getRecordsOverview,
+  type RecordsOverviewResponse,
+} from "../../api/recordsOverview";
 import {
   getMyAvailability,
   formatAvailabilityDate,
@@ -58,12 +60,6 @@ import {
   type ApiInvitation,
   type ApiCaregiverLink,
 } from "../../api/caregiverInvitations";
-import {
-  getMyPrivacySettings,
-  updateMyPrivacySettings,
-  type ApiPrivacySettings,
-} from "../../api/privacy";
-
 declare global {
   interface Window {
     refreshNotifications?: () => void;
@@ -131,26 +127,20 @@ const datetimeLocalToIso = (value?: string): string | undefined => {
   return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
 };
 
-function latestCarePlanItemStatus(item: ApiCarePlanItem, patientId: string): CarePlanItemProgressStatus {
-  return item.progress
+function latestCarePlanItemStatus(
+  item: { progress: Array<{ patientId: string; status: string; updatedAt: string }> },
+  patientId: string
+): CarePlanItemProgressStatus {
+  return (item.progress
     .filter((p) => p.patientId === patientId)
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]?.status ?? "NOT_STARTED";
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]?.status ??
+    "NOT_STARTED") as CarePlanItemProgressStatus;
 }
 
 function carePlanItemPercent(status: CarePlanItemProgressStatus): number {
   if (status === "COMPLETED") return 100;
   if (status === "IN_PROGRESS") return 50;
   return 0;
-}
-
-function carePlanOverallPercent(plan: ApiCarePlan, patientId: string): number {
-  const items = plan.items ?? [];
-  if (!items.length) return 0;
-  const startedOrDone = items.filter((item) => {
-    const status = latestCarePlanItemStatus(item, patientId);
-    return status === "COMPLETED" || status === "IN_PROGRESS";
-  }).length;
-  return Math.round((startedOrDone / items.length) * 100);
 }
 
 export default function PatientDashboard() {
@@ -257,7 +247,8 @@ export default function PatientDashboard() {
       <main className="patient-main">
         {privacyConsentRequired ? (
           <div className="privacy-global-warning">
-            Please click Re-consent in Records &rarr; Privacy &amp; consent to continue using other sections.
+            You updated privacy settings — please open <strong>Records</strong> and tap <strong>Re-consent</strong> under
+            Privacy &amp; consent before using other sections. That confirms your choices for linked caregivers.
           </div>
         ) : null}
         {activeTab === "overview" && (
@@ -271,7 +262,7 @@ export default function PatientDashboard() {
         {activeTab === "health" && <HealthSummary />}
         {activeTab === "records" && (
           <>
-            <PrivacyConsentCard onPendingChange={setPrivacyConsentRequired} />
+            <PrivacyConsentPanel variant="patient" onPendingChange={setPrivacyConsentRequired} />
             {!privacyConsentRequired ? <PatientCareRecordsPanel patientId={user?.id ?? null} /> : null}
           </>
         )}
@@ -289,166 +280,6 @@ export default function PatientDashboard() {
   );
 }
 
-function PrivacyConsentCard({ onPendingChange }: { onPendingChange?: (pending: boolean) => void }) {
-  const [settings, setSettings] = useState<ApiPrivacySettings | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string>("");
-  const [pendingConsentMsg, setPendingConsentMsg] = useState("");
-  const [privacyChangedSinceConsent, setPrivacyChangedSinceConsent] = useState(false);
-  const [consentBaseline, setConsentBaseline] = useState<{
-    shareDocumentsWithCaregivers: boolean;
-    carePlanVisibleToCaregivers: boolean;
-  } | null>(null);
-
-  const refresh = useCallback(() => {
-    getMyPrivacySettings()
-      .then((s) => {
-        setSettings(s);
-        const baseline = s.consentRecordedAt
-          ? {
-              shareDocumentsWithCaregivers: s.shareDocumentsWithCaregivers,
-              carePlanVisibleToCaregivers: s.carePlanVisibleToCaregivers,
-            }
-          : null;
-        setConsentBaseline(baseline);
-        setPrivacyChangedSinceConsent(false);
-        setPendingConsentMsg("");
-      })
-      .catch(() => setSettings(null));
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    onPendingChange?.(privacyChangedSinceConsent);
-  }, [privacyChangedSinceConsent, onPendingChange]);
-
-  const saveToggle = async (
-    key: "shareDocumentsWithCaregivers" | "carePlanVisibleToCaregivers",
-    value: boolean
-  ) => {
-    setSaving(true);
-    setMsg("");
-    try {
-      const updated = await updateMyPrivacySettings({ [key]: value });
-      setSettings(updated);
-      if (updated.consentRecordedAt && consentBaseline) {
-        const changed =
-          updated.shareDocumentsWithCaregivers !== consentBaseline.shareDocumentsWithCaregivers ||
-          updated.carePlanVisibleToCaregivers !== consentBaseline.carePlanVisibleToCaregivers;
-        setPrivacyChangedSinceConsent(changed);
-        setPendingConsentMsg(changed ? "Please click Re-consent to apply your privacy preference changes." : "");
-      } else {
-        setPrivacyChangedSinceConsent(false);
-        setPendingConsentMsg("");
-      }
-      setMsg("Privacy settings saved.");
-    } catch {
-      setMsg("Could not save privacy setting.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const recordConsent = async () => {
-    setSaving(true);
-    setMsg("");
-    try {
-      const updated = await updateMyPrivacySettings({
-        recordConsent: true,
-        consentVersion: "feature1-privacy-v1",
-      });
-      setSettings(updated);
-      setConsentBaseline({
-        shareDocumentsWithCaregivers: updated.shareDocumentsWithCaregivers,
-        carePlanVisibleToCaregivers: updated.carePlanVisibleToCaregivers,
-      });
-      setPrivacyChangedSinceConsent(false);
-      setPendingConsentMsg("");
-      setMsg("Consent recorded.");
-    } catch {
-      setMsg("Could not record consent.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="patient-content">
-      <div
-        className="overview-card privacy-card"
-        onClickCapture={(e) => {
-          if (!privacyChangedSinceConsent) return;
-          const target = e.target as HTMLElement | null;
-          if (!target) return;
-          const consentBtn = target.closest("button");
-          if (consentBtn && consentBtn.textContent?.toLowerCase().includes("re-consent")) return;
-          setPendingConsentMsg("Please click Re-consent to apply your privacy preference changes.");
-        }}
-      >
-        <h3 className="card-title">Privacy &amp; consent</h3>
-        {settings ? (
-          <>
-            <label className="privacy-row">
-              <input
-                type="checkbox"
-                checked={settings.shareDocumentsWithCaregivers}
-                disabled={saving}
-                onChange={(e) => void saveToggle("shareDocumentsWithCaregivers", e.target.checked)}
-              />
-              <span>Share documents with linked caregivers</span>
-            </label>
-            <label className="privacy-row">
-              <input
-                type="checkbox"
-                checked={settings.carePlanVisibleToCaregivers}
-                disabled={saving}
-                onChange={(e) => void saveToggle("carePlanVisibleToCaregivers", e.target.checked)}
-              />
-              <span>Allow linked caregivers to view care plans</span>
-            </label>
-            <div className="privacy-consent-row">
-              <div className="privacy-consent-meta">
-                {settings.consentRecordedAt
-                  ? `Consent recorded on ${new Date(settings.consentRecordedAt).toLocaleString()} (${settings.consentVersion ?? "v1"})`
-                  : "Consent not recorded yet."}
-              </div>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => void recordConsent()}
-                disabled={saving || (Boolean(settings.consentRecordedAt) && !privacyChangedSinceConsent)}
-              >
-                {settings.consentRecordedAt ? "Re-consent" : "I agree"}
-              </button>
-            </div>
-            {settings.consentRecordedAt && !privacyChangedSinceConsent ? (
-              <p style={{ margin: "0.45rem 0 0", fontSize: "0.82rem", color: "#6b7280" }}>
-                Re-consent becomes available after you change a privacy option.
-              </p>
-            ) : null}
-            {privacyChangedSinceConsent ? (
-              <p
-                className="privacy-warning"
-                onClick={() =>
-                  setPendingConsentMsg("Please click Re-consent to apply your privacy preference changes.")
-                }
-              >
-                {pendingConsentMsg || "Please click Re-consent to apply your privacy preference changes."}
-              </p>
-            ) : null}
-          </>
-        ) : (
-          <p style={{ margin: 0, color: "#6b7280" }}>Could not load privacy settings.</p>
-        )}
-        {msg ? <p className="privacy-msg">{msg}</p> : null}
-      </div>
-    </div>
-  );
-}
-
 // overview Tab Component
 function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateToVisits: () => void; onNavigateToRecords?: () => void }) {
   const { user } = useAuth();
@@ -457,7 +288,7 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
   const [careTeam, setCareTeam] = useState<{ id: string; username: string; specialization: string | null }[]>([]);
   const [refillAlerts, setRefillAlerts] = useState<ApiMedication[]>([]);
   const [teamAvailability, setTeamAvailability] = useState<ApiAvailability[]>([]);
-  const [carePlans, setCarePlans] = useState<ApiCarePlan[]>([]);
+  const [recordsOverview, setRecordsOverview] = useState<RecordsOverviewResponse | null>(null);
   const [carePlansLoading, setCarePlansLoading] = useState(true);
   const [carePlansError, setCarePlansError] = useState<string | null>(null);
   const [selectedClinician, setSelectedClinician] = useState<{ id: string; username: string; specialization: string | null } | null>(null);
@@ -520,25 +351,27 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
     if (user?.id) {
       setCarePlansLoading(true);
       setCarePlansError(null);
-      getCarePlans(user.id)
-        .then((plans) => setCarePlans(plans))
+      getRecordsOverview(user.id)
+        .then((overview) => setRecordsOverview(overview))
         .catch((e: unknown) => {
           const msg =
             (e as { response?: { data?: { error?: string } } })?.response?.data?.error ||
             "Could not load care plan progress.";
-          setCarePlans([]);
+          setRecordsOverview(null);
           setCarePlansError(msg);
         })
         .finally(() => setCarePlansLoading(false));
     } else {
-      setCarePlans([]);
+      setRecordsOverview(null);
       setCarePlansLoading(false);
     }
   }, [user?.id, refreshVisits]);
 
-  const activeCarePlan = carePlans.find((plan) => plan.status === "ACTIVE") ?? carePlans[0] ?? null;
-  const activeCarePlanPercent =
-    activeCarePlan && user?.id ? carePlanOverallPercent(activeCarePlan, user.id) : 0;
+  const activeCarePlan =
+    recordsOverview?.carePlan.plans.find((plan) => plan.status === "ACTIVE") ??
+    recordsOverview?.carePlan.plans[0] ??
+    null;
+  const activeCarePlanPercent = recordsOverview?.therapyProgress.carePlanItemProgressPercent ?? 0;
 
   return (
     <div className="patient-content">
@@ -577,6 +410,10 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
             <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>Loading care plan progress...</div>
           ) : carePlansError ? (
             <div style={{ color: "#991b1b", fontSize: "0.9rem" }}>{carePlansError}</div>
+          ) : recordsOverview?.carePlan.blocked ? (
+            <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>
+              {recordsOverview.carePlan.blockMessage ?? "Care plan is currently unavailable."}
+            </div>
           ) : !activeCarePlan ? (
             <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>
               No active care plan yet. Your care team will add goals here when ready.
@@ -590,7 +427,7 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
               <div className="goal-item">
                 <div className="goal-header">
                   <span className="goal-name">Overall active care plan</span>
-                  <span className="goal-progress">{activeCarePlanPercent}%</span>
+                  <span className="goal-percent-chip">{activeCarePlanPercent}%</span>
                 </div>
                 <div className="progress-bar">
                   <div className="progress-fill" style={{ width: `${activeCarePlanPercent}%` }}></div>
@@ -599,16 +436,20 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
               {activeCarePlan.items.map((item) => {
                 const status = user?.id ? latestCarePlanItemStatus(item, user.id) : "NOT_STARTED";
                 const percent = carePlanItemPercent(status);
+                const statusLabel = status.replace("_", " ");
+                const statusClass =
+                  status === "COMPLETED" ? "done" : status === "IN_PROGRESS" ? "active" : "todo";
                 return (
                   <div className="goal-item" key={item.id}>
                     <div className="goal-header">
                       <span className="goal-name">{item.title}</span>
-                      <span className="goal-progress">{status.replace("_", " ")} - {percent}%</span>
+                      <div className="goal-progress-group">
+                        <span className={`goal-status-badge ${statusClass}`}>{statusLabel}</span>
+                        <span className="goal-percent-chip">{percent}%</span>
+                      </div>
                     </div>
                     {item.details ? (
-                      <div style={{ color: "#6b7280", fontSize: "0.85rem", marginBottom: "0.4rem" }}>
-                        {item.details}
-                      </div>
+                      <div className="goal-details">{item.details}</div>
                     ) : null}
                     <div className="progress-bar">
                       <div className="progress-fill" style={{ width: `${percent}%` }}></div>
@@ -1278,7 +1119,7 @@ function MedicationsSupplies() {
 function HealthSummary() {
   const { user } = useAuth();
   const [latest, setLatest] = useState<Partial<Record<VitalType, ApiVital>>>({});
-  const [carePlans, setCarePlans] = useState<ApiCarePlan[]>([]);
+  const [recordsOverview, setRecordsOverview] = useState<RecordsOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1287,13 +1128,13 @@ function HealthSummary() {
       return;
     }
     setLoading(true);
-    Promise.allSettled([getLatestVitals(user.id), getCarePlans(user.id)])
-      .then(([vitalsResult, carePlansResult]) => {
+    Promise.allSettled([getLatestVitals(user.id), getRecordsOverview(user.id)])
+      .then(([vitalsResult, overviewResult]) => {
         if (vitalsResult.status === "fulfilled") setLatest(vitalsResult.value);
         else setLatest({});
 
-        if (carePlansResult.status === "fulfilled") setCarePlans(carePlansResult.value);
-        else setCarePlans([]);
+        if (overviewResult.status === "fulfilled") setRecordsOverview(overviewResult.value);
+        else setRecordsOverview(null);
       })
       .finally(() => setLoading(false));
   }, [user?.id]);
@@ -1318,9 +1159,17 @@ function HealthSummary() {
       message: "Based on recent assessments, fall risk factors have been identified. Safety measures are in place.",
     },
   ];
-  const activeCarePlan = carePlans.find((plan) => plan.status === "ACTIVE") ?? carePlans[0] ?? null;
-  const activeCarePlanPercent =
-    activeCarePlan && user?.id ? carePlanOverallPercent(activeCarePlan, user.id) : 0;
+  const activeCarePlan =
+    recordsOverview?.carePlan.plans.find((plan) => plan.status === "ACTIVE") ??
+    recordsOverview?.carePlan.plans[0] ??
+    null;
+  const activeCarePlanPercent = recordsOverview?.therapyProgress.carePlanItemProgressPercent ?? 0;
+  const carePlanCounts = recordsOverview?.therapyProgress.carePlanItemCounts ?? {
+    total: activeCarePlan?.items.length ?? 0,
+    completed: 0,
+    inProgress: 0,
+    notStarted: 0,
+  };
   const circumference = 2 * Math.PI * 50;
   const circleOffset = circumference * (1 - activeCarePlanPercent / 100);
 
@@ -1417,7 +1266,11 @@ function HealthSummary() {
         {/* Progress Visuals */}
         <div className="progress-section">
           <h3 className="subsection-title">Therapy Progress</h3>
-          {!activeCarePlan ? (
+          {recordsOverview?.carePlan.blocked ? (
+            <div style={{ color: "#6b7280", padding: "1rem 0", fontSize: "0.9rem" }}>
+              {recordsOverview.carePlan.blockMessage ?? "Care plan progress is currently unavailable."}
+            </div>
+          ) : !activeCarePlan ? (
             <div style={{ color: "#6b7280", padding: "1rem 0", fontSize: "0.9rem" }}>
               No care plan progress available yet.
             </div>
@@ -1446,20 +1299,12 @@ function HealthSummary() {
               <div className="progress-visual-card">
                 <div className="progress-visual-title">Care Plan Items</div>
                 <div style={{ color: "#374151", fontSize: "0.9rem", lineHeight: 1.6 }}>
-                  <strong>{activeCarePlan.items.length}</strong> total item{activeCarePlan.items.length === 1 ? "" : "s"}
+                  <strong>{carePlanCounts.total}</strong> total item{carePlanCounts.total === 1 ? "" : "s"}
                   <br />
-                  <strong>
-                    {activeCarePlan.items.filter((item) =>
-                      user?.id ? latestCarePlanItemStatus(item, user.id) === "COMPLETED" : false
-                    ).length}
-                  </strong>{" "}
+                  <strong>{carePlanCounts.completed}</strong>{" "}
                   completed
                   <br />
-                  <strong>
-                    {activeCarePlan.items.filter((item) =>
-                      user?.id ? latestCarePlanItemStatus(item, user.id) === "IN_PROGRESS" : false
-                    ).length}
-                  </strong>{" "}
+                  <strong>{carePlanCounts.inProgress}</strong>{" "}
                   in progress
                 </div>
               </div>
