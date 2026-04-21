@@ -1,7 +1,19 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Activity,
+  CalendarCheck2,
+  CalendarClock,
+  CheckCircle2,
+  CircleAlert,
+  ClipboardList,
+  Dumbbell,
+  Check,
+} from "lucide-react";
 import { api } from "../../lib/axios";
 import { getHEPAssignments, completeHEPAssignment, type ExerciseAssignment } from "../../api/hep";
 import { getVisitPrepTasks, updateVisitPrepTask, type VisitPrepTask } from "../../api/visitPrepTasks";
+import CaregiverPatientSelector from "./CaregiverPatientSelector";
+import "./CaregiverHEPTab.css";
 
 interface Visit {
   id: string;
@@ -16,7 +28,6 @@ interface LinkedPatient {
   email: string;
 }
 
-/** Shape of each item in GET /api/caregiver/patients `patients` array */
 interface CaregiverPatientsApiRow {
   id: string;
   username?: string;
@@ -36,10 +47,64 @@ function getApiErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-const CAREGIVER_HEP_SECTIONS: { key: CaregiverHEPSection; label: string }[] = [
-  { key: "exercises", label: "🏋️ Home Exercises (HEP)" },
-  { key: "prep", label: "📋 Visit Prep Tasks" },
+const CAREGIVER_HEP_SECTIONS: { key: CaregiverHEPSection; label: string; description: string }[] = [
+  {
+    key: "exercises",
+    label: "Home Exercises",
+    description: "Track adherence, recent completions, and support cues for assigned routines.",
+  },
+  {
+    key: "prep",
+    label: "Visit Prep Tasks",
+    description: "Prepare for upcoming visits with a clearer readiness checklist by appointment.",
+  },
 ];
+
+function formatVisitDate(dateLike: string): string {
+  return new Date(dateLike).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatVisitDateTime(dateLike: string): string {
+  return new Date(dateLike).toLocaleString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function startOfCurrentWeek(): Date {
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(now.getDate() - now.getDay());
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function EmptyState({
+  icon,
+  title,
+  description,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="cg-hep-empty-state">
+      <div className="cg-hep-empty-icon" aria-hidden="true">
+        {icon}
+      </div>
+      <h4 className="cg-hep-empty-title">{title}</h4>
+      <p className="cg-hep-empty-copy">{description}</p>
+    </div>
+  );
+}
 
 export default function CaregiverHEPTab({
   selectedPatientId,
@@ -55,7 +120,7 @@ export default function CaregiverHEPTab({
   const effectiveSelectedPatientId = selectedPatientId ?? localSelectedPatientId;
 
   useEffect(() => {
-    async function load() {
+    async function loadPatients() {
       try {
         const res = await api.get("/api/caregiver/patients");
         const pts = (res.data?.patients || []).map((p: CaregiverPatientsApiRow) => ({
@@ -68,19 +133,18 @@ export default function CaregiverHEPTab({
           if (selectedPatientId != null) onSelectedPatientIdChange?.(null);
           setLocalSelectedPatientId("");
         } else if (selectedPatientId && pts.some((p) => p.id === selectedPatientId)) {
-          // keep controlled selection
+          return;
         } else if (onSelectedPatientIdChange) {
           onSelectedPatientIdChange(pts[0].id);
         } else {
           setLocalSelectedPatientId(pts[0].id);
         }
-      } catch (e) {
-        console.error(e);
       } finally {
         setLoading(false);
       }
     }
-    load();
+
+    void loadPatients();
   }, [onSelectedPatientIdChange, selectedPatientId]);
 
   useEffect(() => {
@@ -88,226 +152,288 @@ export default function CaregiverHEPTab({
     setLocalSelectedPatientId(selectedPatientId);
   }, [selectedPatientId]);
 
-  if (loading) return <p style={{ padding: "2rem" }}>Loading...</p>;
+  if (loading) return <p className="cg-hep-loading">Loading exercises and visit prep...</p>;
 
   if (patients.length === 0) {
     return (
-      <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280" }}>
-        <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>👥</div>
-        <p>No linked patients found. Use the Access tab to connect to a patient.</p>
+      <div className="cg-hep-shell">
+        <EmptyState
+          icon={<ClipboardList size={28} strokeWidth={2} />}
+          title="No linked patients"
+          description="Use the Access tab to connect to a patient before managing exercises or visit-prep support."
+        />
       </div>
     );
   }
 
+  const activeSectionMeta = CAREGIVER_HEP_SECTIONS.find((section) => section.key === activeSection);
+
   return (
-    <div style={{ padding: "1.5rem" }}>
-      {/* Patient selector */}
-      {patients.length > 1 && (
-        <div style={{ marginBottom: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          {patients.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => {
-                if (onSelectedPatientIdChange) onSelectedPatientIdChange(p.id);
-                else setLocalSelectedPatientId(p.id);
-              }}
-              style={{
-                padding: "0.4rem 0.8rem",
-                borderRadius: "9999px",
-                border: "none",
-                cursor: "pointer",
-                background: effectiveSelectedPatientId === p.id ? "#6E5B9A" : "#f3f4f6",
-                color: effectiveSelectedPatientId === p.id ? "white" : "#374151",
-                fontWeight: effectiveSelectedPatientId === p.id ? 700 : 400,
-              }}
-            >
-              {p.username}
-            </button>
-          ))}
+    <div className="cg-hep-shell">
+      <div className="cg-hep-head">
+        <div>
+          <span className="cg-hep-kicker">Support lane</span>
+          <h3 className="cg-hep-title">Exercises and visit prep</h3>
         </div>
+        <p className="cg-hep-copy">
+          Help linked patients stay on track with assigned exercises and visit-readiness tasks.
+        </p>
+      </div>
+
+      {patients.length > 1 && (
+        <CaregiverPatientSelector
+          className="cg-hep-patient-rail"
+          items={patients.map((p) => ({ id: p.id, label: p.username, subLabel: p.email }))}
+          onSelect={(patientId) => {
+            if (onSelectedPatientIdChange) onSelectedPatientIdChange(patientId);
+            else setLocalSelectedPatientId(patientId);
+          }}
+          selectedId={effectiveSelectedPatientId}
+          variant="chips"
+        />
       )}
 
-      {/* Section switcher */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0.5rem" }}>
-        {CAREGIVER_HEP_SECTIONS.map((s) => (
+      <div className="cg-hep-switcher" role="tablist" aria-label="Exercises and prep sections">
+        {CAREGIVER_HEP_SECTIONS.map((section) => (
           <button
-            key={s.key}
-            onClick={() => setActiveSection(s.key)}
-            style={{
-              padding: "0.5rem 1rem",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: activeSection === s.key ? 700 : 400,
-              background: activeSection === s.key ? "#6E5B9A" : "#f3f4f6",
-              color: activeSection === s.key ? "white" : "#374151",
-            }}
+            key={section.key}
+            type="button"
+            role="tab"
+            aria-selected={activeSection === section.key}
+            onClick={() => setActiveSection(section.key)}
+            className={`cg-hep-switcher-btn ${activeSection === section.key ? "is-active" : ""}`}
           >
-            {s.label}
+            {section.label}
           </button>
         ))}
       </div>
 
-      {effectiveSelectedPatientId && activeSection === "exercises" && (
-        <CaregiverExercises patientId={effectiveSelectedPatientId} />
-      )}
-      {effectiveSelectedPatientId && activeSection === "prep" && (
-        <CaregiverPrepTasks patientId={effectiveSelectedPatientId} />
-      )}
+      {activeSectionMeta ? <p className="cg-hep-section-intro">{activeSectionMeta.description}</p> : null}
+
+      {effectiveSelectedPatientId && activeSection === "exercises" ? (
+        <CaregiverExercisesSection patientId={effectiveSelectedPatientId} />
+      ) : null}
+      {effectiveSelectedPatientId && activeSection === "prep" ? (
+        <CaregiverPrepTasksSection patientId={effectiveSelectedPatientId} />
+      ) : null}
     </div>
   );
 }
 
-// ─── Exercises ────────────────────────────────────────────────────────────────
-function CaregiverExercises({ patientId }: { patientId: string }) {
+function CaregiverExercisesSection({ patientId }: { patientId: string }) {
   const [assignments, setAssignments] = useState<ExerciseAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string | null>(null);
-  const [comment, setComment] = useState<{ [id: string]: string }>({});
-  const [message, setMessage] = useState<{ [id: string]: string }>({});
-  const [showLog, setShowLog] = useState<{ [id: string]: boolean }>({});
+  const [comment, setComment] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState<Record<string, string>>({});
+  const [showLog, setShowLog] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    async function load() {
+    async function loadAssignments() {
+      setLoading(true);
       try {
         const data = await getHEPAssignments(patientId);
         setAssignments(data);
-      } catch (e) {
-        console.error(e);
       } finally {
         setLoading(false);
       }
     }
-    load();
+
+    void loadAssignments();
   }, [patientId]);
+
+  const activeAssignments = useMemo(
+    () => assignments.filter((assignment) => assignment.status === "ACTIVE"),
+    [assignments]
+  );
+
+  const weekStart = useMemo(() => startOfCurrentWeek(), []);
+
+  const totalWeeklyTarget = activeAssignments.reduce(
+    (total, assignment) => total + assignment.frequencyPerWeek,
+    0
+  );
+  const totalWeeklyCompletions = activeAssignments.reduce(
+    (total, assignment) =>
+      total + assignment.completions.filter((completion) => new Date(completion.completedAt) >= weekStart).length,
+    0
+  );
+  const adherencePercent =
+    totalWeeklyTarget > 0 ? Math.min(100, Math.round((totalWeeklyCompletions / totalWeeklyTarget) * 100)) : 0;
 
   const handleComplete = async (assignmentId: string) => {
     setCompleting(assignmentId);
     try {
       await completeHEPAssignment(assignmentId, comment[assignmentId] || "");
-      setMessage({ ...message, [assignmentId]: "✅ Logged successfully!" });
-      setComment({ ...comment, [assignmentId]: "" });
-      setShowLog({ ...showLog, [assignmentId]: false });
+      setMessage((prev) => ({ ...prev, [assignmentId]: "Logged successfully." }));
+      setComment((prev) => ({ ...prev, [assignmentId]: "" }));
+      setShowLog((prev) => ({ ...prev, [assignmentId]: false }));
       const data = await getHEPAssignments(patientId);
       setAssignments(data);
     } catch (err: unknown) {
-      setMessage({
-        ...message,
-        [assignmentId]: `❌ ${getApiErrorMessage(err, "Failed")}`,
-      });
+      setMessage((prev) => ({
+        ...prev,
+        [assignmentId]: getApiErrorMessage(err, "Failed to log completion."),
+      }));
     } finally {
       setCompleting(null);
     }
   };
 
-  if (loading) return <p>Loading exercises...</p>;
-
-  const active = assignments.filter((a) => a.status === "ACTIVE");
+  if (loading) return <p className="cg-hep-loading">Loading home exercises...</p>;
 
   return (
-    <div>
-      <h2 style={{ marginBottom: "0.5rem", color: "#374151" }}>Home Exercises (HEP)</h2>
-      <p style={{ color: "#6b7280", marginBottom: "1.5rem", fontSize: "0.875rem" }}>
-        Help your family member complete their prescribed exercises.
-      </p>
-
-      {assignments.length === 0 ? (
-        <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280", background: "#f9fafb", borderRadius: "12px" }}>
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🏋️</div>
-          <p>No exercises assigned yet by the clinician.</p>
+    <section className="cg-hep-section" aria-label="Home exercises">
+      <div className="cg-hep-section-head">
+        <div>
+          <h2 className="cg-hep-section-title">Home exercise support</h2>
+          <p className="cg-hep-section-copy">
+            Review adherence, reinforce routines, and log completions without changing the assigned plan.
+          </p>
         </div>
+      </div>
+
+      <div className="cg-hep-kpi-row">
+        <article className="cg-hep-kpi-card">
+          <span className="cg-hep-kpi-icon" aria-hidden="true">
+            <Dumbbell size={18} strokeWidth={2} />
+          </span>
+          <span className="cg-hep-kpi-value">{activeAssignments.length}</span>
+          <span className="cg-hep-kpi-label">Active routines</span>
+        </article>
+        <article className="cg-hep-kpi-card">
+          <span className="cg-hep-kpi-icon" aria-hidden="true">
+            <CalendarCheck2 size={18} strokeWidth={2} />
+          </span>
+          <span className="cg-hep-kpi-value">{totalWeeklyCompletions}</span>
+          <span className="cg-hep-kpi-label">Logged this week</span>
+        </article>
+        <article className="cg-hep-kpi-card">
+          <span className="cg-hep-kpi-icon" aria-hidden="true">
+            <Activity size={18} strokeWidth={2} />
+          </span>
+          <span className="cg-hep-kpi-value">{adherencePercent}%</span>
+          <span className="cg-hep-kpi-label">Weekly adherence</span>
+        </article>
+      </div>
+
+      {activeAssignments.length === 0 ? (
+        <EmptyState
+          icon={<Dumbbell size={28} strokeWidth={2} />}
+          title="No active exercise assignments"
+          description="Once a clinician assigns home exercises, they will appear here for caregiver support and completion logging."
+        />
       ) : (
-        active.map((a) => {
-          const now = new Date();
-          const startOfWeek = new Date(now);
-          startOfWeek.setDate(now.getDate() - now.getDay());
-          startOfWeek.setHours(0, 0, 0, 0);
-          const thisWeekCompletions = a.completions.filter(
-            (c) => new Date(c.completedAt) >= startOfWeek
-          ).length;
-          const adherence = Math.min(100, Math.round((thisWeekCompletions / a.frequencyPerWeek) * 100));
+        <div className="cg-hep-card-list">
+          {activeAssignments.map((assignment) => {
+            const thisWeekCompletions = assignment.completions.filter(
+              (completion) => new Date(completion.completedAt) >= weekStart
+            ).length;
+            const adherence = Math.min(
+              100,
+              Math.round((thisWeekCompletions / assignment.frequencyPerWeek) * 100)
+            );
+            const messageText = message[assignment.id];
+            const messageKind = messageText === "Logged successfully." ? "success" : "error";
 
-          return (
-            <div key={a.id} style={{ padding: "1.25rem", marginBottom: "1rem", borderRadius: "12px", border: "1px solid #e5e7eb", background: "white" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: "1rem", color: "#374151", marginBottom: "0.25rem" }}>
-                    {a.exercise.name}
+            return (
+              <article key={assignment.id} className="cg-hep-card">
+                <div className="cg-hep-card-top">
+                  <div className="cg-hep-card-main">
+                    <div className="cg-hep-card-title-row">
+                      <h3 className="cg-hep-card-title">{assignment.exercise.name}</h3>
+                      <span className={`cg-hep-status-pill cg-hep-status-pill--${adherence >= 80 ? "good" : adherence >= 50 ? "warn" : "risk"}`}>
+                        {adherence >= 80 ? "On track" : adherence >= 50 ? "Needs support" : "At risk"}
+                      </span>
+                    </div>
+                    <p className="cg-hep-card-copy">{assignment.exercise.instructions}</p>
+                    <div className="cg-hep-meta-row">
+                      <span>{assignment.frequencyPerWeek}x/week target</span>
+                      <span>{thisWeekCompletions}/{assignment.frequencyPerWeek} completed this week</span>
+                      <span>Assigned by {assignment.assignedByClinician.username}</span>
+                    </div>
+                    <div className="cg-hep-progress-shell" aria-hidden="true">
+                      <div className="cg-hep-progress-bar" style={{ width: `${adherence}%` }} />
+                    </div>
                   </div>
-                  <p style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "0.5rem" }}>
-                    {a.exercise.instructions}
-                  </p>
-                  <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>
-                    📅 {a.frequencyPerWeek}x/week · ✅ {thisWeekCompletions}/{a.frequencyPerWeek} this week · 📊 {adherence}%
-                  </div>
-                  <div style={{ marginTop: "0.5rem", background: "#f3f4f6", borderRadius: "9999px", height: "6px", width: "200px" }}>
-                    <div style={{
-                      height: "6px", borderRadius: "9999px",
-                      width: `${adherence}%`,
-                      background: adherence >= 80 ? "#10b981" : adherence >= 50 ? "#f59e0b" : "#ef4444",
-                    }} />
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowLog({ ...showLog, [a.id]: !showLog[a.id] })}
-                  style={{ padding: "0.5rem 1rem", borderRadius: "8px", border: "none", background: "#6E5B9A", color: "white", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}
-                >
-                  Log Completion
-                </button>
-              </div>
 
-              {showLog[a.id] && (
-                <div style={{ marginTop: "1rem", padding: "1rem", background: "#f9fafb", borderRadius: "8px" }}>
-                  <input
-                    type="text"
-                    value={comment[a.id] || ""}
-                    onChange={(e) => setComment({ ...comment, [a.id]: e.target.value })}
-                    placeholder="Optional comment..."
-                    style={{ width: "100%", padding: "0.5rem", borderRadius: "8px", border: "1px solid #e5e7eb", marginBottom: "0.5rem" }}
-                  />
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <div className="cg-hep-card-actions">
                     <button
-                      onClick={() => handleComplete(a.id)}
-                      disabled={completing === a.id}
-                      style={{ padding: "0.5rem 1rem", borderRadius: "8px", border: "none", background: "#10b981", color: "white", cursor: "pointer", fontWeight: 600 }}
+                      type="button"
+                      className="cg-hep-action-btn"
+                      onClick={() =>
+                        setShowLog((prev) => ({ ...prev, [assignment.id]: !prev[assignment.id] }))
+                      }
                     >
-                      {completing === a.id ? "Logging..." : "✅ Mark Done"}
-                    </button>
-                    <button
-                      onClick={() => setShowLog({ ...showLog, [a.id]: false })}
-                      style={{ padding: "0.5rem 1rem", borderRadius: "8px", border: "1px solid #e5e7eb", background: "white", cursor: "pointer" }}
-                    >
-                      Cancel
+                      {showLog[assignment.id] ? "Close log" : "Log completion"}
                     </button>
                   </div>
-                  {message[a.id] && (
-                    <div style={{ marginTop: "0.5rem", padding: "0.5rem", borderRadius: "8px", background: message[a.id].includes("✅") ? "#d1fae5" : "#fee2e2", color: message[a.id].includes("✅") ? "#065f46" : "#991b1b", fontSize: "0.875rem" }}>
-                      {message[a.id]}
-                    </div>
-                  )}
                 </div>
-              )}
 
-              {a.completions.length > 0 && (
-                <div style={{ marginTop: "0.75rem", borderTop: "1px solid #f3f4f6", paddingTop: "0.75rem" }}>
-                  <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>Recent completions:</div>
-                  {a.completions.slice(0, 3).map((c) => (
-                    <div key={c.id} style={{ fontSize: "0.75rem", color: "#6b7280" }}>
-                      ✅ {new Date(c.completedAt).toLocaleDateString()} {c.comment ? `— ${c.comment}` : ""}
+                {showLog[assignment.id] ? (
+                  <div className="cg-hep-log-panel">
+                    <label className="cg-hep-field-label" htmlFor={`cg-hep-comment-${assignment.id}`}>
+                      Optional note
+                    </label>
+                    <input
+                      id={`cg-hep-comment-${assignment.id}`}
+                      type="text"
+                      value={comment[assignment.id] || ""}
+                      onChange={(e) =>
+                        setComment((prev) => ({ ...prev, [assignment.id]: e.target.value }))
+                      }
+                      placeholder="Add context for the care team"
+                      className="cg-hep-text-input"
+                    />
+                    <div className="cg-hep-log-actions">
+                      <button
+                        type="button"
+                        className="cg-hep-log-submit"
+                        onClick={() => void handleComplete(assignment.id)}
+                        disabled={completing === assignment.id}
+                      >
+                        {completing === assignment.id ? "Logging..." : "Mark done"}
+                      </button>
+                      <button
+                        type="button"
+                        className="cg-hep-log-cancel"
+                        onClick={() => setShowLog((prev) => ({ ...prev, [assignment.id]: false }))}
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })
+                    {messageText ? (
+                      <div className={`cg-hep-message cg-hep-message--${messageKind}`}>
+                        {messageKind === "success" ? <CheckCircle2 size={16} strokeWidth={2} /> : <CircleAlert size={16} strokeWidth={2} />}
+                        <span>{messageText}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {assignment.completions.length > 0 ? (
+                  <div className="cg-hep-history">
+                    <div className="cg-hep-history-label">Recent completions</div>
+                    <div className="cg-hep-history-list">
+                      {assignment.completions.slice(0, 3).map((completion) => (
+                        <div key={completion.id} className="cg-hep-history-item">
+                          <span>{formatVisitDate(completion.completedAt)}</span>
+                          <span>{completion.comment ? completion.comment : "No comment added"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
       )}
-    </div>
+    </section>
   );
 }
 
-// ─── Prep Tasks ───────────────────────────────────────────────────────────────
-function CaregiverPrepTasks({ patientId }: { patientId: string }) {
+function CaregiverPrepTasksSection({ patientId }: { patientId: string }) {
   const [visits, setVisits] = useState<Visit[]>([]);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const [tasks, setTasks] = useState<VisitPrepTask[]>([]);
@@ -316,25 +442,28 @@ function CaregiverPrepTasks({ patientId }: { patientId: string }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    async function load() {
+    async function loadVisits() {
+      setLoading(true);
       try {
         const res = await api.get("/api/visits", { params: { patientId } });
         const upcoming = (res.data.visits || []).filter(
-          (v: Visit) => !["COMPLETED", "CANCELLED", "MISSED", "REJECTED"].includes(v.status)
+          (visit: Visit) => !["COMPLETED", "CANCELLED", "MISSED", "REJECTED"].includes(visit.status)
         );
         setVisits(upcoming);
         if (upcoming.length > 0) {
           setSelectedVisit(upcoming[0]);
           const taskData = await getVisitPrepTasks(upcoming[0].id);
           setTasks(taskData);
+        } else {
+          setSelectedVisit(null);
+          setTasks([]);
         }
-      } catch (e) {
-        console.error(e);
       } finally {
         setLoading(false);
       }
     }
-    load();
+
+    void loadVisits();
   }, [patientId]);
 
   const handleSelectVisit = async (visit: Visit) => {
@@ -344,7 +473,7 @@ function CaregiverPrepTasks({ patientId }: { patientId: string }) {
       const data = await getVisitPrepTasks(visit.id);
       setTasks(data);
     } catch (e) {
-      setError(getApiErrorMessage(e, "Could not load prep tasks"));
+      setError(getApiErrorMessage(e, "Could not load prep tasks."));
     }
   };
 
@@ -358,117 +487,139 @@ function CaregiverPrepTasks({ patientId }: { patientId: string }) {
         setTasks(data);
       }
     } catch (e) {
-      setError(getApiErrorMessage(e, "Could not update task"));
+      setError(getApiErrorMessage(e, "Could not update task."));
     } finally {
       setToggling(null);
     }
   };
 
-  if (loading) return <p>Loading prep tasks...</p>;
+  const doneTasks = tasks.filter((task) => task.isDone).length;
+  const progressPercent = tasks.length > 0 ? Math.round((doneTasks / tasks.length) * 100) : 0;
 
-  const doneTasks = tasks.filter((t) => t.isDone).length;
+  if (loading) return <p className="cg-hep-loading">Loading visit prep tasks...</p>;
 
   return (
-    <div>
-      <h2 style={{ marginBottom: "0.5rem", color: "#374151" }}>Visit Prep Tasks</h2>
-      <p style={{ color: "#6b7280", marginBottom: "1.5rem", fontSize: "0.875rem" }}>
-        Help your family member prepare for their upcoming visits.
-      </p>
+    <section className="cg-hep-section" aria-label="Visit prep tasks">
+      <div className="cg-hep-section-head">
+        <div>
+          <h2 className="cg-hep-section-title">Visit readiness board</h2>
+          <p className="cg-hep-section-copy">
+            Keep upcoming visits organized with a patient-specific prep checklist and clear completion progress.
+          </p>
+        </div>
+      </div>
+
+      <div className="cg-hep-kpi-row">
+        <article className="cg-hep-kpi-card">
+          <span className="cg-hep-kpi-icon" aria-hidden="true">
+            <CalendarClock size={18} strokeWidth={2} />
+          </span>
+          <span className="cg-hep-kpi-value">{visits.length}</span>
+          <span className="cg-hep-kpi-label">Upcoming visits</span>
+        </article>
+        <article className="cg-hep-kpi-card">
+          <span className="cg-hep-kpi-icon" aria-hidden="true">
+            <ClipboardList size={18} strokeWidth={2} />
+          </span>
+          <span className="cg-hep-kpi-value">{tasks.length}</span>
+          <span className="cg-hep-kpi-label">Prep tasks</span>
+        </article>
+        <article className="cg-hep-kpi-card">
+          <span className="cg-hep-kpi-icon" aria-hidden="true">
+            <CheckCircle2 size={18} strokeWidth={2} />
+          </span>
+          <span className="cg-hep-kpi-value">{progressPercent}%</span>
+          <span className="cg-hep-kpi-label">Readiness</span>
+        </article>
+      </div>
 
       {visits.length === 0 ? (
-        <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280", background: "#f9fafb", borderRadius: "12px" }}>
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📋</div>
-          <p>No upcoming visits found.</p>
-        </div>
+        <EmptyState
+          icon={<CalendarClock size={28} strokeWidth={2} />}
+          title="No upcoming visits"
+          description="Visit-prep checklists will appear here when there is an upcoming visit to prepare for."
+        />
       ) : (
-        <div style={{ display: "flex", gap: "1.5rem" }}>
-          <div style={{ width: "250px", flexShrink: 0 }}>
-            <h3 style={{ marginBottom: "0.75rem", fontSize: "0.875rem", color: "#6b7280", textTransform: "uppercase" }}>Visits</h3>
-            {visits.map((v) => (
-              <div
-                key={v.id}
-                onClick={() => handleSelectVisit(v)}
-                style={{
-                  padding: "0.75rem", marginBottom: "0.5rem", borderRadius: "8px",
-                  border: `2px solid ${selectedVisit?.id === v.id ? "#6E5B9A" : "#e5e7eb"}`,
-                  cursor: "pointer",
-                  background: selectedVisit?.id === v.id ? "#f5f3ff" : "white",
-                }}
-              >
-                <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>{new Date(v.scheduledAt).toLocaleDateString()}</div>
-                <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>{v.status}</div>
-              </div>
-            ))}
-          </div>
+        <div className="cg-hep-prep-layout">
+          <aside className="cg-hep-visit-rail" aria-label="Upcoming visits">
+            <h3 className="cg-hep-rail-title">Visits</h3>
+            <div className="cg-hep-visit-list">
+              {visits.map((visit) => (
+                <button
+                  key={visit.id}
+                  type="button"
+                  className={`cg-hep-visit-card ${selectedVisit?.id === visit.id ? "is-active" : ""}`}
+                  onClick={() => void handleSelectVisit(visit)}
+                >
+                  <span className="cg-hep-visit-date">{formatVisitDate(visit.scheduledAt)}</span>
+                  <span className="cg-hep-visit-time">{formatVisitDateTime(visit.scheduledAt)}</span>
+                  <span className="cg-hep-visit-status">{visit.status.replaceAll("_", " ")}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
 
-          <div style={{ flex: 1 }}>
-            {selectedVisit && (
+          <div className="cg-hep-prep-panel">
+            {selectedVisit ? (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                  <h3>{new Date(selectedVisit.scheduledAt).toLocaleDateString()}</h3>
-                  {tasks.length > 0 && (
-                    <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>{doneTasks}/{tasks.length} completed</span>
-                  )}
+                <div className="cg-hep-prep-head">
+                  <div>
+                    <h3 className="cg-hep-prep-title">{formatVisitDateTime(selectedVisit.scheduledAt)}</h3>
+                    <p className="cg-hep-prep-copy">Track what is complete before the visit begins.</p>
+                  </div>
+                  <span className="cg-hep-prep-summary">
+                    {doneTasks}/{tasks.length} completed
+                  </span>
                 </div>
 
-                {error && (
-                  <div style={{ marginBottom: "1rem", padding: "0.75rem", borderRadius: "8px", background: "#fee2e2", color: "#991b1b", fontSize: "0.875rem" }}>
-                    {error}
-                  </div>
-                )}
+                {error ? <div className="cg-hep-message cg-hep-message--error"><CircleAlert size={16} strokeWidth={2} /><span>{error}</span></div> : null}
 
-                {tasks.length > 0 && (
-                  <div style={{ background: "#f3f4f6", borderRadius: "9999px", height: "8px", marginBottom: "1.5rem" }}>
-                    <div style={{
-                      height: "8px", borderRadius: "9999px",
-                      width: `${Math.round((doneTasks / tasks.length) * 100)}%`,
-                      background: "#6E5B9A", transition: "width 0.3s ease",
-                    }} />
+                {tasks.length > 0 ? (
+                  <div className="cg-hep-progress-panel">
+                    <div className="cg-hep-progress-shell cg-hep-progress-shell--prep" aria-hidden="true">
+                      <div className="cg-hep-progress-bar" style={{ width: `${progressPercent}%` }} />
+                    </div>
+                    <div className="cg-hep-progress-caption">Readiness is based on marked prep items for this visit.</div>
                   </div>
-                )}
+                ) : null}
 
                 {tasks.length === 0 ? (
-                  <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280", background: "#f9fafb", borderRadius: "12px" }}>
-                    No prep tasks for this visit yet.
-                  </div>
+                  <EmptyState
+                    icon={<ClipboardList size={28} strokeWidth={2} />}
+                    title="No prep tasks yet"
+                    description="This visit does not have clinician-authored preparation tasks yet."
+                  />
                 ) : (
-                  tasks.map((t) => (
-                    <div key={t.id} style={{
-                      display: "flex", alignItems: "center", gap: "1rem",
-                      padding: "1rem", marginBottom: "0.5rem", borderRadius: "10px",
-                      border: `1px solid ${t.isDone ? "#a7f3d0" : "#e5e7eb"}`,
-                      background: t.isDone ? "#f0fdf4" : "white",
-                    }}>
-                      <button
-                        onClick={() => handleToggleDone(t)}
-                        disabled={toggling === t.id}
-                        style={{
-                          width: "28px", height: "28px", borderRadius: "50%",
-                          border: `2px solid ${t.isDone ? "#10b981" : "#d1d5db"}`,
-                          background: t.isDone ? "#10b981" : "white",
-                          cursor: "pointer", flexShrink: 0,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          color: "white", fontWeight: 700,
-                        }}
+                  <div className="cg-hep-task-list">
+                    {tasks.map((task) => (
+                      <article
+                        key={task.id}
+                        className={`cg-hep-task-card ${task.isDone ? "is-complete" : ""}`}
                       >
-                        {t.isDone ? "✓" : ""}
-                      </button>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 500, color: t.isDone ? "#6b7280" : "#374151", textDecoration: t.isDone ? "line-through" : "none" }}>
-                          {t.text}
+                        <button
+                          type="button"
+                          className={`cg-hep-task-toggle ${task.isDone ? "is-complete" : ""}`}
+                          onClick={() => void handleToggleDone(task)}
+                          disabled={toggling === task.id}
+                          aria-label={task.isDone ? "Mark task not done" : "Mark task done"}
+                        >
+                          {task.isDone ? <Check size={14} strokeWidth={3} /> : null}
+                        </button>
+                        <div className="cg-hep-task-main">
+                          <div className="cg-hep-task-text">{task.text}</div>
+                          {task.isDone && task.doneByUser ? (
+                            <div className="cg-hep-task-meta">Done by {task.doneByUser.username}</div>
+                          ) : null}
                         </div>
-                        {t.isDone && t.doneByUser && (
-                          <div style={{ fontSize: "0.75rem", color: "#10b981" }}>✅ Done by {t.doneByUser.username}</div>
-                        )}
-                      </div>
-                    </div>
-                  ))
+                      </article>
+                    ))}
+                  </div>
                 )}
               </>
-            )}
+            ) : null}
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

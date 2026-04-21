@@ -1,10 +1,28 @@
 import { useState, useEffect, useCallback } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  Bell,
+  CheckCircle2,
+  CalendarDays,
+  Clock3,
+  Dumbbell,
+  FileText,
+  LayoutDashboard,
+  MessageSquare,
+  Pill,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import { api } from "../../lib/axios";
 import NotificationBell from "../../components/NotificationBell";
 import NotificationCenter from "../../components/notifications/NotificationCenter";
+import DashboardShell from "../../components/dashboard/DashboardShell";
+import type { DashboardNavItem } from "../../components/dashboard/DashboardSidebar";
+import { datetimeLocalInTimeZoneToIso, zonedDateTimeToIso } from "../../utils/datetime";
 import "./PatientDashboard.css";
 import PatientHEPTab from "./PatientHEPTab";
 import { PatientCareRecordsPanel } from "../../components/healthRecords/PatientCareRecordsPanel";
@@ -125,18 +143,6 @@ type SimpleConversationDetail = {
   participants?: SimpleMessageParticipant[];
 };
 
-const datetimeLocalToIso = (value?: string): string | undefined => {
-  if (!value) return undefined;
-  const [datePart, timePart] = value.split("T");
-  if (!datePart || !timePart) return undefined;
-
-  const [y, m, d] = datePart.split("-").map(Number);
-  const [hh, mm] = timePart.split(":").map(Number);
-  if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) return undefined;
-
-  return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
-};
-
 function latestCarePlanItemStatus(
   item: { progress: Array<{ patientId: string; status: string; updatedAt: string }> },
   patientId: string
@@ -153,11 +159,47 @@ function carePlanItemPercent(status: CarePlanItemProgressStatus): number {
   return 0;
 }
 
+type PatientTabMeta = {
+  title: string;
+  code: string;
+  summary: string;
+  focus: string;
+};
+
+const PATIENT_TAB_META: Record<string, PatientTabMeta> = {
+  overview: { title: "Personal care overview", code: "PT-01", summary: "Keep your next steps, care-team movement, and current health priorities in one calm, premium surface.", focus: "Daily confidence" },
+  visits: { title: "Visit timeline", code: "PT-02", summary: "Track upcoming home-health visits, confirmations, and changes without losing context.", focus: "Visit clarity" },
+  medications: { title: "Medication guidance", code: "PT-03", summary: "See refill pressure, current medications, and support details in a cleaner treatment lane.", focus: "Medication support" },
+  health: { title: "Health signal", code: "PT-04", summary: "Follow recovery signals, vitals, and current therapy context in a calmer command surface.", focus: "Recovery pulse" },
+  records: { title: "Care plan and records", code: "PT-05", summary: "Move through care plans, privacy choices, and records with more clarity and less friction.", focus: "Trusted records" },
+  messages: { title: "Care conversations", code: "PT-06", summary: "Stay connected to your care team through a messaging space that feels immediate and reassuring.", focus: "Direct connection" },
+  family: { title: "Family access", code: "PT-07", summary: "Manage caregivers and shared visibility from a surface designed to feel calm and deliberate.", focus: "Shared support" },
+  exercises: { title: "Exercises and tasks", code: "PT-08", summary: "See assigned exercises and home tasks in a more guided, completion-focused lane.", focus: "Daily progress" },
+  notifications: { title: "Notifications", code: "PT-09", summary: "Keep reminders and care updates readable, timely, and less overwhelming.", focus: "Signal flow" },
+};
+
+function transitionPatientTab(nextTab: string, apply: () => void) {
+  const doc = document as Document & {
+    startViewTransition?: (callback: () => void) => { finished: Promise<void> } | void;
+  };
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !doc.startViewTransition) {
+    apply();
+    return;
+  }
+
+  doc.startViewTransition(() => {
+    apply();
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
+}
+
 export default function PatientDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [pendingConversation, setPendingConversation] = useState<{ convId: string; messageId?: string } | null>(null);
   const [privacyConsentRequired, setPrivacyConsentRequired] = useState(false);
   const { user, logout } = useAuth();
+  const activeMeta = PATIENT_TAB_META[activeTab] ?? PATIENT_TAB_META.overview;
 
   const handleLogout = async () => {
     await logout();
@@ -166,127 +208,102 @@ export default function PatientDashboard() {
 
   const openTab = (tab: string) => {
     if (privacyConsentRequired && tab !== "records") return;
-    setActiveTab(tab);
+    transitionPatientTab(tab, () => setActiveTab(tab));
+  };
+
+  const navItems: DashboardNavItem<string>[] = [
+    { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "visits", label: "Visits", icon: CalendarDays },
+    { id: "medications", label: "Medications", icon: Pill },
+    { id: "health", label: "Health", icon: Activity },
+    { id: "records", label: "Records", icon: FileText },
+    { id: "messages", label: "Messages", icon: MessageSquare },
+    { id: "family", label: "Family", icon: Users },
+    { id: "exercises", label: "Exercises & Tasks", shortLabel: "Exercises", icon: Dumbbell },
+    { id: "notifications", label: "Notifications", icon: Bell },
+  ];
+
+  const handleSidebarSelect = (tab: string) => {
+    if (tab === "exercises") {
+      transitionPatientTab(tab, () => setActiveTab(tab));
+      return;
+    }
+    openTab(tab);
   };
 
   return (
-    <div className="patient-dashboard">
-      {/* Header */}
-      <header className="patient-header">
-        <div className="patient-header-left">
-          <h1 className="patient-logo">MediHealth</h1>
-          <nav className="patient-nav">
-            <button
-              className={`nav-item ${activeTab === "overview" ? "active" : ""}`}
-              onClick={() => openTab("overview")}
-            >
-              Overview
-            </button>
-            <button
-              className={`nav-item ${activeTab === "visits" ? "active" : ""}`}
-              onClick={() => openTab("visits")}
-            >
-              Visits
-            </button>
-            <button
-              className={`nav-item ${activeTab === "medications" ? "active" : ""}`}
-              onClick={() => openTab("medications")}
-            >
-              Medications
-            </button>
-            <button
-              className={`nav-item ${activeTab === "health" ? "active" : ""}`}
-              onClick={() => openTab("health")}
-            >
-              Health
-            </button>
-            <button
-              className={`nav-item ${activeTab === "records" ? "active" : ""}`}
-              onClick={() => openTab("records")}
-            >
-              Records
-            </button>
-            <button
-              className={`nav-item ${activeTab === "messages" ? "active" : ""}`}
-              onClick={() => openTab("messages")}
-            >
-              Messages
-            </button>
-            <button
-              className={`nav-item ${activeTab === "family" ? "active" : ""}`}
-              onClick={() => openTab("family")}
-            >
-              Family
-            </button>
-            <button
-              className={`nav-item ${activeTab === "exercises" ? "active" : ""}`}
-              onClick={() => setActiveTab("exercises")}
-            >
-              Exercises & Tasks
-            </button>
-            <button
-              className={`nav-item ${activeTab === "notifications" ? "active" : ""}`}
-              onClick={() => openTab("notifications")}
-            >
-              Notifications
-            </button>
-          </nav>
-        </div>
-        <div className="patient-header-right">
-          <NotificationBell
-            onMessageClick={(_view, conversationId, messageId) => {
-              setActiveTab("messages");
-              if (conversationId) {
-                setPendingConversation({ convId: conversationId, messageId });
-              }
-            }}
-          />
-          <div className="patient-user-info">
-            <span className="patient-user-name">{user?.username || user?.email || "Patient"}</span>
-            <div className="patient-user-badges">
-              <span className="badge badge-patient">Patient</span>
+    <DashboardShell
+      accentColor="#6E5B9A"
+      activeItemId={activeTab}
+      className="patient-dashboard"
+      navItems={navItems}
+      onLogout={handleLogout}
+      onSelectItem={handleSidebarSelect}
+      roleLabel="Patient"
+      shellId="patient"
+      userBadge="Patient"
+      userName={user?.username || user?.email || "Patient"}
+      utilitySlot={
+        <NotificationBell
+          onMessageClick={(_view, conversationId, messageId) => {
+            transitionPatientTab("messages", () => setActiveTab("messages"));
+            if (conversationId) {
+              setPendingConversation({ convId: conversationId, messageId });
+            }
+          }}
+        />
+      }
+    >
+      <main className="patient-main patient-command-rail" data-patient-tab={activeTab}>
+        <section className="patient-command-hero">
+          <div className="patient-command-copy">
+            <span className="patient-command-kicker">Care command</span>
+            <div className="patient-command-title-row">
+              <h2 className="patient-command-title">{activeMeta.title}</h2>
+              <span className="patient-command-code">{activeMeta.code}</span>
             </div>
+            <p className="patient-command-summary">{activeMeta.summary}</p>
           </div>
-          <button className="btn-logout" onClick={handleLogout}>
-            Logout
-          </button>
+          <div className="patient-command-pulse" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </section>
+        <div className="patient-command-panel" key={activeTab}>
+          {privacyConsentRequired ? (
+            <div className="privacy-global-warning">
+              You updated privacy settings — please open <strong>Records</strong> and tap <strong>Re-consent</strong> under
+              Privacy &amp; consent before using other sections. That confirms your choices for linked caregivers.
+            </div>
+          ) : null}
+          {activeTab === "overview" && (
+            <OverviewTab
+              onNavigateToVisits={() => openTab("visits")}
+              onNavigateToRecords={() => openTab("records")}
+            />
+          )}
+          {activeTab === "visits" && <UpcomingVisits onOpenReminderPreferences={() => openTab("notifications")} />}
+          {activeTab === "medications" && <MedicationsSupplies />}
+          {activeTab === "health" && <HealthSummary />}
+          {activeTab === "records" && (
+            <>
+              <PrivacyConsentPanel variant="patient" onPendingChange={setPrivacyConsentRequired} />
+              {!privacyConsentRequired ? <PatientCareRecordsPanel patientId={user?.id ?? null} /> : null}
+            </>
+          )}
+          {activeTab === "messages" && (
+            <MessageCenter
+              pendingConversation={pendingConversation}
+              onConversationOpened={() => setPendingConversation(null)}
+            />
+          )}
+          {activeTab === "family" && <FamilyAccessPanel />}
+          {activeTab === "exercises" && <PatientHEPTab />}
+          {activeTab === "notifications" && <NotificationCenter />}
         </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="patient-main">
-        {privacyConsentRequired ? (
-          <div className="privacy-global-warning">
-            You updated privacy settings — please open <strong>Records</strong> and tap <strong>Re-consent</strong> under
-            Privacy &amp; consent before using other sections. That confirms your choices for linked caregivers.
-          </div>
-        ) : null}
-        {activeTab === "overview" && (
-          <OverviewTab
-            onNavigateToVisits={() => openTab("visits")}
-            onNavigateToRecords={() => openTab("records")}
-          />
-        )}
-        {activeTab === "visits" && <UpcomingVisits />}
-        {activeTab === "medications" && <MedicationsSupplies />}
-        {activeTab === "health" && <HealthSummary />}
-        {activeTab === "records" && (
-          <>
-            <PrivacyConsentPanel variant="patient" onPendingChange={setPrivacyConsentRequired} />
-            {!privacyConsentRequired ? <PatientCareRecordsPanel patientId={user?.id ?? null} /> : null}
-          </>
-        )}
-        {activeTab === "messages" && (
-          <MessageCenter
-            pendingConversation={pendingConversation}
-            onConversationOpened={() => setPendingConversation(null)}
-          />
-        )}
-        {activeTab === "family" && <FamilyAccessPanel />}
-        {activeTab === "exercises" && <PatientHEPTab />}
-        {activeTab === "notifications" && <NotificationCenter />}
       </main>
-    </div>
+    </DashboardShell>
   );
 }
 
@@ -382,234 +399,318 @@ function OverviewTab({ onNavigateToVisits, onNavigateToRecords }: { onNavigateTo
     recordsOverview?.carePlan.plans[0] ??
     null;
   const activeCarePlanPercent = recordsOverview?.therapyProgress.carePlanItemProgressPercent ?? 0;
+  const urgentRefillCount = refillAlerts.filter((med) => {
+    const days = daysUntilRefill(med.refillDueDate);
+    return days !== null && days <= 2;
+  }).length;
+
+  const clinicianCardKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+    clinician: { id: string; username: string; specialization: string | null }
+  ) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    setSelectedClinician(selectedClinician?.id === clinician.id ? null : clinician);
+  };
 
   return (
-    <div className="patient-content">
-      <div className="overview-grid">
-        {/* Upcoming Visits Summary */}
-        <div className="overview-card">
-          <h3 className="card-title">Upcoming Visits</h3>
-          <div className="visits-summary">
-            {upcomingVisits.length === 0 ? (
-              <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>No upcoming visits scheduled.</div>
-            ) : (
-              upcomingVisits.map((v) => {
-                const { date, time } = formatVisitDateTime(v.scheduledAt);
-                return (
-                  <div key={v.id} className="visit-summary-item">
-                    <div className="visit-date">{date}, {time}</div>
-                    <div className="visit-clinician">
-                      {v.clinician.username}
-                      {v.clinician.clinicianProfile?.specialization
-                        ? ` — ${v.clinician.clinicianProfile.specialization}`
-                        : ` — ${visitTypeLabel(v.visitType)}`}
-                    </div>
-                    <VisitStructuredSummaryPanel visit={v} variant="compact" />
-                  </div>
-                );
-              })
-            )}
-          </div>
-          <button className="btn-view-all" onClick={onNavigateToVisits}>View All Visits</button>
-        </div>
-
-        {/* Care Plan Progress */}
-        <div className="overview-card">
-          <h3 className="card-title">Care Plan Progress</h3>
-          {carePlansLoading ? (
-            <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>Loading care plan progress...</div>
-          ) : carePlansError ? (
-            <div style={{ color: "#991b1b", fontSize: "0.9rem" }}>{carePlansError}</div>
-          ) : recordsOverview?.carePlan.blocked ? (
-            <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>
-              {recordsOverview.carePlan.blockMessage ?? "Care plan is currently unavailable."}
-            </div>
-          ) : !activeCarePlan ? (
-            <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>
-              No active care plan yet. Your care team will add goals here when ready.
-            </div>
-          ) : activeCarePlan.items.length === 0 ? (
-            <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>
-              Active care plan found, but no goals have been added yet.
-            </div>
-          ) : (
-            <div className="goals-tracker">
-              <div className="goal-item">
-                <div className="goal-header">
-                  <span className="goal-name">Overall active care plan</span>
-                  <span className="goal-percent-chip">{activeCarePlanPercent}%</span>
-                </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${activeCarePlanPercent}%` }}></div>
-                </div>
+    <div className="patient-content patient-overview-content">
+      <div className="patient-overview-grid">
+        <section className="patient-overview-band patient-overview-band--primary">
+          <article className="overview-card overview-card--feature">
+            <header className="overview-card-header">
+              <div className="overview-card-heading">
+                <p className="overview-card-kicker">Priority</p>
+                <h3 className="card-title">Upcoming Visits</h3>
+                <p className="overview-card-subtitle">Track your next confirmed and pending visits in one timeline.</p>
               </div>
-              {activeCarePlan.items.map((item) => {
-                const status = user?.id ? latestCarePlanItemStatus(item, user.id) : "NOT_STARTED";
-                const percent = carePlanItemPercent(status);
-                const statusLabel = status.replace("_", " ");
-                const statusClass =
-                  status === "COMPLETED" ? "done" : status === "IN_PROGRESS" ? "active" : "todo";
-                return (
-                  <div className="goal-item" key={item.id}>
-                    <div className="goal-header">
-                      <span className="goal-name">{item.title}</span>
-                      <div className="goal-progress-group">
-                        <span className={`goal-status-badge ${statusClass}`}>{statusLabel}</span>
-                        <span className="goal-percent-chip">{percent}%</span>
-                      </div>
-                    </div>
-                    {item.details ? (
-                      <div className="goal-details">{item.details}</div>
-                    ) : null}
-                    <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${percent}%` }}></div>
-                    </div>
-                  </div>
-                );
-              })}
+              <span className="overview-card-icon" aria-hidden="true"><CalendarDays size={18} strokeWidth={2.3} /></span>
+            </header>
+            <div className="overview-priority-strip" aria-label="Upcoming visit summary">
+              <span className="overview-priority-pill">
+                <span className="overview-priority-pill-label">Upcoming</span>
+                <span className="overview-priority-pill-value">{upcomingVisits.length}</span>
+              </span>
+              <span className="overview-priority-pill overview-priority-pill--subtle">
+                <span className="overview-priority-pill-label">Care Team</span>
+                <span className="overview-priority-pill-value">{careTeam.length}</span>
+              </span>
             </div>
-          )}
-          <button className="btn-view-all" onClick={onNavigateToRecords}>Open Records</button>
-        </div>
+            <div className="visits-summary">
+              {upcomingVisits.length === 0 ? (
+                <div className="overview-status-message">No upcoming visits scheduled.</div>
+              ) : (
+                upcomingVisits.map((v) => {
+                  const { date, time } = formatVisitDateTime(v.scheduledAt);
+                  return (
+                    <div key={v.id} className="visit-summary-item">
+                      <div className="visit-date">{date}, {time}</div>
+                      <div className="visit-clinician">
+                        {v.clinician.username}
+                        {v.clinician.clinicianProfile?.specialization
+                          ? ` — ${v.clinician.clinicianProfile.specialization}`
+                          : ` — ${visitTypeLabel(v.visitType)}`}
+                      </div>
+                      <VisitStructuredSummaryPanel visit={v} variant="compact" />
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <button className="btn-view-all" onClick={onNavigateToVisits}>View All Visits</button>
+          </article>
 
-        {/* Assigned Clinicians — clickable to see history + schedule */}
-        <div className="overview-card">
-          <h3 className="card-title">Your Care Team</h3>
-          <div className="clinicians-list">
-            {careTeam.length === 0 ? (
-              <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>No care team assigned yet.</div>
+          <article className="overview-card overview-card--feature">
+            <header className="overview-card-header">
+              <div className="overview-card-heading">
+                <p className="overview-card-kicker">Progress</p>
+                <h3 className="card-title">Care Plan Progress</h3>
+                <p className="overview-card-subtitle">See where you are in your active goals and what needs focus next.</p>
+              </div>
+              <span className="overview-card-icon" aria-hidden="true"><Activity size={18} strokeWidth={2.3} /></span>
+            </header>
+            <div className="overview-priority-strip" aria-label="Care plan progress summary">
+              <span className="overview-priority-pill">
+                <span className="overview-priority-pill-label">Completion</span>
+                <span className="overview-priority-pill-value">{activeCarePlanPercent}%</span>
+              </span>
+              <span className="overview-priority-pill overview-priority-pill--subtle">
+                <span className="overview-priority-pill-label">Goals</span>
+                <span className="overview-priority-pill-value">{activeCarePlan?.items.length ?? 0}</span>
+              </span>
+            </div>
+            {carePlansLoading ? (
+              <div className="overview-status-message">Loading care plan progress...</div>
+            ) : carePlansError ? (
+              <div className="overview-status-message overview-status-message--danger">{carePlansError}</div>
+            ) : recordsOverview?.carePlan.blocked ? (
+              <div className="overview-status-message">
+                {recordsOverview.carePlan.blockMessage ?? "Care plan is currently unavailable."}
+              </div>
+            ) : !activeCarePlan ? (
+              <div className="overview-status-message">
+                No active care plan yet. Your care team will add goals here when ready.
+              </div>
+            ) : activeCarePlan.items.length === 0 ? (
+              <div className="overview-status-message">
+                Active care plan found, but no goals have been added yet.
+              </div>
             ) : (
-              careTeam.map((c) => (
-                <div
-                  key={c.id}
-                  className={`clinician-item clinician-item-clickable ${selectedClinician?.id === c.id ? "clinician-item-active" : ""}`}
-                  onClick={() => setSelectedClinician(selectedClinician?.id === c.id ? null : c)}
-                >
-                  <div className="clinician-avatar">{clinicianAvatar(c.username)}</div>
-                  <div className="clinician-info">
-                    <div className="clinician-name">{c.username}</div>
-                    <div className="clinician-discipline">{c.specialization ?? "Clinician"}</div>
+              <div className="goals-tracker">
+                <div className="goal-item">
+                  <div className="goal-header">
+                    <span className="goal-name">Overall active care plan</span>
+                    <span className="goal-percent-chip">{activeCarePlanPercent}%</span>
                   </div>
-                  <svg className="clinician-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points={selectedClinician?.id === c.id ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
-                  </svg>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Expanded clinician detail panel */}
-          {selectedClinician && (() => {
-            const clinicianVisits = allVisits
-              .filter((v) => v.clinician.id === selectedClinician.id)
-              .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
-
-            return (
-              <div className="clinician-detail-panel">
-                <div className="clinician-detail-header">
-                  <div className="clinician-avatar">{clinicianAvatar(selectedClinician.username)}</div>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{selectedClinician.username}</div>
-                    <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>{selectedClinician.specialization ?? "Clinician"}</div>
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${activeCarePlanPercent}%` }}></div>
                   </div>
-                  <button
-                    className="btn-primary"
-                    style={{ marginLeft: "auto", fontSize: "0.85rem", padding: "0.4rem 0.9rem" }}
-                    onClick={() => {
-                      setRequestClinician({ id: selectedClinician.id, username: selectedClinician.username });
-                      setShowRequestModal(true);
-                    }}
-                  >
-                    Schedule Visit
-                  </button>
                 </div>
-                <h4 style={{ fontSize: "0.9rem", color: "#374151", margin: "0.75rem 0 0.4rem" }}>Visit History</h4>
-                {clinicianVisits.length === 0 ? (
-                  <div style={{ color: "#6b7280", fontSize: "0.85rem" }}>No visit history with this clinician.</div>
-                ) : (
-                  <div className="clinician-visit-history">
-                    {clinicianVisits.slice(0, 5).map((v) => {
-                      const { date, time } = formatVisitDateTime(v.scheduledAt);
-                      return (
-                        <div key={v.id} className="history-visit-row history-visit-row--with-summary">
-                          <div className="history-visit-row-top">
-                            <div className="history-visit-date">{date}, {time}</div>
-                            <div className="history-visit-type">{visitTypeLabel(v.visitType)}</div>
-                            <span className={`history-visit-status status-${v.status.toLowerCase()}`}>
-                              {v.status.replace("_", " ")}
-                            </span>
-                          </div>
-                          <VisitStructuredSummaryPanel visit={v} variant="compact" />
+                {activeCarePlan.items.map((item) => {
+                  const status = user?.id ? latestCarePlanItemStatus(item, user.id) : "NOT_STARTED";
+                  const percent = carePlanItemPercent(status);
+                  const statusLabel = status.replace("_", " ");
+                  const statusClass =
+                    status === "COMPLETED" ? "done" : status === "IN_PROGRESS" ? "active" : "todo";
+                  return (
+                    <div className="goal-item" key={item.id}>
+                      <div className="goal-header">
+                        <span className="goal-name">{item.title}</span>
+                        <div className="goal-progress-group">
+                          <span className={`goal-status-badge ${statusClass}`}>{statusLabel}</span>
+                          <span className="goal-percent-chip">{percent}%</span>
                         </div>
-                      );
-                    })}
-                    {clinicianVisits.length > 5 && (
-                      <button className="btn-view-all" onClick={onNavigateToVisits}>
-                        View all {clinicianVisits.length} visits
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* Health Alerts — driven by real refill data */}
-        <div className="overview-card alert-card">
-          <h3 className="card-title">Health Alerts</h3>
-          <div className="alerts-list-overview">
-            {refillAlerts.length === 0 ? (
-              <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>No active alerts.</div>
-            ) : (
-              refillAlerts.map((med) => {
-                const days = daysUntilRefill(med.refillDueDate)!;
-                return (
-                  <div key={med.id} className="alert-item-overview">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="12" y1="8" x2="12" y2="12"></line>
-                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                    </svg>
-                    <span>
-                      {med.name} refill due {days === 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}
-                    </span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Care Team Availability — shows approved slots for assigned clinicians */}
-        <div className="overview-card">
-          <h3 className="card-title">Care Team Availability</h3>
-          <div className="team-availability-list">
-            {teamAvailability.length === 0 ? (
-              <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>No upcoming availability from your care team.</div>
-            ) : (
-              teamAvailability.map((slot) => (
-                <div key={slot.id} className="team-avail-item">
-                  <div className="team-avail-clinician">
-                    <div className="clinician-avatar">
-                      {clinicianAvatar(slot.clinician.username)}
-                    </div>
-                    <div className="team-avail-info">
-                      <div className="team-avail-name">{slot.clinician.username}</div>
-                      <div className="team-avail-spec">
-                        {slot.clinician.clinicianProfile?.specialization ?? "Clinician"}
+                      </div>
+                      {item.details ? (
+                        <div className="goal-details">{item.details}</div>
+                      ) : null}
+                      <div className="progress-bar">
+                        <div className="progress-fill" style={{ width: `${percent}%` }}></div>
                       </div>
                     </div>
-                  </div>
-                  <div className="team-avail-schedule">
-                    <div className="team-avail-date">{formatAvailabilityDate(slot.date)}</div>
-                    <div className="team-avail-time">{slot.startTime} – {slot.endTime}</div>
-                  </div>
-                </div>
-              ))
+                  );
+                })}
+              </div>
             )}
-          </div>
-        </div>
+            <button className="btn-view-all" onClick={onNavigateToRecords}>Open Records</button>
+          </article>
+        </section>
+
+        <section className="patient-overview-band patient-overview-band--secondary">
+          <article className="overview-card">
+            <header className="overview-card-header">
+              <div className="overview-card-heading">
+                <p className="overview-card-kicker">Team</p>
+                <h3 className="card-title">Your Care Team</h3>
+                <p className="overview-card-subtitle">Open a clinician profile to review recent visits and request a follow-up.</p>
+              </div>
+              <span className="overview-card-icon" aria-hidden="true"><UserRound size={18} strokeWidth={2.3} /></span>
+            </header>
+            <div className="clinicians-list">
+              {careTeam.length === 0 ? (
+                <div className="overview-status-message">No care team assigned yet.</div>
+              ) : (
+                careTeam.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`clinician-item clinician-item-clickable ${selectedClinician?.id === c.id ? "clinician-item-active" : ""}`}
+                    onClick={() => setSelectedClinician(selectedClinician?.id === c.id ? null : c)}
+                    onKeyDown={(event) => clinicianCardKeyDown(event, c)}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={selectedClinician?.id === c.id}
+                    aria-label={`View details for ${c.username}`}
+                  >
+                    <div className="clinician-avatar">{clinicianAvatar(c.username)}</div>
+                    <div className="clinician-info">
+                      <div className="clinician-name">{c.username}</div>
+                      <div className="clinician-discipline">{c.specialization ?? "Clinician"}</div>
+                    </div>
+                    <svg className="clinician-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points={selectedClinician?.id === c.id ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
+                    </svg>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {selectedClinician && (() => {
+              const clinicianVisits = allVisits
+                .filter((v) => v.clinician.id === selectedClinician.id)
+                .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
+
+              return (
+                <div className="clinician-detail-panel">
+                  <div className="clinician-detail-header">
+                    <div className="clinician-avatar">{clinicianAvatar(selectedClinician.username)}</div>
+                    <div className="clinician-detail-copy">
+                      <div className="clinician-detail-name">{selectedClinician.username}</div>
+                      <div className="clinician-detail-role">{selectedClinician.specialization ?? "Clinician"}</div>
+                    </div>
+                    <button
+                      className="btn-primary btn-primary--compact"
+                      onClick={() => {
+                        setRequestClinician({ id: selectedClinician.id, username: selectedClinician.username });
+                        setShowRequestModal(true);
+                      }}
+                    >
+                      Schedule Visit
+                    </button>
+                  </div>
+                  <h4 className="overview-subheading">Visit History</h4>
+                  {clinicianVisits.length === 0 ? (
+                    <div className="overview-status-message overview-status-message--subtle">No visit history with this clinician.</div>
+                  ) : (
+                    <div className="clinician-visit-history">
+                      {clinicianVisits.slice(0, 5).map((v) => {
+                        const { date, time } = formatVisitDateTime(v.scheduledAt);
+                        return (
+                          <div key={v.id} className="history-visit-row history-visit-row--with-summary">
+                            <div className="history-visit-row-top">
+                              <div className="history-visit-date">{date}, {time}</div>
+                              <div className="history-visit-type">{visitTypeLabel(v.visitType)}</div>
+                              <span className={`history-visit-status status-${v.status.toLowerCase()}`}>
+                                {v.status.replace("_", " ")}
+                              </span>
+                            </div>
+                            <VisitStructuredSummaryPanel visit={v} variant="compact" />
+                          </div>
+                        );
+                      })}
+                      {clinicianVisits.length > 5 && (
+                        <button className="btn-view-all" onClick={onNavigateToVisits}>
+                          View all {clinicianVisits.length} visits
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </article>
+
+          <article className="overview-card overview-card--alert">
+            <header className="overview-card-header">
+              <div className="overview-card-heading">
+                <p className="overview-card-kicker">Watchlist</p>
+                <h3 className="card-title">Health Alerts</h3>
+                <p className="overview-card-subtitle">Medication refill alerts that need action before your next visit.</p>
+              </div>
+              <span className="overview-card-icon" aria-hidden="true"><AlertTriangle size={18} strokeWidth={2.3} /></span>
+            </header>
+            <div className="overview-priority-strip" aria-label="Alert summary">
+              <span className="overview-priority-pill">
+                <span className="overview-priority-pill-label">Active Alerts</span>
+                <span className="overview-priority-pill-value">{refillAlerts.length}</span>
+              </span>
+              <span className="overview-priority-pill overview-priority-pill--warning">
+                <span className="overview-priority-pill-label">Urgent</span>
+                <span className="overview-priority-pill-value">{urgentRefillCount}</span>
+              </span>
+            </div>
+            <div className="alerts-list-overview">
+              {refillAlerts.length === 0 ? (
+                <div className="overview-status-message">No active alerts.</div>
+              ) : (
+                refillAlerts.map((med) => {
+                  const days = daysUntilRefill(med.refillDueDate)!;
+                  return (
+                    <div key={med.id} className="alert-item-overview">
+                      <AlertTriangle size={16} strokeWidth={2.2} aria-hidden="true" />
+                      <span>
+                        {med.name} refill due {days === 0 ? "today" : `in ${days} day${days === 1 ? "" : "s"}`}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </article>
+        </section>
+
+        <section className="patient-overview-band patient-overview-band--tertiary">
+          <article className="overview-card">
+            <header className="overview-card-header">
+              <div className="overview-card-heading">
+                <p className="overview-card-kicker">Availability</p>
+                <h3 className="card-title">Care Team Availability</h3>
+                <p className="overview-card-subtitle">Approved availability windows for your currently assigned clinicians.</p>
+              </div>
+              <span className="overview-card-icon" aria-hidden="true"><Clock3 size={18} strokeWidth={2.3} /></span>
+            </header>
+            <div className="overview-priority-strip" aria-label="Availability summary">
+              <span className="overview-priority-pill overview-priority-pill--subtle">
+                <span className="overview-priority-pill-label">Upcoming Slots</span>
+                <span className="overview-priority-pill-value">{teamAvailability.length}</span>
+              </span>
+            </div>
+            <div className="team-availability-list">
+              {teamAvailability.length === 0 ? (
+                <div className="overview-status-message">No upcoming availability from your care team.</div>
+              ) : (
+                teamAvailability.map((slot) => (
+                  <div key={slot.id} className="team-avail-item">
+                    <div className="team-avail-clinician">
+                      <div className="clinician-avatar">
+                        {clinicianAvatar(slot.clinician.username)}
+                      </div>
+                      <div className="team-avail-info">
+                        <div className="team-avail-name">{slot.clinician.username}</div>
+                        <div className="team-avail-spec">
+                          {slot.clinician.clinicianProfile?.specialization ?? "Clinician"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="team-avail-schedule">
+                      <div className="team-avail-date">{formatAvailabilityDate(slot.date)}</div>
+                      <div className="team-avail-time">{slot.startTime} – {slot.endTime}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </article>
+        </section>
       </div>
 
       {/* Visit Request Modal */}
@@ -653,7 +754,7 @@ function HEPBanner() {
       borderRadius: "10px", background: "#f5f3ff",
       border: "1px solid #c4b5fd",
     }}>
-      <span style={{ fontSize: "1.5rem" }}>🏋️</span>
+      <span style={{ display: "inline-flex", color: "#6E5B9A" }} aria-hidden="true"><Dumbbell size={22} strokeWidth={2} /></span>
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 600, color: "#6E5B9A", fontSize: "0.875rem" }}>
           You have {activeCount} active home exercise{activeCount !== 1 ? "s" : ""}
@@ -676,7 +777,7 @@ function HEPBanner() {
   );
 }
 // Upcoming Visits Component
-function UpcomingVisits() {
+function UpcomingVisits({ onOpenReminderPreferences }: { onOpenReminderPreferences: () => void }) {
   const { showToast, promptDialog } = useFeedback();
   const [visits, setVisits] = useState<ApiVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -795,7 +896,7 @@ function UpcomingVisits() {
     setRescheduleSubmitting(true);
     setRescheduleError("");
     try {
-      const scheduledAtIso = datetimeLocalToIso(rescheduleDateTime);
+      const scheduledAtIso = datetimeLocalInTimeZoneToIso(rescheduleDateTime);
       if (!scheduledAtIso) {
         setRescheduleError("Please select a valid new date/time.");
         setRescheduleSubmitting(false);
@@ -841,6 +942,7 @@ function UpcomingVisits() {
       <ScheduleCalendar
         events={scheduleEvents}
         initialView="timeGridWeek"
+        onOpenReminderPreferences={onOpenReminderPreferences}
         onAction={(action, event) => {
           if (action === "confirm") handleConfirm(event.id);
           if (action === "cancel") handleCancel(event.id);
@@ -916,7 +1018,10 @@ function UpcomingVisits() {
                   )}
                   {isConfirmed && (
                     <button className="btn-confirm" disabled style={{ opacity: 0.6 }}>
-                      Confirmed ✓
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                        <CheckCircle2 size={15} strokeWidth={2.2} />
+                        Confirmed
+                      </span>
                     </button>
                   )}
                   {["CONFIRMED", "SCHEDULED", "REQUESTED"].includes(visit.status) && (
@@ -1804,7 +1909,7 @@ function VisitRequestModal({ clinician, careTeam, onClose, onCreated }: VisitReq
     setError("");
 
     try {
-      const scheduledAt = datetimeLocalToIso(`${scheduledDate}T${scheduledTime}`);
+      const scheduledAt = zonedDateTimeToIso(scheduledDate, scheduledTime);
       if (!scheduledAt) {
         setError("Please select a valid date and time.");
         setSubmitting(false);

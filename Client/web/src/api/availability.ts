@@ -3,6 +3,8 @@ import { api } from "../lib/axios";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type AvailabilityStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type AvailabilitySortField = "createdAt" | "date";
+export type AvailabilitySortOrder = "asc" | "desc";
 
 export interface ApiAvailability {
   id: string;
@@ -68,6 +70,9 @@ export async function getAllAvailability(params?: {
   status?: AvailabilityStatus;
   from?: string;
   to?: string;
+  search?: string;
+  sortBy?: AvailabilitySortField;
+  sortOrder?: AvailabilitySortOrder;
 }): Promise<ApiAvailability[]> {
   const res = await api.get("/api/availability", { params });
   return res.data.availability;

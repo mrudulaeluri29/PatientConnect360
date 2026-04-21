@@ -1,0 +1,109 @@
+.cg-selector-rail {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.cg-selector-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  background: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+}
+
+.cg-selector-chip:hover {
+  border-color: #2d6a4f;
+  box-shadow: 0 14px 28px rgba(45, 106, 79, 0.12);
+  transform: translateY(-1px);
+}
+
+.cg-selector-chip.is-active {
+  border-color: #2d6a4f;
+  background: linear-gradient(135deg, rgba(216, 243, 220, 0.9) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.cg-selector-chip-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #d8f3dc;
+  color: #2d6a4f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.cg-selector-chip.is-active .cg-selector-chip-avatar {
+  background: #2d6a4f;
+  color: white;
+}
+
+.cg-selector-chip-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.cg-selector-chip-name {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.88rem;
+}
+
+.cg-selector-chip-rel {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.cg-selector-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cg-selector-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4b5563;
+}
+
+.cg-selector-select {
+  min-width: 320px;
+  max-width: min(66vw, 560px);
+  padding: 0.68rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.cg-selector-select:focus {
+  outline: none;
+  border-color: #2d6a4f;
+  box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.16);
+}
+
+@media (max-width: 768px) {
+  .cg-selector-rail {
+    flex-direction: column;
+  }
+
+  .cg-selector-select {
+    min-width: 100%;
+    max-width: 100%;
+  }
+}

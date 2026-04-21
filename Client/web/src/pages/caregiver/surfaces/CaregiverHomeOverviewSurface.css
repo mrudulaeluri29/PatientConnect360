@@ -1,0 +1,86 @@
+.cg-surface-home {
+  --cg-home-accent: #0f766e;
+}
+
+.cg-surface-home .cg-home-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.cg-surface-home .cg-home-subcopy {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.cg-surface-home .cg-home-note {
+  margin-top: 1.4rem;
+  padding: 1rem;
+  background: #f0fdfa;
+  border-radius: 12px;
+  border: 1px solid #99f6e4;
+}
+
+.cg-surface-home .cg-home-note p {
+  color: #115e59;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.cg-surface-home .cg-patient-overview-card {
+  text-align: left;
+  border: none;
+}
+
+.cg-surface-home .cg-home-card-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(45, 212, 191, 0.45);
+  padding: 0.45rem 0.65rem;
+  color: #0f766e;
+  font-weight: 700;
+  font-size: 0.82rem;
+  background: rgba(240, 253, 250, 0.88);
+}
+
+.cg-surface-home .cg-home-stat-critical {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.cg-surface-home .cg-home-stat-warning {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.cg-surface-home .cg-home-empty-icon {
+  margin: 0 auto;
+}
+
+.cg-surface-home .cg-card {
+  border-top-color: var(--cg-home-accent);
+}
+
+.cg-surface-home .cg-home-field-full {
+  grid-column: 1 / -1;
+}
+
+.cg-surface-home .cg-home-detail-loading {
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .cg-surface-home .cg-home-head-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cg-surface-home .cg-patient-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}

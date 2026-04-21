@@ -1,27 +1,36 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { FeedbackProvider } from "./contexts/FeedbackContext";
-import Homepage from "./pages/Homepage";
-import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import SignupClinician from "./pages/SignupClinician";
-import SignupCaregiver from "./pages/SignupCaregiver";
-import VerifyEmail from "./pages/VerifyEmail";
-import ForgotPassword from "./pages/ForgotPassword";
-import Dashboard from "./pages/Dashboard";
-import AdminSignup from "./pages/admin/AdminSignup";
-import AdminLogin from "./pages/admin/AdminLogin";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import InvitationsManagement from "./pages/admin/InvitationsManagement";
 import RequireAdmin from "./middleware/RequireAdmin";
-import ClinicianLogin from "./pages/clinician/ClinicianLogin";
-import ClinicianDashboard from "./pages/clinician/ClinicianDashboard";
 import RequireClinician from "./middleware/RequireClinician";
-import PatientDashboard from "./pages/patient/PatientDashboard";
 import RequirePatient from "./middleware/RequirePatient";
-import CaregiverDashboard from "./pages/caregiver/CaregiverDashboard";
 import RequireCaregiver from "./middleware/RequireCaregiver";
+
+const Homepage = lazy(() => import("./pages/Homepage"));
+const Login = lazy(() => import("./pages/Login"));
+const Signup = lazy(() => import("./pages/Signup"));
+const SignupClinician = lazy(() => import("./pages/SignupClinician"));
+const SignupCaregiver = lazy(() => import("./pages/SignupCaregiver"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AdminSignup = lazy(() => import("./pages/admin/AdminSignup"));
+const AdminLogin = lazy(() => import("./pages/admin/AdminLogin"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const InvitationsManagement = lazy(() => import("./pages/admin/InvitationsManagement"));
+const ClinicianLogin = lazy(() => import("./pages/clinician/ClinicianLogin"));
+const ClinicianDashboard = lazy(() => import("./pages/clinician/ClinicianDashboard"));
+const PatientDashboard = lazy(() => import("./pages/patient/PatientDashboard"));
+const CaregiverDashboard = lazy(() => import("./pages/caregiver/CaregiverDashboard"));
+
+function RouteFallback() {
+  return <div className="page pad">Loading…</div>;
+}
+
+function LazyRoute({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<RouteFallback />}>{children}</Suspense>;
+}
 
 function ProtectedRoute({ children }: { children: React.ReactElement }) {
   const { user, loading } = useAuth();
@@ -36,19 +45,21 @@ export default function App() {
       <FeedbackProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Homepage />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Signup />} />
-          <Route path="/register/clinician" element={<SignupClinician />} />
-          <Route path="/register/caregiver" element={<SignupCaregiver />} />
-          <Route path="/verify-email" element={<VerifyEmail />} />
-          <Route path="/admin/signup" element={<AdminSignup />} />
-          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/" element={<LazyRoute><Homepage /></LazyRoute>} />
+          <Route path="/login" element={<LazyRoute><Login /></LazyRoute>} />
+          <Route path="/register" element={<LazyRoute><Signup /></LazyRoute>} />
+          <Route path="/register/clinician" element={<LazyRoute><SignupClinician /></LazyRoute>} />
+          <Route path="/register/caregiver" element={<LazyRoute><SignupCaregiver /></LazyRoute>} />
+          <Route path="/verify-email" element={<LazyRoute><VerifyEmail /></LazyRoute>} />
+          <Route path="/admin/signup" element={<LazyRoute><AdminSignup /></LazyRoute>} />
+          <Route path="/admin/login" element={<LazyRoute><AdminLogin /></LazyRoute>} />
           <Route
             path="/admin/dashboard"
             element={
               <RequireAdmin>
-                <AdminDashboard />
+                <LazyRoute>
+                  <AdminDashboard />
+                </LazyRoute>
               </RequireAdmin>
             }
           />
@@ -56,16 +67,20 @@ export default function App() {
             path="/admin/invitations"
             element={
               <RequireAdmin>
-                <InvitationsManagement />
+                <LazyRoute>
+                  <InvitationsManagement />
+                </LazyRoute>
               </RequireAdmin>
             }
           />
-          <Route path="/clinician/login" element={<ClinicianLogin />} />
+          <Route path="/clinician/login" element={<LazyRoute><ClinicianLogin /></LazyRoute>} />
           <Route
             path="/clinician/dashboard"
             element={
               <RequireClinician>
-                <ClinicianDashboard />
+                <LazyRoute>
+                  <ClinicianDashboard />
+                </LazyRoute>
               </RequireClinician>
             }
           />
@@ -73,7 +88,9 @@ export default function App() {
             path="/patient/dashboard"
             element={
               <RequirePatient>
-                <PatientDashboard />
+                <LazyRoute>
+                  <PatientDashboard />
+                </LazyRoute>
               </RequirePatient>
             }
           />
@@ -81,16 +98,20 @@ export default function App() {
             path="/caregiver/dashboard"
             element={
               <RequireCaregiver>
-                <CaregiverDashboard />
+                <LazyRoute>
+                  <CaregiverDashboard />
+                </LazyRoute>
               </RequireCaregiver>
             }
           />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/forgot-password" element={<LazyRoute><ForgotPassword /></LazyRoute>} />
           <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <LazyRoute>
+                  <Dashboard />
+                </LazyRoute>
               </ProtectedRoute>
             }
           />

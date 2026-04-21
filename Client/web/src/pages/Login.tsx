@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router";
+import { CalendarClock, FileText, MessageSquare, ShieldCheck, Stethoscope, UserRound } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useAgencyBranding } from "../branding/AgencyBranding";
 import "./Login.css";
@@ -14,6 +15,9 @@ export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const { settings } = useAgencyBranding();
+  const loginThemeVars = {
+    "--login-accent": settings.primaryColor,
+  } as CSSProperties;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,40 +46,66 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page">
+    <div className="login-page login-page--premium" style={loginThemeVars}>
       <div className="login-container">
         <div className="login-left">
-            <div className="login-branding">
-              <div className="brand-logo">
+          <div className="login-branding">
+            <div className="brand-logo">
+              <span className="brand-mark" aria-hidden="true">
                 {settings.logoUrl ? (
-                  <img src={settings.logoUrl} alt={settings.portalName} style={{ width: 42, height: 42, objectFit: "contain", borderRadius: 10 }} />
-                ) : null}
-                <span className="logo-text">{settings.portalName}</span>
-              </div>
+                  <img src={settings.logoUrl} alt={settings.portalName} className="brand-mark-image" />
+                ) : (
+                  <ShieldCheck size={20} strokeWidth={2.2} />
+                )}
+              </span>
+              <span className="logo-text">{settings.portalName}</span>
+            </div>
+            <div className="login-trust-badges" aria-label="Security and quality trust indicators">
+              <span className="login-trust-badge">
+                <ShieldCheck size={14} strokeWidth={2.2} />
+                HIPAA aligned
+              </span>
+              <span className="login-trust-badge">
+                <CalendarClock size={14} strokeWidth={2.2} />
+                24/7 care signal flow
+              </span>
+              <span className="login-trust-badge">
+                <FileText size={14} strokeWidth={2.2} />
+                Audit-ready records
+              </span>
+            </div>
             <h1 className="login-title">Welcome Back</h1>
             <p className="login-subtitle">
               Sign in to access your health portal and connect with your care team
             </p>
           </div>
-          
+
           <div className="login-features">
             <div className="feature-item">
-              <span>Secure & HIPAA Compliant</span>
+              <span className="feature-icon" aria-hidden="true"><ShieldCheck size={16} strokeWidth={2.3} /></span>
+              <span>Secure and HIPAA-aligned access</span>
             </div>
             <div className="feature-item">
-              <span>Connect with Care Team</span>
+              <span className="feature-icon" aria-hidden="true"><MessageSquare size={16} strokeWidth={2.3} /></span>
+              <span>Direct communication with your care team</span>
             </div>
             <div className="feature-item">
-              <span>Manage Appointments</span>
+              <span className="feature-icon" aria-hidden="true"><CalendarClock size={16} strokeWidth={2.3} /></span>
+              <span>Visit scheduling and reminders in one lane</span>
             </div>
             <div className="feature-item">
-              <span>Access Medical Records</span>
+              <span className="feature-icon" aria-hidden="true"><FileText size={16} strokeWidth={2.3} /></span>
+              <span>Trusted access to current care records</span>
             </div>
           </div>
         </div>
 
         <div className="login-right">
           <div className="login-form-container">
+            <div className="login-form-proof">
+              <ShieldCheck size={15} strokeWidth={2.3} />
+              Secure clinician-grade access
+            </div>
             <h2 className="form-title">Sign In</h2>
             <p className="form-subtitle">Enter your credentials to access your account</p>
 
@@ -147,43 +177,43 @@ export default function Login() {
                 </Link>
               </div>
 
-              <button
-                type="submit"
-                className="btn-login-submit"
-                disabled={loading}
-                style={{ backgroundColor: settings.primaryColor }}
-              >
-                {loading ? "Signing in..." : "Sign In"}
-              </button>
+            <button
+              type="submit"
+              className="btn-login-submit"
+              disabled={loading}
+            >
+              {loading ? "Signing in..." : "Sign In"}
+            </button>
             </form>
 
             <div className="login-divider">
               <span>Don't have an account?</span>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1.5rem" }}>
-              <Link to="/register" className="btn-signup-link">
+            <div className="signup-links-stack" role="group" aria-label="Create account options">
+              <Link to="/register" className="btn-signup-link btn-signup-link--solid">
                 Sign Up as Patient
               </Link>
-              <Link to="/register/clinician" className="btn-signup-link" style={{ background: "transparent", border: `2px solid ${settings.primaryColor}`, color: settings.primaryColor }}>
+              <Link to="/register/clinician" className="btn-signup-link btn-signup-link--outline">
                 Sign Up as Clinician
               </Link>
-              <Link to="/register/caregiver" className="btn-signup-link" style={{ background: "transparent", border: `2px solid ${settings.primaryColor}`, color: settings.primaryColor }}>
+              <Link to="/register/caregiver" className="btn-signup-link btn-signup-link--outline">
                 Sign Up as Caregiver
               </Link>
             </div>
 
-            <div className="role-info">
-              <p className="role-info-title">{settings.supportName || "Admin"} Access:</p>
-              <Link to="/admin/login" style={{ color: settings.primaryColor, textDecoration: "none", fontWeight: "500" }}>
-                Admin Login
-              </Link>
-            </div>
-            <div className="role-info" style={{ marginTop: "1rem" }}>
-              <p className="role-info-title">Clinician Access:</p>
-              <Link to="/clinician/login" style={{ color: settings.primaryColor, textDecoration: "none", fontWeight: "500" }}>
-                Clinician Login
-              </Link>
+            <div className="role-info role-info--compact">
+              <p className="role-info-title">Role-specific access</p>
+              <div className="role-access-grid">
+                <Link to="/admin/login" className="role-access-link">
+                  <span aria-hidden="true"><UserRound size={14} strokeWidth={2.3} /></span>
+                  {settings.supportName || "Admin"} Login
+                </Link>
+                <Link to="/clinician/login" className="role-access-link">
+                  <span aria-hidden="true"><Stethoscope size={14} strokeWidth={2.3} /></span>
+                  Clinician Login
+                </Link>
+              </div>
             </div>
           </div>
         </div>

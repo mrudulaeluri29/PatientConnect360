@@ -1,5 +1,6 @@
 import { AuditActionType, VisitStatus } from "@prisma/client";
 import { prisma } from "../db";
+import { groupCancellationReason } from "./cancellationReasons";
 
 export type AdminSummary = {
   activePatients: number;
@@ -248,7 +249,7 @@ export async function buildAdminAnalytics(windowDays = 90): Promise<AdminAnalyti
     }
     if (visit.status === VisitStatus.CANCELLED) {
       cancelledVisits += 1;
-      const key = (visit.cancelReason || "Unspecified").trim() || "Unspecified";
+      const key = groupCancellationReason(visit.cancelReason);
       cancellationReasonCounts.set(key, (cancellationReasonCounts.get(key) || 0) + 1);
     }
   }

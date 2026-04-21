@@ -114,13 +114,19 @@
 }
 
 .notification-icon {
-  font-size: 20px;
   flex-shrink: 0;
   width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: #6E5B9A;
+  background: rgba(110, 91, 154, 0.08);
+  border-radius: 10px;
+}
+
+.notification-icon svg {
+  display: block;
 }
 
 .notification-content {

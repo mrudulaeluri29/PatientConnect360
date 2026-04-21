@@ -3,6 +3,169 @@
   background: linear-gradient(180deg, #f8fafc 0%, #f4f6fb 100%);
 }
 
+.clinician-dashboard.dashboard-shell {
+  background:
+    radial-gradient(circle at top left, rgba(110, 91, 154, 0.16), transparent 34%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 24%),
+    linear-gradient(180deg, #eef1f8 0%, #f5f7fc 42%, #f2f5fb 100%);
+}
+
+.clinician-dashboard .dashboard-shell__utility-bar {
+  background: rgba(246, 248, 252, 0.9);
+}
+
+.clinician-main.clinician-command-rail {
+  max-width: 1600px;
+  padding-top: 1.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.45rem;
+}
+
+.clinician-command-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.2rem 0 1rem;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
+}
+
+.clinician-command-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(110, 91, 154, 0.35) 48%, transparent 100%);
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+.clinician-command-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.clinician-command-kicker {
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b5ab4;
+}
+
+.clinician-command-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.clinician-command-title {
+  margin: 0;
+  font-size: clamp(2rem, 2.5vw, 2.8rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: #101827;
+  view-transition-name: clinician-command-title;
+}
+
+.clinician-command-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.38rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(110, 91, 154, 0.16);
+  background: rgba(110, 91, 154, 0.08);
+  color: #4c3b84;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  view-transition-name: clinician-command-code;
+}
+
+.clinician-command-summary {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 1rem;
+  line-height: 1.62;
+  color: #4a5b70;
+}
+
+.clinician-command-pulse {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.clinician-command-pulse span {
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(110, 91, 154, 0.14) 0%, rgba(110, 91, 154, 0.86) 50%, rgba(110, 91, 154, 0.14) 100%);
+}
+
+.clinician-command-panel {
+  view-transition-name: clinician-command-panel;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: clamp(1rem, 1.8vw, 1.35rem);
+  border-radius: 28px;
+  border: 1px solid rgba(203, 213, 225, 0.74);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 22px 55px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .clinician-command-hero::after {
+    animation: clinician-command-sheen 5s linear infinite;
+  }
+
+  .clinician-command-pulse span:nth-child(1) {
+    animation: clinician-command-pulse 2.6s ease-in-out infinite;
+  }
+
+  .clinician-command-pulse span:nth-child(2) {
+    animation: clinician-command-pulse 2.6s ease-in-out 0.24s infinite;
+  }
+
+  .clinician-command-pulse span:nth-child(3) {
+    animation: clinician-command-pulse 2.6s ease-in-out 0.48s infinite;
+  }
+
+  .clinician-command-panel {
+    animation: clinician-command-panel-enter 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @supports (view-transition-name: none) {
+    ::view-transition-old(clinician-command-panel),
+    ::view-transition-new(clinician-command-panel) {
+      animation-duration: 420ms;
+      animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+}
+
+@keyframes clinician-command-sheen {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes clinician-command-pulse {
+  0%, 100% { opacity: 0.38; transform: scaleX(0.78); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
+
+@keyframes clinician-command-panel-enter {
+  from { opacity: 0; transform: translateY(16px) scale(0.993); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* Header */
 .clinician-header {
   background: linear-gradient(135deg, #6E5B9A 0%, #42326E 100%);
@@ -1830,6 +1993,19 @@
 
   .clinician-main {
     padding: 1rem;
+  }
+
+  .clinician-main.clinician-command-rail {
+    gap: 1rem;
+  }
+
+  .clinician-command-pulse {
+    grid-template-columns: 1fr;
+  }
+
+  .clinician-command-panel {
+    padding: 0.9rem;
+    border-radius: 20px;
   }
 
   .clinician-main-layout {

@@ -5,6 +5,7 @@ import { requireAdmin } from "../middleware/requireRole";
 import { VisitRequestType, VisitStatus, VisitType, AuditActionType } from "@prisma/client";
 import {
   dayKeyInTimeZone,
+  dayKeyToStoredAvailabilityDate,
   getAvailabilityTimeZone,
   wallClockMinutesInTimeZone,
 } from "../availabilityTime";
@@ -131,10 +132,7 @@ async function checkApprovedAvailability(
     where: {
       clinicianId,
       status: "APPROVED",
-      date: {
-        gte: new Date(`${dayKey}T00:00:00.000Z`),
-        lt: new Date(`${dayKey}T23:59:59.999Z`),
-      },
+      date: dayKeyToStoredAvailabilityDate(dayKey, tz),
     },
     select: { startTime: true, endTime: true },
   });

@@ -5,6 +5,12 @@ import { requireAdmin } from "../middleware/requireRole";
 import { AuditActionType, AvailabilityStatus } from "@prisma/client";
 import { logAuditEvent } from "../lib/audit";
 import { recordDailyActivity } from "../lib/activityRollup";
+import {
+  dayKeyInTimeZone,
+  dayKeyToStoredAvailabilityDate,
+  getAvailabilityTimeZone,
+  timeZoneDayKeyToUtcRange,
+} from "../availabilityTime";
 
 const router = Router();
 
@@ -33,6 +39,11 @@ const availabilitySelect = {
 };
 
 const VALID_STATUSES = Object.values(AvailabilityStatus);
+const VALID_SORT_FIELDS = ["createdAt", "date"] as const;
+const VALID_SORT_ORDERS = ["asc", "desc"] as const;
+
+type AvailabilitySortField = (typeof VALID_SORT_FIELDS)[number];
+type AvailabilitySortOrder = (typeof VALID_SORT_ORDERS)[number];
 
 // Validates "HH:MM" 24-hour format
 function isValidTime(t: string): boolean {
@@ -43,6 +54,10 @@ function getUser(req: Request): { id: string; role: string } {
   return (req as any).user;
 }
 
+function isValidDayKey(dayKey: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(dayKey);
+}
+
 // ─── GET /api/availability ───────────────────────────────────────────────────
 // ADMIN     → all availability records (filterable by clinicianId, status, from, to)
 // CLINICIAN → their own submissions
@@ -51,9 +66,11 @@ function getUser(req: Request): { id: string; role: string } {
 router.get("/", async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const { clinicianId, status, from, to } = req.query;
+    const { clinicianId, status, from, to, search, sortBy, sortOrder } = req.query;
+    const tz = getAvailabilityTimeZone();
 
     const where: any = {};
+    let orderBy: { createdAt?: AvailabilitySortOrder; date?: AvailabilitySortOrder } = { date: "asc" };
 
     if (user.role === "CLINICIAN") {
       where.clinicianId = user.id;
@@ -68,6 +85,7 @@ router.get("/", async (req: Request, res: Response) => {
       where.status = AvailabilityStatus.APPROVED;
     } else if (user.role === "ADMIN") {
       if (clinicianId) where.clinicianId = clinicianId as string;
+
       if (status) {
         const s = (status as string).toUpperCase();
         if (!VALID_STATUSES.includes(s as AvailabilityStatus)) {
@@ -75,20 +93,50 @@ router.get("/", async (req: Request, res: Response) => {
         }
         where.status = s;
       }
+
+      if (typeof search === "string" && search.trim()) {
+        const q = search.trim();
+        where.clinician = {
+          OR: [
+            { username: { contains: q, mode: "insensitive" } },
+            { email: { contains: q, mode: "insensitive" } },
+            { clinicianProfile: { specialization: { contains: q, mode: "insensitive" } } },
+          ],
+        };
+      }
+
+      const nextSortBy = typeof sortBy === "string" ? sortBy : "createdAt";
+      const nextSortOrder = typeof sortOrder === "string" ? sortOrder.toLowerCase() : "desc";
+
+      if (!VALID_SORT_FIELDS.includes(nextSortBy as AvailabilitySortField)) {
+        return res.status(400).json({ error: `Invalid sortBy. Valid: ${VALID_SORT_FIELDS.join(", ")}` });
+      }
+
+      if (!VALID_SORT_ORDERS.includes(nextSortOrder as AvailabilitySortOrder)) {
+        return res.status(400).json({ error: `Invalid sortOrder. Valid: ${VALID_SORT_ORDERS.join(", ")}` });
+      }
+
+      orderBy = { [nextSortBy]: nextSortOrder as AvailabilitySortOrder };
     } else {
       return res.json({ availability: [] });
     }
 
     if (from || to) {
       where.date = {};
-      if (from) where.date.gte = new Date(from as string);
-      if (to)   where.date.lte = new Date(to as string);
+      if (from) {
+        const fromDayKey = dayKeyInTimeZone(new Date(from as string), tz);
+        where.date.gte = dayKeyToStoredAvailabilityDate(fromDayKey, tz);
+      }
+      if (to) {
+        const toDayKey = dayKeyInTimeZone(new Date(to as string), tz);
+        where.date.lt = timeZoneDayKeyToUtcRange(toDayKey, tz).end;
+      }
     }
 
     const availability = await prisma.clinicianAvailability.findMany({
       where,
       select: availabilitySelect,
-      orderBy: { date: "asc" },
+      orderBy,
     });
 
     res.json({ availability });
@@ -165,10 +213,10 @@ router.post("/", async (req: Request, res: Response) => {
     }
 
     // Validate date
-    const parsedDate = new Date(date);
-    if (isNaN(parsedDate.getTime())) {
-      return res.status(400).json({ error: "date must be a valid ISO date string" });
+    if (typeof date !== "string" || !isValidDayKey(date)) {
+      return res.status(400).json({ error: "date must be a valid YYYY-MM-DD string" });
     }
+    const availabilityDate = dayKeyToStoredAvailabilityDate(date, getAvailabilityTimeZone());
 
     // Determine which clinician this is for
     let targetClinicianId = user.id;
@@ -189,7 +237,7 @@ router.post("/", async (req: Request, res: Response) => {
       where: {
         clinicianId_date: {
           clinicianId: targetClinicianId,
-          date: parsedDate,
+          date: availabilityDate,
         },
       },
       update: {
@@ -202,7 +250,7 @@ router.post("/", async (req: Request, res: Response) => {
       },
       create: {
         clinicianId: targetClinicianId,
-        date:        parsedDate,
+        date:        availabilityDate,
         startTime,
         endTime,
         status: AvailabilityStatus.PENDING,
@@ -265,8 +313,8 @@ router.post("/batch", async (req: Request, res: Response) => {
       if (day.startTime >= day.endTime) {
         return res.status(400).json({ error: `startTime must be before endTime for date ${day.date}` });
       }
-      if (isNaN(new Date(day.date).getTime())) {
-        return res.status(400).json({ error: `Invalid date "${day.date}"` });
+      if (typeof day.date !== "string" || !isValidDayKey(day.date)) {
+        return res.status(400).json({ error: `Invalid date "${day.date}" — use YYYY-MM-DD format` });
       }
     }
 
@@ -277,7 +325,7 @@ router.post("/batch", async (req: Request, res: Response) => {
           where: {
             clinicianId_date: {
               clinicianId: targetClinicianId,
-              date: new Date(day.date),
+              date: dayKeyToStoredAvailabilityDate(day.date, getAvailabilityTimeZone()),
             },
           },
           update: {
@@ -289,11 +337,11 @@ router.post("/batch", async (req: Request, res: Response) => {
             reviewedAt: null,
           },
           create: {
-            clinicianId: targetClinicianId,
-            date:        new Date(day.date),
-            startTime:   day.startTime,
-            endTime:     day.endTime,
-            status:      AvailabilityStatus.PENDING,
+              clinicianId: targetClinicianId,
+              date:        dayKeyToStoredAvailabilityDate(day.date, getAvailabilityTimeZone()),
+              startTime:   day.startTime,
+              endTime:     day.endTime,
+              status:      AvailabilityStatus.PENDING,
           },
           select: availabilitySelect,
         })

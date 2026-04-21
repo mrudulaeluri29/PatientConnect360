@@ -1,6 +1,17 @@
 import ClinicianWorklistTab from "./ClinicianWorklistTab";
 import { useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
+import {
+  Bell,
+  CalendarClock,
+  CalendarDays,
+  ClipboardList,
+  Dumbbell,
+  FileText,
+  MessageSquare,
+  Phone,
+  Users,
+} from "lucide-react";
 import { useRefetchOnIntervalAndFocus } from "../../hooks/useRefetchOnIntervalAndFocus";
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
@@ -9,6 +20,9 @@ import { api } from "../../lib/axios";
 import MessageCenter from "../../components/messages/MessageCenter";
 import NotificationBell from "../../components/NotificationBell";
 import NotificationCenter from "../../components/notifications/NotificationCenter";
+import DashboardShell from "../../components/dashboard/DashboardShell";
+import type { DashboardNavItem } from "../../components/dashboard/DashboardSidebar";
+import { buildInclusiveDayRange } from "../../utils/datetime";
 import "./ClinicianDashboard.css";
 import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
 import {
@@ -45,10 +59,45 @@ function axiosResponseErrorMessage(err: unknown): string | undefined {
   return undefined;
 }
 
+type ClinicianTabMeta = {
+  title: string;
+  code: string;
+  summary: string;
+  focus: string;
+};
+
+const CLINICIAN_TAB_META: Record<string, ClinicianTabMeta> = {
+  schedule: { title: "Visit command schedule", code: "CL-01", summary: "Run the day with a denser, faster schedule surface that keeps attention on timing and risk.", focus: "Field timing" },
+  patients: { title: "Patient snapshot", code: "CL-02", summary: "Review active patient context, risk, and current needs in a sharper operational lane.", focus: "Patient priority" },
+  "care-records": { title: "Care records lane", code: "CL-03", summary: "Document care plans and visit evidence in a higher-trust records surface with less friction.", focus: "Clinical documentation" },
+  messages: { title: "Clinical communications", code: "CL-04", summary: "Move through patient communication with a more responsive, triage-friendly thread experience.", focus: "Inbox triage" },
+  tasks: { title: "Worklist command", code: "CL-05", summary: "Keep documentation, HEP, and prep work moving through a tactical work surface built for momentum.", focus: "Task flow" },
+  appointments: { title: "Appointment operations", code: "CL-06", summary: "Navigate confirmations, cancellations, and changes through a cleaner control plane.", focus: "Schedule operations" },
+  "contact-staff": { title: "Staff coordination", code: "CL-07", summary: "Coordinate with internal teams in a communication lane tuned for clarity and urgency control.", focus: "Team routing" },
+  notifications: { title: "Notification stream", code: "CL-08", summary: "Follow the system’s signal stream without losing your place in patient-facing work.", focus: "Alert flow" },
+};
+
+function transitionClinicianTab(nextTab: string, apply: () => void) {
+  const doc = document as Document & {
+    startViewTransition?: (callback: () => void) => { finished: Promise<void> } | void;
+  };
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !doc.startViewTransition) {
+    apply();
+    return;
+  }
+
+  doc.startViewTransition(() => {
+    apply();
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
+}
+
 export default function ClinicianDashboard() {
   const [activeTab, setActiveTab] = useState("schedule");
   const [pendingConversation, setPendingConversation] = useState<{ convId: string; messageId?: string } | null>(null);
   const { user, logout } = useAuth();
+  const activeMeta = CLINICIAN_TAB_META[activeTab] ?? CLINICIAN_TAB_META.schedule;
 
   const handleLogout = async () => {
     await logout();
@@ -56,84 +105,59 @@ export default function ClinicianDashboard() {
   };
 
   const handleMessageClick = (_view: string, conversationId?: string, messageId?: string) => {
-    setActiveTab("messages");
+    transitionClinicianTab("messages", () => setActiveTab("messages"));
     if (conversationId) {
       setPendingConversation({ convId: conversationId, messageId });
     }
   };
 
-  return (
-    <div className="clinician-dashboard">
-      {/* Header */}
-      <header className="clinician-header">
-        <div className="clinician-header-left">
-          <h1 className="clinician-logo">MediHealth</h1>
-          <nav className="clinician-nav">
-            <button
-              className={`nav-item ${activeTab === "schedule" ? "active" : ""}`}
-              onClick={() => setActiveTab("schedule")}
-            >
-              Today's Schedule
-            </button>
-            <button
-              className={`nav-item ${activeTab === "patients" ? "active" : ""}`}
-              onClick={() => setActiveTab("patients")}
-            >
-              Patients
-            </button>
-            <button
-              className={`nav-item ${activeTab === "care-records" ? "active" : ""}`}
-              onClick={() => setActiveTab("care-records")}
-            >
-              Care records
-            </button>
-            <button
-              className={`nav-item ${activeTab === "messages" ? "active" : ""}`}
-              onClick={() => setActiveTab("messages")}
-            >
-              Messages
-            </button>
-            <button
-              className={`nav-item ${activeTab === "tasks" ? "active" : ""}`}
-              onClick={() => setActiveTab("tasks")}
-            >
-              Tasks
-            </button>
-            <button
-              className={`nav-item ${activeTab === "appointments" ? "active" : ""}`}
-              onClick={() => setActiveTab("appointments")}
-            >
-              Appointments
-            </button>
-            <button
-              className={`nav-item ${activeTab === "contact-staff" ? "active" : ""}`}
-              onClick={() => setActiveTab("contact-staff")}
-            >
-              Contact Staff
-            </button>
-            <button
-              className={`nav-item ${activeTab === "notifications" ? "active" : ""}`}
-              onClick={() => setActiveTab("notifications")}
-            >
-              Notifications
-            </button>
-          </nav>
-        </div>
-        <div className="clinician-header-right">
-          <NotificationBell onMessageClick={handleMessageClick} />
-          <div className="clinician-user-info">
-            <span className="clinician-user-name">{user?.username || user?.email || "Clinician"}</span>
-            <div className="clinician-user-badges">
-              <span className="badge badge-clinician">Clinician</span>
-            </div>
-          </div>
-          <button className="btn-logout" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </header>
+  const handleTabChange = useCallback((nextTab: string) => {
+    if (nextTab === activeTab) return;
+    transitionClinicianTab(nextTab, () => setActiveTab(nextTab));
+  }, [activeTab]);
 
-      <main className="clinician-main">
+  const navItems: DashboardNavItem<string>[] = [
+    { id: "schedule", label: "Today's Schedule", shortLabel: "Schedule", icon: CalendarDays },
+    { id: "patients", label: "Patients", icon: Users },
+    { id: "care-records", label: "Care Records", icon: FileText },
+    { id: "messages", label: "Messages", icon: MessageSquare },
+    { id: "tasks", label: "Tasks", icon: ClipboardList },
+    { id: "appointments", label: "Appointments", icon: CalendarClock },
+    { id: "contact-staff", label: "Contact Staff", icon: Phone },
+    { id: "notifications", label: "Notifications", icon: Bell },
+  ];
+
+  return (
+    <DashboardShell
+      accentColor="#6E5B9A"
+      activeItemId={activeTab}
+      className="clinician-dashboard"
+      navItems={navItems}
+      onLogout={handleLogout}
+      onSelectItem={handleTabChange}
+      roleLabel="Clinician"
+      shellId="clinician"
+      userBadge="Clinician"
+      userName={user?.username || user?.email || "Clinician"}
+      utilitySlot={<NotificationBell onMessageClick={handleMessageClick} />}
+    >
+      <main className="clinician-main clinician-command-rail" data-clinician-tab={activeTab}>
+        <section className="clinician-command-hero">
+          <div className="clinician-command-copy">
+            <span className="clinician-command-kicker">Field command</span>
+            <div className="clinician-command-title-row">
+              <h2 className="clinician-command-title">{activeMeta.title}</h2>
+              <span className="clinician-command-code">{activeMeta.code}</span>
+            </div>
+            <p className="clinician-command-summary">{activeMeta.summary}</p>
+          </div>
+          <div className="clinician-command-pulse" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </section>
+        <div className="clinician-command-panel" key={activeTab}>
         <div
           className={
             activeTab === "care-records"
@@ -142,7 +166,7 @@ export default function ClinicianDashboard() {
           }
         >
           <div className="clinician-main-content">
-            {activeTab === "schedule" && <TodaySchedule />}
+            {activeTab === "schedule" && <TodaySchedule onOpenReminderPreferences={() => handleTabChange("notifications")} />}
             {activeTab === "patients" && <PatientSnapshot />}
             {activeTab === "care-records" && <ClinicianCareRecordsTab />}
             {activeTab === "messages" && (
@@ -152,14 +176,15 @@ export default function ClinicianDashboard() {
               />
             )}
             {activeTab === "tasks" && <ClinicianWorklistTab />}
-            {activeTab === "appointments" && <AppointmentsHub />}
+            {activeTab === "appointments" && <AppointmentsHub onOpenReminderPreferences={() => handleTabChange("notifications")} />}
             {activeTab === "contact-staff" && <ContactStaffHub />}
             {activeTab === "notifications" && <NotificationCenter />}
           </div>
           {activeTab !== "care-records" && <AssistantSidebar activeTab={activeTab} />}
         </div>
+        </div>
       </main>
-    </div>
+    </DashboardShell>
   );
 }
 
@@ -414,7 +439,7 @@ function SectionKpiChips({ chips }: { chips: Array<{ label: string; value: strin
 }
 
 // Appointments Tab Component
-function AppointmentsHub() {
+function AppointmentsHub({ onOpenReminderPreferences }: { onOpenReminderPreferences: () => void }) {
   const { showToast } = useFeedback();
   const [searchTerm, setSearchTerm] = useState("");
   const [rangeStart, setRangeStart] = useState("");
@@ -497,20 +522,11 @@ function AppointmentsHub() {
   const approvedSubmissions = submissions.filter((s) => s.status === "APPROVED").length;
 
   const buildDateRange = (start: string, end: string) => {
-    const dates: string[] = [];
-    const current = new Date(`${start}T00:00:00`);
-    const last = new Date(`${end}T00:00:00`);
-
-    while (current <= last) {
-      dates.push(current.toISOString().split("T")[0]);
-      current.setDate(current.getDate() + 1);
-    }
-
-    return dates;
+    return buildInclusiveDayRange(start, end);
   };
 
   const handleApplyRange = () => {
-    if (!rangeStart || !rangeEnd || new Date(rangeStart) > new Date(rangeEnd)) {
+    if (!rangeStart || !rangeEnd || rangeStart > rangeEnd) {
       setSubmitMessage("Please choose a valid start and end date range.");
       return;
     }
@@ -594,6 +610,7 @@ function AppointmentsHub() {
       <ScheduleCalendar
         events={scheduleEvents}
         initialView="timeGridWeek"
+        onOpenReminderPreferences={onOpenReminderPreferences}
         onAction={(action, event) => {
           if (action === "checkin") console.log("checkin", event.id);
         }}
@@ -918,7 +935,7 @@ function ContactStaffHub() {
 }
 
 // Today's Schedule Component
-function TodaySchedule() {
+function TodaySchedule({ onOpenReminderPreferences }: { onOpenReminderPreferences: () => void }) {
   const [selectedVisit, setSelectedVisit] = useState<string | null>(null);
   const [visits, setVisits] = useState<ApiVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1013,6 +1030,7 @@ function TodaySchedule() {
       <ScheduleCalendar
         events={scheduleEvents}
         initialView="timeGridDay"
+        onOpenReminderPreferences={onOpenReminderPreferences}
         onAction={(action, event) => {
           if (action === "checkin") handleCheckIn(event.id);
         }}
@@ -1747,7 +1765,7 @@ function HEPSummaryBadge({ patientId }: { patientId: string }) {
       border: `1px solid ${activeCount > 0 ? "#c4b5fd" : "#e5e7eb"}`,
       fontSize: "0.8rem", color: activeCount > 0 ? "#6E5B9A" : "#6b7280",
     }}>
-      <span>🏋️</span>
+      <span style={{ display: "inline-flex" }} aria-hidden="true"><Dumbbell size={15} strokeWidth={2} /></span>
       <span style={{ fontWeight: 600 }}>
         {activeCount > 0
           ? `${activeCount} active exercise${activeCount !== 1 ? "s" : ""}`

@@ -1,12 +1,50 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useFeedback } from "../../contexts/FeedbackContext";
 import NotificationBell from "../../components/NotificationBell";
 import NotificationCenter from "../../components/notifications/NotificationCenter";
 import { isAxiosError } from "axios";
+import {
+  BarChart3,
+  Bell,
+  CalendarClock,
+  CalendarRange,
+  ClipboardList,
+  Eye,
+  FileSearch,
+  FileText,
+  LayoutDashboard,
+  Mail,
+  MailOpen,
+  MessageSquare,
+  Settings,
+  Star,
+  ShieldCheck,
+  Trash2,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { api } from "../../lib/axios";
 import { useAgencyBranding } from "../../branding/AgencyBranding";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import DashboardShell from "../../components/dashboard/DashboardShell";
+import type { DashboardNavItem } from "../../components/dashboard/DashboardSidebar";
+import { datetimeLocalInTimeZoneToIso } from "../../utils/datetime";
 import "./AdminDashboard.css";
 import {
   getAllAvailability,
@@ -14,6 +52,8 @@ import {
   deleteAvailability,
   availabilityStatusClass,
   formatAvailabilityDate,
+  type AvailabilitySortField,
+  type AvailabilitySortOrder,
   type ApiAvailability,
   type AvailabilityStatus,
 } from "../../api/availability";
@@ -25,16 +65,15 @@ import {
 } from "../../api/visits";
 import {
   getAdminAnalytics,
-  getAdminStats,
+  getDailyAnalytics,
   getAgencySettings,
   getAuditLogs,
   getPilotReadiness,
   updateAgencySettings,
-  getDailyAnalytics,
   type AdminAnalytics,
+  type DailyAnalyticsData,
   type AgencySettings,
   type AuditLogRecord,
-  type DailyAnalyticsData,
   type PilotReadiness,
 } from "../../api/admin";
 import { StaffPatientRecordsEditor } from "../../components/healthRecords/StaffPatientRecordsEditor";
@@ -106,10 +145,127 @@ type AdminDashboardProps = {
   initialTab?: AdminTab;
 };
 
+type AdminTabMeta = {
+  title: string;
+  code: string;
+  summary: string;
+  focus: string;
+};
+
+const ADMIN_TAB_META: Record<AdminTab, AdminTabMeta> = {
+  overview: {
+    title: "Operational overview",
+    code: "CTRL-01",
+    summary: "Scan live system health, movement across the agency, and today’s highest-priority signals at a glance.",
+    focus: "Agency pulse",
+  },
+  users: {
+    title: "People and access",
+    code: "CTRL-02",
+    summary: "Manage who is inside the system, how roles are distributed, and which users need immediate attention.",
+    focus: "Identity control",
+  },
+  invitations: {
+    title: "Invitation operations",
+    code: "CTRL-03",
+    summary: "Track onboarding momentum and issue access paths without breaking operational flow.",
+    focus: "Activation flow",
+  },
+  assign: {
+    title: "Assignment routing",
+    code: "CTRL-04",
+    summary: "Align patients and clinicians with minimal friction while keeping the command surface legible.",
+    focus: "Routing logic",
+  },
+  availability: {
+    title: "Availability command",
+    code: "CTRL-05",
+    summary: "Clear pending scheduling capacity and move review decisions through the queue with confidence.",
+    focus: "Capacity queue",
+  },
+  appointments: {
+    title: "Appointment command",
+    code: "CTRL-06",
+    summary: "Approve, reschedule, and reconcile visit requests against the agency calendar without losing context.",
+    focus: "Visit approvals",
+  },
+  messages: {
+    title: "System messages",
+    code: "CTRL-07",
+    summary: "Review inbound conversations and broadcasts in a communications surface designed for rapid triage.",
+    focus: "Message routing",
+  },
+  reports: {
+    title: "Reporting and analytics",
+    code: "CTRL-08",
+    summary: "Translate agency movement into signal, trends, and executive-readable operational insight.",
+    focus: "Decision signal",
+  },
+  pilot: {
+    title: "Pilot readiness",
+    code: "CTRL-09",
+    summary: "Assess launch friction, operational maturity, and readiness issues before they become field problems.",
+    focus: "Launch readiness",
+  },
+  settings: {
+    title: "System settings",
+    code: "CTRL-10",
+    summary: "Tune the agency surface, defaults, and behavior from one controlled configuration lane.",
+    focus: "Control plane",
+  },
+  audit: {
+    title: "Audit visibility",
+    code: "CTRL-11",
+    summary: "Follow system actions with precise chronology and a clearer chain of accountability.",
+    focus: "Traceability",
+  },
+  feedback: {
+    title: "Family feedback",
+    code: "CTRL-12",
+    summary: "Monitor sentiment and respond to friction points before they erode trust in the care experience.",
+    focus: "Experience signal",
+  },
+  records: {
+    title: "Patient records",
+    code: "CTRL-13",
+    summary: "Move through patient record workflows in a way that feels high-trust, deliberate, and fast.",
+    focus: "Records lane",
+  },
+  notifications: {
+    title: "Notification control",
+    code: "CTRL-14",
+    summary: "See what the system is surfacing, what reached users, and where communication loops may be breaking.",
+    focus: "Signal delivery",
+  },
+};
+
+const SETTINGS_SECTIONS = [
+  { id: "branding", label: "Branding", description: "Portal identity and visual anchor" },
+  { id: "support", label: "Support", description: "Public-facing support details" },
+  { id: "flags", label: "Feature Flags", description: "Operational capabilities for pilot users" },
+  { id: "defaults", label: "Defaults", description: "Baseline operational guidance" },
+] as const;
+
+function transitionAdminTab(nextTab: AdminTab, apply: () => void) {
+  const doc = document as Document & {
+    startViewTransition?: (callback: () => void) => { finished: Promise<void> } | void;
+  };
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !doc.startViewTransition) {
+    apply();
+    return;
+  }
+
+  doc.startViewTransition(() => {
+    apply();
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
+}
+
 export default function AdminDashboard({ initialTab = "overview" }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const { user, logout } = useAuth();
-  const { settings } = useAgencyBranding();
+  const activeMeta = ADMIN_TAB_META[activeTab];
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -120,90 +276,70 @@ export default function AdminDashboard({ initialTab = "overview" }: AdminDashboa
     window.location.href = "/";
   };
 
-  return (
-    <div className="admin-dashboard">
-      {/* Header */}
-      <header className="admin-header">
-        <div className="admin-header-left">
-          <h1 className="admin-logo">
-            {settings.logoUrl ? (
-              <img src={settings.logoUrl} alt={settings.portalName} style={{ width: 34, height: 34, objectFit: "contain", borderRadius: 8, marginRight: 10, verticalAlign: "middle" }} />
-            ) : null}
-            {settings.portalName}
-          </h1>
-          <nav className="admin-nav">
-            <button className={`nav-item ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-              Overview
-            </button>
-            <button className={`nav-item ${activeTab === "users" ? "active" : ""}`} onClick={() => setActiveTab("users")}>
-              Users
-            </button>
-            <button className={`nav-item ${activeTab === "invitations" ? "active" : ""}`} onClick={() => setActiveTab("invitations")}>
-              Invitations
-            </button>
-            <button className={`nav-item ${activeTab === "assign" ? "active" : ""}`} onClick={() => setActiveTab("assign")}>
-              Assign Patients
-            </button>
-            <button className={`nav-item ${activeTab === "availability" ? "active" : ""}`} onClick={() => setActiveTab("availability")}>
-              Availability
-            </button>
-            <button className={`nav-item ${activeTab === "appointments" ? "active" : ""}`} onClick={() => setActiveTab("appointments")}>
-              Appointments
-            </button>
-            <button className={`nav-item ${activeTab === "messages" ? "active" : ""}`} onClick={() => setActiveTab("messages")}>
-              Messages
-            </button>
-            <button className={`nav-item ${activeTab === "reports" ? "active" : ""}`} onClick={() => setActiveTab("reports")}>
-              Reports
-            </button>
-            <button className={`nav-item ${activeTab === "pilot" ? "active" : ""}`} onClick={() => setActiveTab("pilot")}>
-              Pilot readiness
-            </button>
-            <button className={`nav-item ${activeTab === "settings" ? "active" : ""}`} onClick={() => setActiveTab("settings")}>
-              Settings
-            </button>
-            <button className={`nav-item ${activeTab === "audit" ? "active" : ""}`} onClick={() => setActiveTab("audit")}>
-              Audit Log
-            </button>
-            <button className={`nav-item ${activeTab === "feedback" ? "active" : ""}`} onClick={() => setActiveTab("feedback")}>
-              Family Feedback
-            </button>
-            <button className={`nav-item ${activeTab === "records" ? "active" : ""}`} onClick={() => setActiveTab("records")}>
-              Patient records
-            </button>
-            <button className={`nav-item ${activeTab === "notifications" ? "active" : ""}`} onClick={() => setActiveTab("notifications")}>
-              Notifications
-            </button>
-          </nav>
-        </div>
-        <div className="admin-header-right">
-          <NotificationBell onMessageClick={(view) => setActiveTab(view)} />
-          <div className="admin-user-info">
-            <span className="admin-user-name">{user?.username || user?.email || "Admin User"}</span>
-            <div className="admin-user-badges">
-              <span className="badge badge-admin">Admin</span>
-            </div>
-          </div>
-          <button
-            className="btn-logout"
-            onClick={handleLogout}
-          >
-            Logout
-          </button>
-        </div>
-      </header>
+  const handleAdminTabChange = useCallback((nextTab: AdminTab) => {
+    if (nextTab === activeTab) return;
+    transitionAdminTab(nextTab, () => setActiveTab(nextTab));
+  }, [activeTab]);
 
-      {/* Main Content */}
-      <main className="admin-main">
+  const navItems: DashboardNavItem<AdminTab>[] = [
+    { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "users", label: "Users", icon: Users },
+    { id: "invitations", label: "Invitations", icon: Mail },
+    { id: "assign", label: "Assign Patients", icon: UserPlus },
+    { id: "availability", label: "Availability", icon: CalendarRange },
+    { id: "appointments", label: "Appointments", icon: CalendarClock },
+    { id: "messages", label: "Messages", icon: MessageSquare },
+    { id: "reports", label: "Reports", icon: BarChart3 },
+    { id: "pilot", label: "Pilot Readiness", icon: ShieldCheck },
+    { id: "settings", label: "Settings", icon: Settings },
+    { id: "audit", label: "Audit Log", icon: FileSearch },
+    { id: "feedback", label: "Family Feedback", icon: ClipboardList },
+    { id: "records", label: "Patient Records", icon: FileText },
+    { id: "notifications", label: "Notifications", icon: Bell },
+  ];
+
+  return (
+    <DashboardShell
+      accentColor="#6E5B9A"
+      activeItemId={activeTab}
+      className="admin-dashboard"
+      navItems={navItems}
+      onLogout={handleLogout}
+      onSelectItem={handleAdminTabChange}
+      roleLabel="Admin"
+      shellId="admin"
+      userBadge="Admin"
+      userName={user?.username || user?.email || "Admin User"}
+      utilitySlot={<NotificationBell onMessageClick={(view) => handleAdminTabChange(view as AdminTab)} />}
+    >
+      <main className="admin-main admin-command-rail" data-admin-tab={activeTab}>
+        <section className="admin-command-hero">
+          <div className="admin-command-copy">
+            <span className="admin-command-kicker">Mission control</span>
+            <div className="admin-command-title-row">
+              <h2 className="admin-command-title">{activeMeta.title}</h2>
+              <span className="admin-command-code">{activeMeta.code}</span>
+            </div>
+            <p className="admin-command-summary">{activeMeta.summary}</p>
+          </div>
+
+          <div className="admin-command-pulse" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </section>
+
+        <div className="admin-command-panel" key={activeTab}>
         {activeTab === "overview" && (
           <div className="admin-content">
-            <AdminOverviewPanel onNavigate={(tab) => setActiveTab(tab as AdminTab)} />
+            <AdminOverviewPanel onNavigate={(tab) => handleAdminTabChange(tab as AdminTab)} />
           </div>
         )}
 
         {activeTab === "users" && (
           <div className="admin-content">
-            <UserManagement onNavigate={setActiveTab} />
+            <UserManagement onNavigate={handleAdminTabChange} />
           </div>
         )}
 
@@ -225,7 +361,7 @@ export default function AdminDashboard({ initialTab = "overview" }: AdminDashboa
         )}
         {activeTab === "appointments" && (
           <div className="admin-content">
-            <AppointmentsReview />
+            <AppointmentsReview onOpenReminderPreferences={() => handleAdminTabChange("notifications")} />
           </div>
         )}
         {activeTab === "messages" && (
@@ -247,7 +383,7 @@ export default function AdminDashboard({ initialTab = "overview" }: AdminDashboa
 
         {activeTab === "pilot" && (
           <div className="admin-content">
-            <PilotReadinessTab onNavigate={(tab) => setActiveTab(tab as AdminTab)} />
+            <PilotReadinessTab onNavigate={(tab) => handleAdminTabChange(tab as AdminTab)} />
           </div>
         )}
 
@@ -274,8 +410,9 @@ export default function AdminDashboard({ initialTab = "overview" }: AdminDashboa
             <NotificationCenter />
           </div>
         )}
+        </div>
       </main>
-    </div>
+    </DashboardShell>
   );
 }
 
@@ -336,235 +473,423 @@ function AdminPatientRecordsTab() {
   );
 }
 
-type MetricCardProps = {
-  label: string;
-  value: string | number;
-  hint: string;
-};
-
-function MetricCard({ label, value, hint }: MetricCardProps) {
-  return (
-    <div className="metric-card metric-card-live">
-      <div className="metric-content">
-        <div className="metric-value">{value}</div>
-        <div className="metric-label">{label}</div>
-        <div className="metric-change">{hint}</div>
-      </div>
-    </div>
-  );
-}
-
 function EmptyState({ text }: { text: string }) {
   return <div className="avail-empty">{text}</div>;
 }
 
-function SimpleBarChart({
-  title,
-  data,
-  dataKey,
-  labelKey,
-}: {
-  title: string;
-  data: Record<string, string | number>[];
-  dataKey: string;
-  labelKey: string;
-}) {
-  const max = Math.max(...data.map((item) => Number(item[dataKey]) || 0), 1);
+type ChartSummaryStat = {
+  label: string;
+  value: string;
+};
 
-  return (
-    <div className="report-card">
-      <h3 className="card-title">{title}</h3>
-      <div className="mini-chart">
-        {data.length === 0 ? (
-          <EmptyState text="No data in the selected window." />
-        ) : (
-          data.map((item) => {
-            const value = Number(item[dataKey]) || 0;
-            const label = String(item[labelKey]);
-            return (
-              <div className="mini-chart-row" key={label}>
-                <span className="mini-chart-label">{label}</span>
-                <div className="mini-chart-track">
-                  <div className="mini-chart-fill" style={{ width: `${(value / max) * 100}%` }} />
-                </div>
-                <span className="mini-chart-value">{value}</span>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
+const REPORT_CHART_COLORS = {
+  volume: "#6E5B9A",
+  volumeSoft: "rgba(110, 91, 154, 0.25)",
+  communication: "#0d9488",
+  cancellation: "#ef4444",
+};
+
+const REPORT_PIE_COLORS = ["#6E5B9A", "#2563eb", "#0d9488", "#f59e0b", "#ef4444", "#64748b"];
+
+function formatShortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function AdminOverview() {
-  const [stats, setStats] = useState<{ summary: AdminAnalytics["summary"]; windowDays: number } | null>(null);
-  const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
-  const [dailyAnalytics, setDailyAnalytics] = useState<DailyAnalyticsData[] | null>(null);
-  const [loading, setLoading] = useState(true);
+function compactReasonLabel(value: string): string {
+  if (value.length <= 20) return value;
+  return `${value.slice(0, 18)}...`;
+}
+
+function trendDirection(current: number, previous: number): "up" | "down" | "flat" {
+  if (current > previous) return "up";
+  if (current < previous) return "down";
+  return "flat";
+}
+
+function trendLabel(direction: "up" | "down" | "flat"): string {
+  if (direction === "up") return "Rising";
+  if (direction === "down") return "Softening";
+  return "Stable";
+}
+
+function useReducedMotionPreference(): boolean {
+  const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-    async function load() {
-      setLoading(true);
-      try {
-        const [statsData, analyticsData, dailyData] = await Promise.all([
-          getAdminStats(),
-          getAdminAnalytics(),
-          getDailyAnalytics(), // Last 30 days by default
-        ]);
-        if (!mounted) return;
-        setStats(statsData);
-        setAnalytics(analyticsData);
-        setDailyAnalytics(dailyData.dailyAnalytics);
-      } catch (error) {
-        if (!mounted) return;
-        console.error("Failed to load admin overview:", error);
-        setStats(null);
-        setAnalytics(null);
-        setDailyAnalytics(null);
-      } finally {
-        if (mounted) setLoading(false);
-      }
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
     }
-    load();
-    return () => {
-      mounted = false;
+
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(media.matches);
+
+    const onChange = (event: MediaQueryListEvent) => {
+      setReducedMotion(event.matches);
     };
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    }
+
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
   }, []);
 
-  if (loading) {
-    return <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading engagement metrics...</div>;
-  }
+  return reducedMotion;
+}
 
-  if (!stats || !analytics) {
-    return <EmptyState text="Unable to load admin KPIs right now." />;
-  }
-
+function ReportCard({
+  title,
+  subtitle,
+  tone = "neutral",
+  trend,
+  summary,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  tone?: "neutral" | "teal" | "amber" | "blue";
+  trend: "up" | "down" | "flat";
+  summary: ChartSummaryStat[];
+  children: React.ReactNode;
+}) {
   return (
-    <div className="reports-analytics">
-      <div className="section-header">
+    <article className={`report-card admin-report-card admin-report-card--${tone}`}>
+      <header className="admin-report-card__header">
         <div>
-          <h2 className="section-title">Admin Engagement & Operations</h2>
-          <p className="section-subtitle">Live operational KPIs from the last {analytics.windowDays} days.</p>
+          <h3 className="card-title">{title}</h3>
+          <p className="admin-report-card__subtitle">{subtitle}</p>
         </div>
-      </div>
-
-      <div className="metrics-grid">
-        <MetricCard label="Active Patients" value={stats.summary.activePatients} hint="Current patient accounts in the portal" />
-        <MetricCard label="Linked Caregivers" value={stats.summary.linkedCaregivers} hint="Active caregiver-to-patient relationships" />
-        <MetricCard label="Visits / Week" value={stats.summary.visitsPerWeek} hint="Average scheduled visits per week" />
-        <MetricCard label="Reschedule Rate" value={`${stats.summary.rescheduleRate}%`} hint="Share of visits with reschedule activity" />
-        <MetricCard label="Cancellation Rate" value={`${stats.summary.cancellationRate}%`} hint="Cancelled visits across the current window" />
-        <MetricCard label="Pending Ops" value={stats.summary.pendingAvailability + stats.summary.pendingVisitRequests} hint="Availability + appointment requests awaiting review" />
-      </div>
-
-      <div className="reports-grid admin-analytics-grid">
-        <SimpleBarChart title="Visits By Week" data={analytics.charts.visitsByWeek} dataKey="visits" labelKey="label" />
-        <SimpleBarChart title="Messages By Role" data={analytics.charts.messagesByRole} dataKey="count" labelKey="role" />
-        <SimpleBarChart title="Cancellation Reasons" data={analytics.charts.cancellationReasons} dataKey="count" labelKey="reason" />
-      </div>
-
-      {/* Feature 5: DAU and Daily Appointment Charts */}
-      {dailyAnalytics && dailyAnalytics.length > 0 && (
-        <>
-          <div className="section-header" style={{ marginTop: "2rem" }}>
-            <h3 className="section-title">Daily Active Users (Last 30 Days)</h3>
+        <span className={`admin-report-card__trend admin-report-card__trend--${trend}`}>{trendLabel(trend)}</span>
+      </header>
+      <div className="admin-report-card__body">{children}</div>
+      <footer className="admin-report-card__summary">
+        {summary.map((item) => (
+          <div className="admin-report-card__summary-item" key={item.label}>
+            <span className="admin-report-card__summary-label">{item.label}</span>
+            <span className="admin-report-card__summary-value">{item.value}</span>
           </div>
-          <div className="report-card" style={{ padding: "1.5rem" }}>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={dailyAnalytics}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={(date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                />
-                <YAxis />
-                <Tooltip
-                  labelFormatter={(date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                />
-                <Legend />
-                <Line type="monotone" dataKey="loginBasedDAU" stroke="#8884d8" name="Login-based DAU" strokeWidth={2} />
-                <Line type="monotone" dataKey="activityBasedDAU" stroke="#82ca9d" name="Activity-based DAU" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="section-header" style={{ marginTop: "2rem" }}>
-            <h3 className="section-title">Daily Appointment Outcomes (Last 30 Days)</h3>
-          </div>
-          <div className="report-card" style={{ padding: "1.5rem" }}>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={dailyAnalytics}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={(date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                />
-                <YAxis />
-                <Tooltip
-                  labelFormatter={(date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                />
-                <Legend />
-                <Bar dataKey="appointmentsApproved" stackId="a" fill="#4ade80" name="Approved" />
-                <Bar dataKey="appointmentsFulfilled" stackId="a" fill="#3b82f6" name="Fulfilled" />
-                <Bar dataKey="appointmentsCancelled" stackId="a" fill="#ef4444" name="Cancelled" />
-                <Bar dataKey="appointmentsRescheduled" stackId="a" fill="#f59e0b" name="Rescheduled" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </>
-      )}
-    </div>
+        ))}
+      </footer>
+    </article>
   );
 }
 
 function ReportsAnalytics() {
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
+  const [dailyAnalytics, setDailyAnalytics] = useState<DailyAnalyticsData[]>([]);
   const [loading, setLoading] = useState(true);
+  const reducedMotion = useReducedMotionPreference();
 
   useEffect(() => {
     let mounted = true;
     async function load() {
       try {
-        const data = await getAdminAnalytics();
+        const [data, daily] = await Promise.all([getAdminAnalytics(), getDailyAnalytics()]);
         if (!mounted) return;
         setAnalytics(data);
+        setDailyAnalytics(daily.dailyAnalytics || []);
       } catch (error) {
         if (!mounted) return;
         console.error("Failed to load analytics:", error);
         setAnalytics(null);
+        setDailyAnalytics([]);
       } finally {
         if (mounted) setLoading(false);
       }
     }
-    load();
+    void load();
     return () => {
       mounted = false;
     };
   }, []);
 
   if (loading) {
-    return <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading reports...</div>;
+    return <div className="admin-empty-state">Loading reports...</div>;
   }
 
   if (!analytics) {
     return <EmptyState text="Analytics are unavailable right now." />;
   }
 
+  const totalVisits = analytics.charts.visitsByWeek.reduce((sum, row) => sum + row.visits, 0);
+  const messageVolume = analytics.charts.messagesByRole.reduce((sum, row) => sum + row.count, 0);
+  const cancellationVolume = analytics.charts.cancellationReasons.reduce((sum, row) => sum + row.count, 0);
+
+  const visitsAverage = analytics.charts.visitsByWeek.length
+    ? Math.round(totalVisits / analytics.charts.visitsByWeek.length)
+    : 0;
+
+  const visitsPeak = analytics.charts.visitsByWeek.reduce<{ label: string; visits: number } | null>(
+    (best, row) => (best === null || row.visits > best.visits ? row : best),
+    null
+  );
+
+  const visitsTrend = analytics.charts.visitsByWeek.length >= 2
+    ? trendDirection(
+      analytics.charts.visitsByWeek[analytics.charts.visitsByWeek.length - 1].visits,
+      analytics.charts.visitsByWeek[0].visits
+    )
+    : "flat";
+
+  const topRole = analytics.charts.messagesByRole.reduce<{ role: string; count: number } | null>(
+    (best, row) => (best === null || row.count > best.count ? row : best),
+    null
+  );
+  const topRoleShare = topRole && messageVolume > 0
+    ? `${Math.round((topRole.count / messageVolume) * 100)}%`
+    : "0%";
+
+  const topReason = analytics.charts.cancellationReasons.reduce<{ reason: string; count: number } | null>(
+    (best, row) => (best === null || row.count > best.count ? row : best),
+    null
+  );
+  const topReasonShare = topReason && cancellationVolume > 0
+    ? `${Math.round((topReason.count / cancellationVolume) * 100)}%`
+    : "0%";
+
+  const pieData = analytics.charts.cancellationReasons.map((row, index) => ({
+    ...row,
+    share: cancellationVolume > 0 ? Number(((row.count / cancellationVolume) * 100).toFixed(1)) : 0,
+    fill: REPORT_PIE_COLORS[index % REPORT_PIE_COLORS.length],
+  }));
+
+  const dailyRows = dailyAnalytics.map((row) => ({
+    ...row,
+    shortDate: formatShortDate(row.date),
+  }));
+
+  const totalDailyOutcomes = dailyRows.reduce(
+    (sum, row) => sum + row.appointmentsApproved + row.appointmentsFulfilled + row.appointmentsCancelled + row.appointmentsRescheduled,
+    0
+  );
+
+  const peakDau = dailyRows.reduce((best, row) => Math.max(best, row.loginBasedDAU), 0);
+
+  const chartAnimationDuration = reducedMotion ? 0 : 380;
+  const chartAnimationBegin = reducedMotion ? 0 : 90;
+
   return (
-    <div className="reports-analytics">
-      <div className="section-header">
+    <div className="reports-analytics reports-analytics--premium">
+      <div className="section-header section-header--premium">
         <div>
           <h2 className="section-title">Reports & Analytics</h2>
           <p className="section-subtitle">Operational reporting from the connected application database.</p>
         </div>
+        <span className="admin-context-chip">Window: {analytics.windowDays} days</span>
       </div>
-      <div className="reports-grid admin-analytics-grid">
-        <SimpleBarChart title="Weekly Visit Volume" data={analytics.charts.visitsByWeek} dataKey="visits" labelKey="label" />
-        <SimpleBarChart title="Role-Based Messaging" data={analytics.charts.messagesByRole} dataKey="count" labelKey="role" />
-        <SimpleBarChart title="Cancellation Reason Breakdown" data={analytics.charts.cancellationReasons} dataKey="count" labelKey="reason" />
+
+      <div className="admin-report-insight-grid">
+        <article className="admin-report-insight-card">
+          <p className="admin-report-insight-label">Visit volume</p>
+          <p className="admin-report-insight-value">{totalVisits}</p>
+          <p className="admin-report-insight-note">
+            {visitsPeak
+              ? `${visitsPeak.label} was the peak week with ${visitsPeak.visits} visits.`
+              : "Visits recorded in the reporting window."}
+          </p>
+        </article>
+        <article className="admin-report-insight-card">
+          <p className="admin-report-insight-label">Cross-role messages</p>
+          <p className="admin-report-insight-value">{messageVolume}</p>
+          <p className="admin-report-insight-note">
+            {topRole
+              ? `${topRole.role} generated ${topRoleShare} of message traffic.`
+              : "Total message flow requiring operational oversight."}
+          </p>
+        </article>
+        <article className="admin-report-insight-card">
+          <p className="admin-report-insight-label">Cancellation count</p>
+          <p className="admin-report-insight-value">{cancellationVolume}</p>
+          <p className="admin-report-insight-note">
+            {topReason
+              ? `${topReason.reason} accounts for ${topReasonShare} of cancellation pressure.`
+              : "Cancelled visits grouped by reason category."}
+          </p>
+        </article>
       </div>
+
+      <div className="reports-grid admin-analytics-grid reports-grid--premium">
+        <ReportCard
+          title="Weekly Visit Volume"
+          subtitle="Scheduling throughput trend by week with clearer temporal pacing."
+          tone="neutral"
+          trend={visitsTrend}
+          summary={[
+            { label: "Avg / Week", value: String(visitsAverage) },
+            { label: "Peak", value: visitsPeak ? `${visitsPeak.label} (${visitsPeak.visits})` : "No data" },
+            { label: "Window", value: `${analytics.windowDays} days` },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height={270}>
+            <AreaChart data={analytics.charts.visitsByWeek}>
+              <defs>
+                <linearGradient id="reports-volume-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={REPORT_CHART_COLORS.volumeSoft} />
+                  <stop offset="100%" stopColor="rgba(110, 91, 154, 0.04)" />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(100, 116, 139, 0.2)" />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} />
+              <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip
+                contentStyle={{ borderRadius: 12, border: "1px solid rgba(203, 213, 225, 0.88)", boxShadow: "0 12px 24px rgba(15, 23, 42, 0.16)" }}
+              />
+              <Area
+                type="monotone"
+                dataKey="visits"
+                stroke={REPORT_CHART_COLORS.volume}
+                strokeWidth={2.6}
+                fill="url(#reports-volume-fill)"
+                isAnimationActive={!reducedMotion}
+                animationDuration={chartAnimationDuration}
+                animationBegin={chartAnimationBegin}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </ReportCard>
+
+        <ReportCard
+          title="Role-Based Messaging"
+          subtitle="Conversation load by role segment to reveal communication concentration."
+          tone="teal"
+          trend={topRoleShare === "0%" ? "flat" : (Number(topRoleShare.replace("%", "")) >= 40 ? "up" : "flat")}
+          summary={[
+            { label: "Top Role", value: topRole ? `${topRole.role} (${topRole.count})` : "No data" },
+            { label: "Top Share", value: topRoleShare },
+            { label: "Roles", value: String(analytics.charts.messagesByRole.length) },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height={270}>
+            <BarChart data={analytics.charts.messagesByRole}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(100, 116, 139, 0.2)" />
+              <XAxis dataKey="role" tickLine={false} axisLine={false} />
+              <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip
+                contentStyle={{ borderRadius: 12, border: "1px solid rgba(203, 213, 225, 0.88)", boxShadow: "0 12px 24px rgba(15, 23, 42, 0.16)" }}
+              />
+              <Bar
+                dataKey="count"
+                fill={REPORT_CHART_COLORS.communication}
+                radius={[8, 8, 0, 0]}
+                isAnimationActive={!reducedMotion}
+                animationDuration={chartAnimationDuration}
+                animationBegin={chartAnimationBegin}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </ReportCard>
+
+        <ReportCard
+          title="Cancellation Reason Breakdown"
+          subtitle="Primary cancellation drivers with reason share and category weight."
+          tone="amber"
+          trend={topReasonShare === "0%" ? "flat" : (Number(topReasonShare.replace("%", "")) >= 40 ? "up" : "flat")}
+          summary={[
+            { label: "Top Reason", value: topReason?.reason ?? "No data" },
+            { label: "Top Share", value: topReasonShare },
+            { label: "Total", value: String(cancellationVolume) },
+          ]}
+        >
+          <ResponsiveContainer width="100%" height={270}>
+            <PieChart>
+              <Tooltip
+                contentStyle={{ borderRadius: 12, border: "1px solid rgba(203, 213, 225, 0.88)", boxShadow: "0 12px 24px rgba(15, 23, 42, 0.16)" }}
+                formatter={(value: number, _name, entry) => {
+                  const row = entry?.payload as { share?: number } | undefined;
+                  const share = row?.share ?? 0;
+                  return [`${value} (${share}%)`, "Count"];
+                }}
+              />
+              <Legend verticalAlign="bottom" formatter={(value: string) => compactReasonLabel(value)} />
+              <Pie
+                data={pieData}
+                dataKey="count"
+                nameKey="reason"
+                cx="50%"
+                cy="45%"
+                innerRadius={48}
+                outerRadius={92}
+                paddingAngle={2}
+                isAnimationActive={!reducedMotion}
+                animationDuration={chartAnimationDuration}
+                animationBegin={chartAnimationBegin}
+              >
+                {pieData.map((entry) => (
+                  <Cell key={entry.reason} fill={entry.fill} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </ReportCard>
+      </div>
+
+      {dailyRows.length > 0 ? (
+        <div className="reports-grid admin-analytics-grid reports-grid--premium">
+          <ReportCard
+            title="Daily Appointment Outcomes"
+            subtitle="Stacked day-level outcomes for approvals, fulfillment, cancellations, and reschedules."
+            tone="blue"
+            trend={totalDailyOutcomes > 0 ? "up" : "flat"}
+            summary={[
+              { label: "Total Outcomes", value: String(totalDailyOutcomes) },
+              { label: "Peak DAU", value: String(peakDau) },
+              { label: "Range", value: `${formatShortDate(dailyRows[0].date)} - ${formatShortDate(dailyRows[dailyRows.length - 1].date)}` },
+            ]}
+          >
+            <ResponsiveContainer width="100%" height={270}>
+              <BarChart data={dailyRows}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(100, 116, 139, 0.2)" />
+                <XAxis dataKey="shortDate" tickLine={false} axisLine={false} />
+                <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: "1px solid rgba(203, 213, 225, 0.88)", boxShadow: "0 12px 24px rgba(15, 23, 42, 0.16)" }}
+                />
+                <Legend />
+                <Bar
+                  dataKey="appointmentsApproved"
+                  stackId="daily"
+                  fill="#22c55e"
+                  name="Approved"
+                  isAnimationActive={!reducedMotion}
+                  animationDuration={chartAnimationDuration}
+                  animationBegin={chartAnimationBegin}
+                />
+                <Bar
+                  dataKey="appointmentsFulfilled"
+                  stackId="daily"
+                  fill="#2563eb"
+                  name="Fulfilled"
+                  isAnimationActive={!reducedMotion}
+                  animationDuration={chartAnimationDuration}
+                  animationBegin={chartAnimationBegin + 40}
+                />
+                <Bar
+                  dataKey="appointmentsCancelled"
+                  stackId="daily"
+                  fill="#ef4444"
+                  name="Cancelled"
+                  isAnimationActive={!reducedMotion}
+                  animationDuration={chartAnimationDuration}
+                  animationBegin={chartAnimationBegin + 80}
+                />
+                <Bar
+                  dataKey="appointmentsRescheduled"
+                  stackId="daily"
+                  fill="#f59e0b"
+                  name="Rescheduled"
+                  isAnimationActive={!reducedMotion}
+                  animationDuration={chartAnimationDuration}
+                  animationBegin={chartAnimationBegin + 120}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </ReportCard>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -574,13 +899,20 @@ function SystemSettings() {
   const [settings, setSettings] = useState<AgencySettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+  const [activeSection, setActiveSection] = useState("branding");
+  const [isDirty, setIsDirty] = useState(false);
+  const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
+  const sectionsRef = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     let mounted = true;
     async function load() {
       try {
         const data = await getAgencySettings(true);
-        if (mounted) setSettings(data);
+        if (mounted) {
+          setSettings(data);
+          setIsDirty(false);
+        }
       } catch (error) {
         console.error("Failed to load settings:", error);
       }
@@ -592,8 +924,56 @@ function SystemSettings() {
   }, []);
 
   const handleChange = (field: keyof AgencySettings, value: string | boolean) => {
+    setNotice("");
+    setIsDirty(true);
     setSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
   };
+
+  const registerSection = (id: string) => (element: HTMLElement | null) => {
+    sectionsRef.current[id] = element;
+  };
+
+  const handleJumpToSection = (sectionId: string) => {
+    const target = sectionsRef.current[sectionId];
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActiveSection(sectionId);
+    setFocusedSectionId(sectionId);
+    window.setTimeout(() => setFocusedSectionId((prev) => (prev === sectionId ? null : prev)), 650);
+  };
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const topEntry = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+        if (!topEntry) return;
+        const sectionId = topEntry.target.getAttribute("data-settings-section");
+        if (sectionId) {
+          setActiveSection(sectionId);
+        }
+      },
+      {
+        root: null,
+        rootMargin: "-24% 0px -48% 0px",
+        threshold: [0.2, 0.45, 0.7],
+      }
+    );
+
+    SETTINGS_SECTIONS.forEach((section) => {
+      const element = sectionsRef.current[section.id];
+      if (element) observer.observe(element);
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   const handleSave = async () => {
     if (!settings) return;
@@ -604,6 +984,7 @@ function SystemSettings() {
       setSettings(updated);
       await refresh();
       setNotice("Branding and support details updated.");
+      setIsDirty(false);
     } catch (err: unknown) {
       setNotice(getApiErrorMessage(err, "Failed to save settings."));
     } finally {
@@ -612,85 +993,165 @@ function SystemSettings() {
   };
 
   if (!settings) {
-    return <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading agency settings...</div>;
+    return <div className="admin-empty-state">Loading agency settings...</div>;
   }
 
   return (
-    <div className="system-settings">
-      <div className="section-header">
+    <div className="system-settings system-settings--premium admin-settings-surface">
+      <div className="section-header section-header--premium admin-settings-header">
         <div>
           <h2 className="section-title">Branding & Settings</h2>
-          <p className="section-subtitle">Configure the portal identity and patient support contact information.</p>
+          <p className="section-subtitle">Configure agency branding, support touchpoints, pilot capability toggles, and operational defaults.</p>
+        </div>
+        <div className="admin-settings-header-meta">
+          <span className="admin-context-chip">Control plane</span>
+          <span className={`admin-settings-state-pill admin-settings-state-pill--${isDirty ? "unsaved" : "saved"}`}>
+            {isDirty ? "Unsaved changes" : "All changes saved"}
+          </span>
         </div>
       </div>
-      <div className="settings-grid">
-        <div className="settings-card">
-          <h3 className="card-title">Agency Branding</h3>
-          <div className="settings-content">
-            <div className="setting-item">
-              <label>Portal Name</label>
-              <input type="text" value={settings.portalName} onChange={(e) => handleChange("portalName", e.target.value)} />
+
+      <div className="admin-settings-layout">
+        <aside className="admin-settings-rail" aria-label="Settings sections">
+          <h3 className="admin-settings-rail-title">Sections</h3>
+          <nav className="admin-settings-rail-nav">
+            {SETTINGS_SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                className={`admin-settings-rail-item ${activeSection === section.id ? "is-active" : ""}`}
+                onClick={() => handleJumpToSection(section.id)}
+              >
+                <span className="admin-settings-rail-item-label">{section.label}</span>
+                <span className="admin-settings-rail-item-note">{section.description}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="settings-grid settings-grid--premium admin-settings-stack">
+          <section
+            id="settings-branding"
+            data-settings-section="branding"
+            ref={registerSection("branding")}
+            className={`settings-card settings-card--premium admin-settings-card ${focusedSectionId === "branding" ? "admin-settings-card--focused" : ""}`}
+          >
+            <header className="admin-settings-card-header">
+              <div>
+                <h3 className="card-title">Agency Branding</h3>
+                <p className="settings-card-description">Core visual identity used across patient, clinician, and caregiver touchpoints.</p>
+              </div>
+              <span className={`admin-settings-state-pill admin-settings-state-pill--${isDirty ? "unsaved" : "saved"}`}>
+                {isDirty ? "Unsaved" : "Saved"}
+              </span>
+            </header>
+            <div className="settings-content">
+              <div className="setting-item">
+                <label>Portal Name</label>
+                <input className="settings-input" type="text" value={settings.portalName} onChange={(e) => handleChange("portalName", e.target.value)} />
+              </div>
+              <div className="setting-item">
+                <label>Logo URL</label>
+                <input className="settings-input" type="text" value={settings.logoUrl || ""} onChange={(e) => handleChange("logoUrl", e.target.value)} placeholder="https://example.com/logo.png" />
+              </div>
+              <div className="setting-item">
+                <label>Primary Color</label>
+                <input className="settings-input" type="text" value={settings.primaryColor} onChange={(e) => handleChange("primaryColor", e.target.value)} placeholder="#6E5B9A" />
+              </div>
             </div>
-            <div className="setting-item">
-              <label>Logo URL</label>
-              <input type="text" value={settings.logoUrl || ""} onChange={(e) => handleChange("logoUrl", e.target.value)} placeholder="https://example.com/logo.png" />
+          </section>
+
+          <section
+            id="settings-support"
+            data-settings-section="support"
+            ref={registerSection("support")}
+            className={`settings-card settings-card--premium admin-settings-card ${focusedSectionId === "support" ? "admin-settings-card--focused" : ""}`}
+          >
+            <header className="admin-settings-card-header">
+              <div>
+                <h3 className="card-title">Support Contact</h3>
+                <p className="settings-card-description">User-facing support details shown in portal communication surfaces.</p>
+              </div>
+              <span className={`admin-settings-state-pill admin-settings-state-pill--${isDirty ? "unsaved" : "saved"}`}>
+                {isDirty ? "Unsaved" : "Saved"}
+              </span>
+            </header>
+            <div className="settings-content">
+              <div className="setting-item">
+                <label>Support Name</label>
+                <input className="settings-input" type="text" value={settings.supportName || ""} onChange={(e) => handleChange("supportName", e.target.value)} />
+              </div>
+              <div className="setting-item">
+                <label>Support Email</label>
+                <input className="settings-input" type="email" value={settings.supportEmail || ""} onChange={(e) => handleChange("supportEmail", e.target.value)} />
+              </div>
+              <div className="setting-item">
+                <label>Support Phone</label>
+                <input className="settings-input" type="text" value={settings.supportPhone || ""} onChange={(e) => handleChange("supportPhone", e.target.value)} />
+              </div>
+              <div className="setting-item">
+                <label>Support Hours</label>
+                <input className="settings-input" type="text" value={settings.supportHours || ""} onChange={(e) => handleChange("supportHours", e.target.value)} placeholder="Mon-Fri, 8am-5pm" />
+              </div>
             </div>
-            <div className="setting-item">
-              <label>Primary Color</label>
-              <input type="text" value={settings.primaryColor} onChange={(e) => handleChange("primaryColor", e.target.value)} placeholder="#6E5B9A" />
+          </section>
+
+          <FeatureFlagsPanel
+            sectionId="settings-flags"
+            sectionRef={registerSection("flags")}
+            focused={focusedSectionId === "flags"}
+            sectionStatus={isDirty ? "unsaved" : "saved"}
+            settings={settings}
+            onToggle={handleChange}
+          />
+
+          <section
+            id="settings-defaults"
+            data-settings-section="defaults"
+            ref={registerSection("defaults")}
+            className={`settings-card settings-card--premium admin-settings-card ${focusedSectionId === "defaults" ? "admin-settings-card--focused" : ""}`}
+          >
+            <header className="admin-settings-card-header">
+              <div>
+                <h3 className="card-title">Operational Defaults</h3>
+                <p className="settings-card-description">Baseline copy and pilot notes for agency-level operational consistency.</p>
+              </div>
+              <span className={`admin-settings-state-pill admin-settings-state-pill--${isDirty ? "unsaved" : "saved"}`}>
+                {isDirty ? "Unsaved" : "Saved"}
+              </span>
+            </header>
+            <div className="settings-content">
+              <div className="setting-item">
+                <label>Notification Default Copy</label>
+                <textarea
+                  className="settings-input"
+                  value={settings.notificationDefaults || ""}
+                  onChange={(e) => handleChange("notificationDefaults", e.target.value)}
+                  rows={4}
+                  placeholder="Default reminder and escalation guidance for pilot operations"
+                />
+              </div>
+              <div className="setting-item">
+                <label>Pilot Launch Notes</label>
+                <textarea
+                  className="settings-input"
+                  value={settings.pilotLaunchNotes || ""}
+                  onChange={(e) => handleChange("pilotLaunchNotes", e.target.value)}
+                  rows={4}
+                  placeholder="What the agency should validate during the pilot"
+                />
+              </div>
             </div>
-          </div>
-        </div>
-        <div className="settings-card">
-          <h3 className="card-title">Support Contact</h3>
-          <div className="settings-content">
-            <div className="setting-item">
-              <label>Support Name</label>
-              <input type="text" value={settings.supportName || ""} onChange={(e) => handleChange("supportName", e.target.value)} />
-            </div>
-            <div className="setting-item">
-              <label>Support Email</label>
-              <input type="email" value={settings.supportEmail || ""} onChange={(e) => handleChange("supportEmail", e.target.value)} />
-            </div>
-            <div className="setting-item">
-              <label>Support Phone</label>
-              <input type="text" value={settings.supportPhone || ""} onChange={(e) => handleChange("supportPhone", e.target.value)} />
-            </div>
-            <div className="setting-item">
-              <label>Support Hours</label>
-              <input type="text" value={settings.supportHours || ""} onChange={(e) => handleChange("supportHours", e.target.value)} placeholder="Mon-Fri, 8am-5pm" />
-            </div>
-          </div>
-        </div>
-        <FeatureFlagsPanel settings={settings} onToggle={handleChange} />
-        <div className="settings-card">
-          <h3 className="card-title">Operational Defaults</h3>
-          <div className="settings-content">
-            <div className="setting-item">
-              <label>Notification Default Copy</label>
-              <textarea
-                value={settings.notificationDefaults || ""}
-                onChange={(e) => handleChange("notificationDefaults", e.target.value)}
-                rows={4}
-                placeholder="Default reminder and escalation guidance for pilot operations"
-              />
-            </div>
-            <div className="setting-item">
-              <label>Pilot Launch Notes</label>
-              <textarea
-                value={settings.pilotLaunchNotes || ""}
-                onChange={(e) => handleChange("pilotLaunchNotes", e.target.value)}
-                rows={4}
-                placeholder="What the agency should validate during the pilot"
-              />
-            </div>
-          </div>
+          </section>
         </div>
       </div>
+
       {notice ? <div className="settings-notice">{notice}</div> : null}
-      <button className="btn-save" onClick={handleSave} disabled={saving}>
-        {saving ? "Saving..." : "Save Changes"}
-      </button>
+      <div className="settings-actions-row">
+        <button className="btn-save" onClick={handleSave} disabled={saving}>
+          {saving ? "Saving..." : "Save Changes"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1306,10 +1767,26 @@ function AdminMessages() {
 
   // Message actions
   const handleMarkAsRead = async (messageId: string) => {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId ? { ...message, isRead: true } : message
+      )
+    );
+    setViewingMessage((prev) =>
+      prev && prev.id === messageId ? { ...prev, isRead: true } : prev
+    );
+
     try {
-      await api.put(`/messages/${messageId}/read`);
-      fetchAllMessages(); // Refresh messages list
+      await api.put(`/api/messages/${messageId}/read`);
     } catch (error) {
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId ? { ...message, isRead: false } : message
+        )
+      );
+      setViewingMessage((prev) =>
+        prev && prev.id === messageId ? { ...prev, isRead: false } : prev
+      );
       console.error("Failed to mark message as read:", error);
     }
   };
@@ -1324,7 +1801,7 @@ function AdminMessages() {
     );
     if (!ok) return;
     try {
-      await api.delete(`/messages/${messageId}`);
+      await api.delete(`/api/messages/${messageId}`);
       fetchAllMessages();
       showToast("Message deleted.", "success");
     } catch (error) {
@@ -1353,35 +1830,35 @@ function AdminMessages() {
   };
 
   const sendBroadcast = async () => {
-    console.log("≡ƒÜÇ sendBroadcast started");
+    console.log("sendBroadcast started");
     console.log("Subject:", broadcastSubject);
     console.log("Message:", broadcastMessage);
     console.log("Recipients:", broadcastRecipients);
 
     if (!broadcastSubject.trim() || !broadcastMessage.trim() || broadcastRecipients.length === 0) {
-      console.log("Γ¥î Validation failed");
+      console.log("Validation failed");
       showToast("Please fill in all fields and select recipients", "error");
       return;
     }
 
     setSendingBroadcast(true);
     try {
-      console.log("≡ƒôí Starting broadcast to recipients:", broadcastRecipients);
+      console.log("Starting broadcast to recipients:", broadcastRecipients);
 
       // Send to each recipient type
       for (const recipientType of broadcastRecipients) {
-        console.log("≡ƒôï Fetching users for role:", recipientType);
+        console.log("Fetching users for role:", recipientType);
         const recipients = await fetchUsersByRole(recipientType);
-        console.log("≡ƒæÑ Found recipients:", recipients);
+        console.log("Found recipients:", recipients);
 
         for (const recipient of recipients) {
-          console.log("≡ƒôñ Sending message to:", recipient.username, recipient.id);
+          console.log("Sending message to:", recipient.username, recipient.id);
           const response = await api.post('/messages/send', {
             to: recipient.id,
             subject: `[ADMIN BROADCAST] ${broadcastSubject}`,
             content: broadcastMessage
           });
-          console.log("Γ£à Message sent, response:", response.data);
+          console.log("Message sent, response:", response.data);
         }
       }
 
@@ -1390,10 +1867,10 @@ function AdminMessages() {
       setBroadcastMessage("");
       setBroadcastRecipients([]);
 
-      console.log("≡ƒÄë Broadcast completed successfully!");
+      console.log("Broadcast completed successfully");
       showToast("Broadcast sent successfully!", "success");
     } catch (error: unknown) {
-      console.error("Γ¥î Failed to send broadcast:", error);
+      console.error("Failed to send broadcast:", error);
       if (isAxiosError(error)) {
         console.error("Error details:", error.response?.data || error.message);
       } else if (error instanceof Error) {
@@ -1413,47 +1890,87 @@ function AdminMessages() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFromType, selectedFromUser, selectedToType, selectedToUser, searchTerm, user]);
 
+  const unreadCount = messages.filter((message) => !message.isRead).length;
+  const readCount = Math.max(messages.length - unreadCount, 0);
+  const uniqueRoles = new Set(
+    messages.flatMap((message) => [message.fromUser?.role, message.toUser?.role]).filter((role): role is string => Boolean(role))
+  ).size;
+
 
 
   return (
-    <div className="admin-messages">
+    <div className="admin-messages admin-messages--premium">
       {/* Header */}
-      <div className="section-header">
-        <h2 className="section-title">System Messages</h2>
-        <div className="message-tabs">
+      <div className="section-header section-header--premium section-header--messages">
+        <div className="admin-messages-heading">
+          <h2 className="section-title">System Messages</h2>
+          <p className="section-subtitle">Triage cross-role communication and operational broadcasts from one command lane.</p>
+        </div>
+        <div className="admin-msg-tabs" role="tablist" aria-label="Message view selector">
           <button
-            className={`tab-btn ${activeView === "all-messages" ? "active" : ""}`}
+            className={`admin-msg-tab ${activeView === "all-messages" ? "active" : ""}`}
             onClick={() => setActiveView("all-messages")}
+            role="tab"
+            aria-selected={activeView === "all-messages"}
+            aria-controls="admin-messages-all-panel"
           >
             All Messages
           </button>
           <button
-            className={`tab-btn ${activeView === "broadcast" ? "active" : ""}`}
+            className={`admin-msg-tab ${activeView === "broadcast" ? "active" : ""}`}
             onClick={() => setActiveView("broadcast")}
+            role="tab"
+            aria-selected={activeView === "broadcast"}
+            aria-controls="admin-messages-broadcast-panel"
           >
             Broadcast Message
           </button>
         </div>
       </div>
 
+      {activeView === "all-messages" ? (
+        <div className="admin-message-kpi-row">
+          <article className="admin-message-kpi-card">
+            <p className="admin-message-kpi-label">Total messages</p>
+            <p className="admin-message-kpi-value">{messages.length}</p>
+          </article>
+          <article className="admin-message-kpi-card">
+            <p className="admin-message-kpi-label">Unread</p>
+            <p className="admin-message-kpi-value">{unreadCount}</p>
+          </article>
+          <article className="admin-message-kpi-card">
+            <p className="admin-message-kpi-label">Read</p>
+            <p className="admin-message-kpi-value">{readCount}</p>
+          </article>
+          <article className="admin-message-kpi-card">
+            <p className="admin-message-kpi-label">Roles represented</p>
+            <p className="admin-message-kpi-value">{uniqueRoles}</p>
+          </article>
+        </div>
+      ) : null}
+
       {/* All Messages View */}
       {activeView === "all-messages" && (
-        <div className="all-messages">
+        <div className="all-messages" id="admin-messages-all-panel" role="tabpanel" aria-label="All system messages">
           {/* Search and Filters */}
-          <div className="messages-toolbar">
-            <div className="search-filters">
-              <input
-                type="text"
-                placeholder="Search messages..."
-                className="search-input"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="admin-msg-toolbar" role="search">
+            <div className="admin-msg-search-filters">
+              <label className="admin-msg-search-field" htmlFor="admin-message-search">
+                <span className="admin-msg-filter-label">Search</span>
+                <input
+                  id="admin-message-search"
+                  type="text"
+                  placeholder="Search messages..."
+                  className="admin-msg-search-input"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </label>
 
-              <div className="filter-group">
-                <label className="filter-label">From:</label>
+              <div className="admin-msg-filter-group">
+                <label className="admin-msg-filter-label">From:</label>
                 <select
-                  className="filter-select"
+                  className="admin-msg-filter-select"
                   value={selectedFromType}
                   onChange={(e) => handleFromTypeChange(e.target.value)}
                 >
@@ -1478,7 +1995,7 @@ function AdminMessages() {
 
                 {selectedFromType !== 'all' && (
                   <select
-                    className="filter-select"
+                    className="admin-msg-filter-select"
                     value={selectedFromUser}
                     onChange={(e) => setSelectedFromUser(e.target.value)}
                   >
@@ -1492,10 +2009,10 @@ function AdminMessages() {
                 )}
               </div>
 
-              <div className="filter-group">
-                <label className="filter-label">To:</label>
+              <div className="admin-msg-filter-group">
+                <label className="admin-msg-filter-label">To:</label>
                 <select
-                  className="filter-select"
+                  className="admin-msg-filter-select"
                   value={selectedToType}
                   onChange={(e) => handleToTypeChange(e.target.value)}
                 >
@@ -1517,7 +2034,7 @@ function AdminMessages() {
 
                 {selectedToType !== 'all' && (
                   <select
-                    className="filter-select"
+                    className="admin-msg-filter-select"
                     value={selectedToUser}
                     onChange={(e) => setSelectedToUser(e.target.value)}
                   >
@@ -1537,13 +2054,13 @@ function AdminMessages() {
 
           {/* Messages Table */}
           {loading ? (
-            <div className="loading-state">
-              <div className="spinner"></div>
+            <div className="admin-msg-loading">
+              <div className="admin-msg-spinner"></div>
               <p>Loading messages...</p>
             </div>
           ) : (
-            <div className="messages-table-container">
-              <table className="messages-table">
+            <div className="admin-msg-table-container" aria-live="polite">
+              <table className="admin-msg-table">
                 <thead>
                   <tr>
                     <th>From</th>
@@ -1558,68 +2075,71 @@ function AdminMessages() {
                 <tbody>
                   {messages.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="no-messages">
+                      <td colSpan={7} className="admin-msg-empty">
                         No messages found
                       </td>
                     </tr>
                   ) : (
                     messages.map((message) => (
-                      <tr key={message.id} className={!message.isRead ? "unread" : ""}>
+                      <tr key={message.id} className={!message.isRead ? "unread" : ""} data-row-status={message.isRead ? "read" : "unread"}>
                         <td>
-                          <div className="user-info">
-                            <span className="username">{message.fromUser?.username || message.from}</span>
-                            <span className={`role-badge role-${message.fromUser?.role?.toLowerCase() || 'unknown'}`}>
+                          <div className="admin-msg-user-info">
+                            <span className="admin-msg-username">{message.fromUser?.username || message.from}</span>
+                            <span className={`admin-msg-role-badge role-${message.fromUser?.role?.toLowerCase() || 'unknown'}`}>
                               {message.fromUser?.role || 'Unknown'}
                             </span>
                           </div>
                         </td>
                         <td>
-                          <div className="user-info">
-                            <span className="username">{message.toUser?.username || message.to}</span>
-                            <span className={`role-badge role-${message.toUser?.role?.toLowerCase() || 'unknown'}`}>
+                          <div className="admin-msg-user-info">
+                            <span className="admin-msg-username">{message.toUser?.username || message.to}</span>
+                            <span className={`admin-msg-role-badge role-${message.toUser?.role?.toLowerCase() || 'unknown'}`}>
                               {message.toUser?.role || 'Unknown'}
                             </span>
                           </div>
                         </td>
-                        <td className="subject-cell">
-                          <span className="subject-text">{message.subject}</span>
+                        <td className="admin-msg-subject-cell">
+                          <span className="admin-msg-subject-text">{message.subject}</span>
                         </td>
-                        <td className="preview-cell">
-                          {(message.content || message.preview || "").substring(0, 80)}...
+                        <td className="admin-msg-preview-cell">
+                          <span className="admin-msg-preview-copy">{(message.content || message.preview || "").substring(0, 80)}...</span>
                         </td>
-                        <td className="time-cell">
+                        <td className="admin-msg-time-cell">
                           {new Date(message.createdAt || message.timestamp).toLocaleDateString()}
                         </td>
                         <td>
-                          <span className={`status-badge ${message.isRead ? "read" : "unread"}`}>
+                          <span className={`admin-msg-status-badge ${message.isRead ? "read" : "unread"}`}>
                             {message.isRead ? "Read" : "Unread"}
                           </span>
                         </td>
                         <td>
-                          <div className="action-buttons">
+                          <div className="admin-msg-action-buttons">
                             <button
-                              className="btn-action view"
+                              aria-label="View message"
+                              className="admin-msg-btn-action view"
                               title="View Message"
                               onClick={() => handleViewMessage(message)}
                             >
-                              ≡ƒæü∩╕Å
+                              <Eye size={16} strokeWidth={2} />
                             </button>
 
                             {!message.isRead && (
                               <button
-                                className="btn-action mark-read"
+                                aria-label="Mark as read"
+                                className="admin-msg-btn-action mark-read"
                                 title="Mark as Read"
                                 onClick={() => handleMarkAsRead(message.id)}
                               >
-                                ≡ƒô¼
+                                <MailOpen size={16} strokeWidth={2} />
                               </button>
                             )}
                             <button
-                              className="btn-action delete"
+                              aria-label="Delete message"
+                              className="admin-msg-btn-action delete"
                               title="Delete Message"
                               onClick={() => handleDeleteMessage(message.id)}
                             >
-                              ≡ƒùæ∩╕Å
+                              <Trash2 size={16} strokeWidth={2} />
                             </button>
                           </div>
                         </td>
@@ -1635,18 +2155,18 @@ function AdminMessages() {
 
       {/* Broadcast Message View */}
       {activeView === "broadcast" && (
-        <div className="broadcast-view">
-          <div className="broadcast-form">
+        <div className="admin-msg-broadcast-view" id="admin-messages-broadcast-panel" role="tabpanel" aria-label="Broadcast message composer">
+          <div className="admin-msg-broadcast-form">
             <h3>Send Broadcast Message</h3>
-            <p className="broadcast-description">
+            <p className="admin-msg-broadcast-description">
               Send important announcements to multiple users at once. Select recipient groups and compose your message.
             </p>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Recipients</label>
-                <div className="recipient-options">
-                  <label className="checkbox-label">
+            <div className="admin-msg-form-row">
+              <div className="admin-msg-form-group">
+                <label className="admin-msg-form-label">Recipients</label>
+                <div className="admin-msg-recipient-options">
+                  <label className="admin-msg-checkbox-label">
                     <input
                       type="checkbox"
                       checked={broadcastRecipients.includes('patient')}
@@ -1654,7 +2174,7 @@ function AdminMessages() {
                     />
                     <span>All Patients</span>
                   </label>
-                  <label className="checkbox-label">
+                  <label className="admin-msg-checkbox-label">
                     <input
                       type="checkbox"
                       checked={broadcastRecipients.includes('clinician')}
@@ -1662,7 +2182,7 @@ function AdminMessages() {
                     />
                     <span>All Clinicians</span>
                   </label>
-                  <label className="checkbox-label">
+                  <label className="admin-msg-checkbox-label">
                     <input
                       type="checkbox"
                       checked={broadcastRecipients.includes('caregiver')}
@@ -1676,29 +2196,34 @@ function AdminMessages() {
 
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Subject</label>
+            <div className="admin-msg-form-group">
+              <label className="admin-msg-form-label">Subject</label>
               <input
                 type="text"
-                className="form-input"
+                className="admin-msg-form-input"
                 placeholder="Enter broadcast subject..."
                 value={broadcastSubject}
                 onChange={(e) => setBroadcastSubject(e.target.value)}
+                maxLength={160}
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Message</label>
+            <div className="admin-msg-form-group">
+              <label className="admin-msg-form-label">Message</label>
               <textarea
-                className="form-textarea"
+                className="admin-msg-form-textarea"
                 rows={8}
                 placeholder="Compose your broadcast message here..."
                 value={broadcastMessage}
                 onChange={(e) => setBroadcastMessage(e.target.value)}
               />
+              <div className="admin-msg-helper-row">
+                <span>{broadcastMessage.trim().length} characters</span>
+                <span>{broadcastRecipients.length} recipient group{broadcastRecipients.length === 1 ? "" : "s"} selected</span>
+              </div>
             </div>
 
-            <div className="form-actions">
+            <div className="admin-msg-form-actions">
               <button
                 className="btn-secondary"
                 onClick={() => {
@@ -1723,53 +2248,53 @@ function AdminMessages() {
 
       {/* Message View Modal */}
       {showMessageModal && viewingMessage && (
-        <div className="modal-overlay" onClick={() => setShowMessageModal(false)}>
-          <div className="modal-content message-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className="admin-msg-modal-overlay" onClick={() => setShowMessageModal(false)}>
+          <div className="admin-msg-modal-content admin-message-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-msg-modal-header">
               <h3>View Message</h3>
-              <button className="close-btn" onClick={() => setShowMessageModal(false)}>Γ£ò</button>
+              <button aria-label="Close message view" className="admin-msg-close-btn" onClick={() => setShowMessageModal(false)}><X size={18} strokeWidth={2.25} /></button>
             </div>
-            <div className="modal-body">
-              <div className="message-details">
-                <div className="detail-row">
-                  <span className="detail-label">From:</span>
-                  <span className="detail-value">
+            <div className="admin-msg-modal-body">
+              <div className="admin-msg-message-details">
+                <div className="admin-msg-detail-row">
+                  <span className="admin-msg-detail-label">From:</span>
+                  <span className="admin-msg-detail-value">
                     {viewingMessage.fromUser?.username || viewingMessage.from}
-                    <span className={`role-badge role-${viewingMessage.fromUser?.role?.toLowerCase()}`}>
-                      {viewingMessage.fromUser?.role}
+                    <span className={`admin-msg-role-badge role-${viewingMessage.fromUser?.role?.toLowerCase() || "unknown"}`}>
+                      {viewingMessage.fromUser?.role || "Unknown"}
                     </span>
                   </span>
                 </div>
-                <div className="detail-row">
-                  <span className="detail-label">To:</span>
-                  <span className="detail-value">
+                <div className="admin-msg-detail-row">
+                  <span className="admin-msg-detail-label">To:</span>
+                  <span className="admin-msg-detail-value">
                     {viewingMessage.toUser?.username || viewingMessage.to}
-                    <span className={`role-badge role-${viewingMessage.toUser?.role?.toLowerCase()}`}>
-                      {viewingMessage.toUser?.role}
+                    <span className={`admin-msg-role-badge role-${viewingMessage.toUser?.role?.toLowerCase() || "unknown"}`}>
+                      {viewingMessage.toUser?.role || "Unknown"}
                     </span>
                   </span>
                 </div>
-                <div className="detail-row">
-                  <span className="detail-label">Subject:</span>
-                  <span className="detail-value">{viewingMessage.subject}</span>
+                <div className="admin-msg-detail-row">
+                  <span className="admin-msg-detail-label">Subject:</span>
+                  <span className="admin-msg-detail-value">{viewingMessage.subject}</span>
                 </div>
-                <div className="detail-row">
-                  <span className="detail-label">Date:</span>
-                  <span className="detail-value">
+                <div className="admin-msg-detail-row">
+                  <span className="admin-msg-detail-label">Date:</span>
+                  <span className="admin-msg-detail-value">
                     {new Date(viewingMessage.createdAt || viewingMessage.timestamp).toLocaleString()}
                   </span>
                 </div>
               </div>
-              <div className="message-content">
+              <div className="admin-msg-message-content">
                 <h4>Message:</h4>
-                <div className="message-text">
+                <div className="admin-msg-message-text">
                   {viewingMessage.content || viewingMessage.preview}
                 </div>
               </div>
             </div>
-            <div className="modal-actions">
+            <div className="admin-msg-modal-actions">
               <button className="btn-secondary" onClick={() => setShowMessageModal(false)}>
-                ≡ƒôû Close
+                Close
               </button>
             </div>
           </div>
@@ -1907,8 +2432,8 @@ function UserManagement({ onNavigate }: { onNavigate?: (tab: string) => void }) 
 }
 
 // Reports & Analytics Component
-// ΓöÇΓöÇΓöÇ Appointments Review (Admin) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-function AppointmentsReview() {
+// Appointments Review (Admin)
+function AppointmentsReview({ onOpenReminderPreferences }: { onOpenReminderPreferences: () => void }) {
   const { showToast, infoDialog } = useFeedback();
   const [loading, setLoading] = useState(true);
   const [newRequests, setNewRequests] = useState<ApiVisit[]>([]);
@@ -1950,24 +2475,10 @@ function AppointmentsReview() {
     refresh();
   }, []);
 
-  const datetimeLocalToIso = (value?: string): string | undefined => {
-    if (!value) return undefined;
-    const [datePart, timePart] = value.split("T");
-    if (!datePart || !timePart) return undefined;
-
-    const [y, m, d] = datePart.split("-").map(Number);
-    const [hh, mm] = timePart.split(":").map(Number);
-    if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) return undefined;
-
-    // datetime-local is a local wall-clock value; build a local Date explicitly
-    // before converting to UTC ISO for the API contract.
-    return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
-  };
-
   const runReview = async (visit: ApiVisit, action: "APPROVE" | "REJECT") => {
     setReviewingId(visit.id);
     try {
-      const overrideIso = datetimeLocalToIso(scheduleOverrides[visit.id]);
+      const overrideIso = datetimeLocalInTimeZoneToIso(scheduleOverrides[visit.id]);
       await reviewVisitRequest(visit.id, {
         action,
         reviewNote: reviewNotes[visit.id] || undefined,
@@ -2075,6 +2586,7 @@ function AppointmentsReview() {
       <ScheduleCalendar
         events={scheduleEvents}
         initialView="dayGridMonth"
+        onOpenReminderPreferences={onOpenReminderPreferences}
         onAction={() => {}}
       />
 
@@ -2120,8 +2632,8 @@ function AppointmentsReview() {
                       <td>{v.patient.patientProfile?.legalName || v.patient.username}</td>
                       <td>{v.clinician.username}</td>
                       <td>{new Date(v.scheduledAt).toLocaleString()}</td>
-                      <td>{v.cancelReason || "ΓÇö"}</td>
-                      <td>{v.cancellationRequestedById || "ΓÇö"}</td>
+                      <td>{v.cancelReason || "-"}</td>
+                      <td>{v.cancellationRequestedById || "-"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2134,60 +2646,71 @@ function AppointmentsReview() {
   );
 }
 
-// ΓöÇΓöÇΓöÇ Availability Review (Admin) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// Availability Review (Admin)
 function AvailabilityReview() {
   const { showToast, confirmDialog } = useFeedback();
-  const [records, setRecords] = useState<ApiAvailability[]>([]);
-  const [allRecords, setAllRecords] = useState<ApiAvailability[]>([]);
+  const [summaryRecords, setSummaryRecords] = useState<ApiAvailability[]>([]);
+  const [pendingRecords, setPendingRecords] = useState<ApiAvailability[]>([]);
+  const [historyRecords, setHistoryRecords] = useState<ApiAvailability[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<AvailabilityStatus | "">("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<"" | Extract<AvailabilityStatus, "APPROVED" | "REJECTED">>("");
+  const [sortBy, setSortBy] = useState<AvailabilitySortField>("createdAt");
+  const [sortOrder, setSortOrder] = useState<AvailabilitySortOrder>("desc");
   const [updateNotice, setUpdateNotice] = useState<string>("");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewModalRecord, setReviewModalRecord] = useState<ApiAvailability | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchRecords = async () => {
+  const pendingCount = summaryRecords.filter((r) => r.status === "PENDING").length;
+  const approvedCount = summaryRecords.filter((r) => r.status === "APPROVED").length;
+  const rejectedCount = summaryRecords.filter((r) => r.status === "REJECTED").length;
+
+  const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
-      const [allData, filteredData] = await Promise.all([
-        getAllAvailability(),
-        getAllAvailability(statusFilter ? { status: statusFilter } : undefined),
+      const trimmedSearch = searchTerm.trim();
+      const [summaryData, pendingData, historyData] = await Promise.all([
+        getAllAvailability({ sortBy: "createdAt", sortOrder: "desc" }),
+        getAllAvailability({
+          status: "PENDING",
+          search: trimmedSearch || undefined,
+          sortBy: "createdAt",
+          sortOrder: "desc",
+        }),
+        getAllAvailability({
+          status: historyStatusFilter || undefined,
+          search: trimmedSearch || undefined,
+          sortBy,
+          sortOrder,
+        }),
       ]);
-      setAllRecords(allData);
-      setRecords(filteredData);
+
+      setSummaryRecords(summaryData);
+      setPendingRecords(pendingData);
+      setHistoryRecords(historyData.filter((record) => record.status !== "PENDING"));
     } catch {
-      setAllRecords([]);
-      setRecords([]);
+      setSummaryRecords([]);
+      setPendingRecords([]);
+      setHistoryRecords([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [historyStatusFilter, searchTerm, sortBy, sortOrder]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchRecords(); }, [statusFilter]);
-
-  const pendingCount = allRecords.filter((r) => r.status === "PENDING").length;
-  const approvedCount = allRecords.filter((r) => r.status === "APPROVED").length;
-  const rejectedCount = allRecords.filter((r) => r.status === "REJECTED").length;
+  useEffect(() => {
+    void fetchRecords();
+  }, [fetchRecords]);
 
   const handleReview = async (id: string, status: "APPROVED" | "REJECTED") => {
     setReviewingId(id);
     try {
-      const updated = await reviewAvailability(id, status, reviewNote || undefined);
-      setRecords((prev) =>
-        prev
-          .map((r) => (r.id === id ? updated : r))
-          .filter((r) => statusFilter === "" || r.status === statusFilter)
-      );
-      setAllRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
-      if (statusFilter && statusFilter !== status) {
-        setUpdateNotice(`Record marked ${status} and removed from the "${statusFilter}" view.`);
-      } else {
-        setUpdateNotice(`Record marked ${status}.`);
-      }
+      await reviewAvailability(id, status, reviewNote || undefined);
+      setUpdateNotice(`Availability marked ${status}.`);
       setReviewModalRecord(null);
       setReviewNote("");
+      await fetchRecords();
     } catch (err: unknown) {
       showToast(getApiErrorMessage(err, "Review failed"), "error");
     } finally {
@@ -2205,9 +2728,8 @@ function AvailabilityReview() {
     setDeletingId(id);
     try {
       await deleteAvailability(id);
-      setRecords((prev) => prev.filter((r) => r.id !== id));
-      setAllRecords((prev) => prev.filter((r) => r.id !== id));
       showToast("Availability deleted.", "success");
+      await fetchRecords();
     } catch (err: unknown) {
       showToast(getApiErrorMessage(err, "Delete failed"), "error");
     } finally {
@@ -2217,127 +2739,147 @@ function AvailabilityReview() {
 
   return (
     <div>
-      <div className="content-header" style={{ marginBottom: "1.5rem" }}>
-        <h2 className="section-title">Clinician Availability Review</h2>
+      <div className="content-header" style={{ marginBottom: "1rem" }}>
+        <div>
+          <h2 className="section-title">Clinician Availability Review</h2>
+          <p className="section-subtitle">Approve new submissions first, then browse reviewed history by clinician and status.</p>
+        </div>
       </div>
 
-      {/* KPI Summary */}
       <div className="avail-kpi-row">
-        <div className="avail-kpi-chip pending" onClick={() => setStatusFilter("PENDING")}>
+        <div className="avail-kpi-chip pending active">
           <span className="avail-kpi-value">{pendingCount}</span>
           <span className="avail-kpi-label">Pending</span>
         </div>
-        <div className="avail-kpi-chip approved" onClick={() => setStatusFilter("APPROVED")}>
+        <div className="avail-kpi-chip approved">
           <span className="avail-kpi-value">{approvedCount}</span>
           <span className="avail-kpi-label">Approved</span>
         </div>
-        <div className="avail-kpi-chip rejected" onClick={() => setStatusFilter("REJECTED")}>
+        <div className="avail-kpi-chip rejected">
           <span className="avail-kpi-value">{rejectedCount}</span>
           <span className="avail-kpi-label">Rejected</span>
         </div>
-        <div className={`avail-kpi-chip all ${statusFilter === "" ? "active" : ""}`} onClick={() => setStatusFilter("")}>
-          <span className="avail-kpi-value">{allRecords.length}</span>
-          <span className="avail-kpi-label">All</span>
+        <div className="avail-kpi-chip all">
+          <span className="avail-kpi-value">{summaryRecords.length}</span>
+          <span className="avail-kpi-label">Total</span>
         </div>
       </div>
-      {statusFilter && (
-        <div style={{ marginTop: "0.75rem", color: "#6b7280", fontSize: "0.9rem" }}>
-          Showing {records.length} of {allRecords.length} total records.
-        </div>
-      )}
-      {updateNotice && (
-        <div
-          style={{
-            marginTop: "0.75rem",
-            marginBottom: "0.5rem",
-            padding: "0.65rem 0.85rem",
-            borderRadius: "8px",
-            border: "1px solid #bfdbfe",
-            background: "#eff6ff",
-            color: "#1e3a8a",
-            fontSize: "0.9rem",
-          }}
-        >
-          {updateNotice}
-        </div>
-      )}
 
-      {/* Records Table */}
-      {loading ? (
-        <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>Loading availability records...</div>
-      ) : records.length === 0 ? (
-        <div className="avail-empty">
-          No availability records {statusFilter ? `with status "${statusFilter}"` : "found"}.
-        </div>
-      ) : (
-        <div className="avail-table-wrap">
-          <table className="avail-table">
-            <thead>
-              <tr>
-                <th>Clinician</th>
-                <th>Specialization</th>
-                <th>Date</th>
-                <th>Hours</th>
-                <th>Status</th>
-                <th>Review Note</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((rec) => (
-                <tr key={rec.id}>
-                  <td className="avail-cell-clinician">
-                    <div className="avail-clinician-name">{rec.clinician.username}</div>
-                    <div className="avail-clinician-email">{rec.clinician.email}</div>
-                  </td>
-                  <td>{rec.clinician.clinicianProfile?.specialization || "ΓÇö"}</td>
-                  <td>{formatAvailabilityDate(rec.date)}</td>
-                  <td>{rec.startTime} ΓÇô {rec.endTime}</td>
-                  <td>
-                    <span className={`submission-status ${availabilityStatusClass(rec.status)}`}>
-                      {rec.status}
-                    </span>
-                  </td>
-                  <td className="avail-cell-note">{rec.reviewNote || "ΓÇö"}</td>
-                  <td className="avail-cell-actions">
-                    {rec.status === "PENDING" && (
-                      <>
-                        <button
-                          className="btn-approve"
-                          onClick={() => handleReview(rec.id, "APPROVED")}
-                          disabled={reviewingId === rec.id}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          className="btn-reject"
-                          onClick={() => { setReviewModalRecord(rec); setReviewNote(""); }}
-                          disabled={reviewingId === rec.id}
-                        >
-                          Reject
-                        </button>
-                      </>
-                    )}
-                    <button
-                      className="btn-delete-avail"
-                      onClick={() => handleDelete(rec.id)}
-                      disabled={deletingId === rec.id}
-                      title="Delete record"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className="avail-toolbar">
+        <label className="avail-toolbar-field avail-toolbar-search">
+          <span className="avail-toolbar-label">Search clinician</span>
+          <input
+            className="avail-toolbar-input"
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search by name, email, or specialization"
+            value={searchTerm}
+          />
+        </label>
 
-      {/* Reject Modal */}
+        <label className="avail-toolbar-field">
+          <span className="avail-toolbar-label">History status</span>
+          <select
+            className="avail-toolbar-select"
+            onChange={(e) => setHistoryStatusFilter(e.target.value as "" | "APPROVED" | "REJECTED")}
+            value={historyStatusFilter}
+          >
+            <option value="">Reviewed only</option>
+            <option value="APPROVED">Approved only</option>
+            <option value="REJECTED">Rejected only</option>
+          </select>
+        </label>
+
+        <label className="avail-toolbar-field">
+          <span className="avail-toolbar-label">Sort history</span>
+          <select
+            className="avail-toolbar-select"
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === "createdAt:desc") {
+                setSortBy("createdAt");
+                setSortOrder("desc");
+              } else if (next === "createdAt:asc") {
+                setSortBy("createdAt");
+                setSortOrder("asc");
+              } else if (next === "date:asc") {
+                setSortBy("date");
+                setSortOrder("asc");
+              } else {
+                setSortBy("date");
+                setSortOrder("desc");
+              }
+            }}
+            value={`${sortBy}:${sortOrder}`}
+          >
+            <option value="createdAt:desc">Newest submissions</option>
+            <option value="createdAt:asc">Oldest submissions</option>
+            <option value="date:asc">Availability date ascending</option>
+            <option value="date:desc">Availability date descending</option>
+          </select>
+        </label>
+      </div>
+
+      {updateNotice ? <div className="settings-notice">{updateNotice}</div> : null}
+
+      <section className="avail-section avail-section--pending">
+        <div className="avail-section-header">
+          <div>
+            <h3 className="avail-section-title">Pending approval</h3>
+            <p className="avail-section-copy">Newest clinician submissions appear first so admins can clear the queue quickly.</p>
+          </div>
+          <span className="avail-section-badge">{pendingRecords.length}</span>
+        </div>
+
+        {loading ? (
+          <div className="avail-empty">Loading pending requests...</div>
+        ) : pendingRecords.length === 0 ? (
+          <div className="avail-empty">No pending approval requests match the current clinician search.</div>
+        ) : (
+          <AvailabilityRecordsTable
+            deletingId={deletingId}
+            historyMode={false}
+            onApprove={(record) => handleReview(record.id, "APPROVED")}
+            onDelete={handleDelete}
+            onReject={(record) => {
+              setReviewModalRecord(record);
+              setReviewNote("");
+            }}
+            records={pendingRecords}
+            reviewingId={reviewingId}
+          />
+        )}
+      </section>
+
+      <section className="avail-section">
+        <div className="avail-section-header">
+          <div>
+            <h3 className="avail-section-title">Availability history</h3>
+            <p className="avail-section-copy">
+              {historyStatusFilter
+                ? `Showing ${historyStatusFilter.toLowerCase()} records sorted ${sortOrder === "desc" ? "latest first" : "oldest first"}.`
+                : `Showing reviewed availability records sorted ${sortOrder === "desc" ? "latest first" : "oldest first"}.`}
+            </p>
+          </div>
+          <span className="avail-section-badge">{historyRecords.length}</span>
+        </div>
+
+        {loading ? (
+          <div className="avail-empty">Loading availability history...</div>
+        ) : historyRecords.length === 0 ? (
+          <div className="avail-empty">No reviewed availability records match the current filters.</div>
+        ) : (
+          <AvailabilityRecordsTable
+            deletingId={deletingId}
+            historyMode
+            onApprove={() => undefined}
+            onDelete={handleDelete}
+            onReject={() => undefined}
+            records={historyRecords}
+            reviewingId={reviewingId}
+          />
+        )}
+      </section>
+
       {reviewModalRecord && (
         <div className="modal-overlay" onClick={() => setReviewModalRecord(null)}>
           <div className="modal-content avail-review-modal" onClick={(e) => e.stopPropagation()}>
@@ -2352,7 +2894,7 @@ function AvailabilityReview() {
             </div>
             <div className="modal-body">
               <p style={{ marginBottom: "0.5rem", color: "#4b5563" }}>
-                <strong>{reviewModalRecord.clinician.username}</strong> ΓÇö {formatAvailabilityDate(reviewModalRecord.date)}, {reviewModalRecord.startTime} ΓÇô {reviewModalRecord.endTime}
+                <strong>{reviewModalRecord.clinician.username}</strong> - {formatAvailabilityDate(reviewModalRecord.date)}, {reviewModalRecord.startTime} - {reviewModalRecord.endTime}
               </p>
               <div className="form-group">
                 <label>Reason for rejection (optional)</label>
@@ -2380,6 +2922,104 @@ function AvailabilityReview() {
       )}
     </div>
   );
+}
+
+function AvailabilityRecordsTable({
+  records,
+  reviewingId,
+  deletingId,
+  historyMode,
+  onApprove,
+  onReject,
+  onDelete,
+}: {
+  records: ApiAvailability[];
+  reviewingId: string | null;
+  deletingId: string | null;
+  historyMode: boolean;
+  onApprove: (record: ApiAvailability) => void;
+  onReject: (record: ApiAvailability) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="avail-table-wrap">
+      <table className="avail-table">
+        <thead>
+          <tr>
+            <th>Clinician</th>
+            <th>Specialization</th>
+            <th>Submitted</th>
+            <th>Date</th>
+            <th>Hours</th>
+            {historyMode ? <th>Status</th> : null}
+            {historyMode ? <th>Review Note</th> : null}
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((rec) => (
+            <tr key={rec.id}>
+              <td className="avail-cell-clinician">
+                <div className="avail-clinician-name">{rec.clinician.username}</div>
+                <div className="avail-clinician-email">{rec.clinician.email}</div>
+              </td>
+              <td>{rec.clinician.clinicianProfile?.specialization || "-"}</td>
+              <td>{formatAvailabilitySubmittedAt(rec.createdAt)}</td>
+              <td>{formatAvailabilityDate(rec.date)}</td>
+              <td>{rec.startTime} - {rec.endTime}</td>
+              {historyMode ? (
+                <td>
+                  <span className={`submission-status ${availabilityStatusClass(rec.status)}`}>{rec.status}</span>
+                </td>
+              ) : null}
+              {historyMode ? <td className="avail-cell-note">{rec.reviewNote || "-"}</td> : null}
+              <td className="avail-cell-actions">
+                {!historyMode ? (
+                  <>
+                    <button
+                      className="btn-approve"
+                      onClick={() => onApprove(rec)}
+                      disabled={reviewingId === rec.id}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className="btn-reject"
+                      onClick={() => onReject(rec)}
+                      disabled={reviewingId === rec.id}
+                    >
+                      Reject
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  className="btn-delete-avail"
+                  onClick={() => onDelete(rec.id)}
+                  disabled={deletingId === rec.id}
+                  title="Delete record"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function formatAvailabilitySubmittedAt(dateStr: string): string {
+  return new Date(dateStr).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 
@@ -2438,9 +3078,15 @@ function FamilyFeedbackPanel() {
   const renderStars = (rating: number | null) => {
     if (rating === null) return <span style={{ color: "#9ca3af" }}>—</span>;
     return (
-      <span style={{ color: "#f59e0b", fontSize: "1.1rem" }}>
-        {"★".repeat(Math.round(rating))}
-        {"☆".repeat(5 - Math.round(rating))}
+      <span style={{ color: "#f59e0b", display: "inline-flex", gap: "0.15rem", alignItems: "center" }}>
+        {Array.from({ length: 5 }, (_, index) => (
+          <Star
+            key={index}
+            size={17}
+            strokeWidth={2}
+            fill={index < Math.round(rating) ? "currentColor" : "none"}
+          />
+        ))}
       </span>
     );
   };

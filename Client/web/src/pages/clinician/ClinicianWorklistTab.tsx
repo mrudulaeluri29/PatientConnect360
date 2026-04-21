@@ -1,4 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type CSSProperties } from "react";
+import {
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  CircleAlert,
+  CircleX,
+  ClipboardList,
+  Dumbbell,
+  Pencil,
+} from "lucide-react";
 import { api } from "../../lib/axios";
 import {
   getHEPAssignments,
@@ -12,6 +22,7 @@ import {
   updateVisitPrepTask,
   type VisitPrepTask,
 } from "../../api/visitPrepTasks";
+import "./ClinicianWorklistTab.css";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Visit {
@@ -29,6 +40,8 @@ interface Patient {
 }
 
 type ClinicianWorklistSection = "worklist" | "hep" | "prep";
+type MessageKind = "success" | "error";
+type InlineMessage = { kind: MessageKind; text: string };
 
 function getApiErrorMessage(err: unknown, fallback: string): string {
   if (typeof err === "object" && err !== null && "response" in err) {
@@ -42,9 +55,9 @@ function getApiErrorMessage(err: unknown, fallback: string): string {
 }
 
 const CLINICIAN_WORKLIST_SECTIONS: { key: ClinicianWorklistSection; label: string }[] = [
-  { key: "worklist", label: "📋 Needs Documentation" },
-  { key: "hep", label: "🏋️ Assign Exercises (HEP)" },
-  { key: "prep", label: "📝 Visit Prep Tasks" },
+  { key: "worklist", label: "Needs Documentation" },
+  { key: "hep", label: "Exercise Assignments" },
+  { key: "prep", label: "Visit Prep Tasks" },
 ];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -52,22 +65,21 @@ export default function ClinicianWorklistTab() {
   const [activeSection, setActiveSection] = useState<ClinicianWorklistSection>("worklist");
 
   return (
-    <div className="clinician-content">
-      {/* Section switcher */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0.5rem" }}>
+    <div className="clinician-content worklist-overdrive-shell">
+      <div className="worklist-command-strip">
+        <div>
+          <span className="worklist-command-kicker">Task lane</span>
+          <h3 className="worklist-command-title">Clinician worklist</h3>
+        </div>
+        <p className="worklist-command-copy">Keep documentation, exercise assignments, and prep work moving through one tactical surface.</p>
+      </div>
+
+      <div className="worklist-switcher">
         {CLINICIAN_WORKLIST_SECTIONS.map((s) => (
           <button
             key={s.key}
             onClick={() => setActiveSection(s.key)}
-            style={{
-              padding: "0.5rem 1rem",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: activeSection === s.key ? 700 : 400,
-              background: activeSection === s.key ? "#6E5B9A" : "#f3f4f6",
-              color: activeSection === s.key ? "white" : "#374151",
-            }}
+            className={`worklist-switcher-btn ${activeSection === s.key ? "is-active" : ""}`}
           >
             {s.label}
           </button>
@@ -88,7 +100,7 @@ function NeedsDocumentationWorklist() {
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<InlineMessage | null>(null);
   const [safetyNetVisits, setSafetyNetVisits] = useState<Visit[]>([]);
 
   useEffect(() => {
@@ -131,22 +143,22 @@ setSafetyNetVisits(safetyNet);
   const handleSaveAndComplete = async () => {
     if (!selectedVisit) return;
     if (notes.trim().length < 50) {
-      setMessage("❌ Notes must be at least 50 characters to complete the visit.");
+      setMessage({ kind: "error", text: "Notes must be at least 50 characters to complete the visit." });
       return;
     }
     setSaving(true);
-    setMessage("");
+    setMessage(null);
     try {
       await api.patch(`/api/visits/${selectedVisit.id}`, {
         clinicianNotes: notes,
         status: "COMPLETED",
       });
-      setMessage("✅ Visit completed successfully!");
+      setMessage({ kind: "success", text: "Visit completed successfully." });
       setVisits((prev) => prev.filter((v) => v.id !== selectedVisit.id));
       setSelectedVisit(null);
       setNotes("");
     } catch (err: unknown) {
-      setMessage(`❌ ${getApiErrorMessage(err, "Failed to complete visit")}`);
+      setMessage({ kind: "error", text: getApiErrorMessage(err, "Failed to complete visit") });
     } finally {
       setSaving(false);
     }
@@ -155,14 +167,14 @@ setSafetyNetVisits(safetyNet);
   const handleSaveNotes = async () => {
     if (!selectedVisit) return;
     setSaving(true);
-    setMessage("");
+    setMessage(null);
     try {
       await api.patch(`/api/visits/${selectedVisit.id}`, {
         clinicianNotes: notes,
       });
-      setMessage("✅ Notes saved!");
+      setMessage({ kind: "success", text: "Notes saved." });
     } catch (err: unknown) {
-      setMessage(`❌ ${getApiErrorMessage(err, "Failed to save notes")}`);
+      setMessage({ kind: "error", text: getApiErrorMessage(err, "Failed to save notes") });
     } finally {
       setSaving(false);
     }
@@ -178,9 +190,10 @@ setSafetyNetVisits(safetyNet);
           Visits Needing Documentation ({visits.length})
         </h3>
         {visits.length === 0 ? (
-          <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280", background: "#f9fafb", borderRadius: "8px" }}>
-            🎉 All visits are documented!
-          </div>
+            <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280", background: "#f9fafb", borderRadius: "8px", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}>
+              <CheckCircle2 size={28} strokeWidth={1.9} color="#10b981" />
+              <span>All visits are documented.</span>
+            </div>
         ) : (
           visits.map((v) => (
             <div
@@ -199,10 +212,11 @@ setSafetyNetVisits(safetyNet);
               <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>
                 {new Date(v.scheduledAt).toLocaleDateString()} — {v.status}
               </div>
-              <div style={{ fontSize: "0.75rem", color: "#ef4444", marginTop: "0.25rem" }}>
+              <div style={{ fontSize: "0.75rem", color: "#ef4444", marginTop: "0.25rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                <CircleAlert size={13} strokeWidth={2} />
                 {!v.clinicianNotes || v.clinicianNotes.trim().length === 0
-                  ? "⚠️ No notes yet"
-                  : `⚠️ Only ${v.clinicianNotes.trim().length} chars (need 50)`}
+                  ? "No notes yet"
+                  : `Only ${v.clinicianNotes.trim().length} chars (need 50)`}
               </div>
             </div>
           ))
@@ -234,7 +248,10 @@ setSafetyNetVisits(safetyNet);
           />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.5rem" }}>
             <span style={{ color: notes.trim().length >= 50 ? "#10b981" : "#ef4444", fontSize: "0.875rem" }}>
-              {notes.trim().length}/50 characters {notes.trim().length >= 50 ? "✅" : ""}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                {notes.trim().length >= 50 ? <CheckCircle2 size={15} strokeWidth={2} /> : <CircleAlert size={15} strokeWidth={2} />}
+                <span>{notes.trim().length}/50 characters</span>
+              </span>
             </span>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button
@@ -256,22 +273,19 @@ setSafetyNetVisits(safetyNet);
                   cursor: notes.trim().length >= 50 ? "pointer" : "not-allowed",
                 }}
               >
-                {saving ? "Saving..." : "Complete Visit ✓"}
+                {saving ? "Saving..." : "Complete Visit"}
               </button>
             </div>
           </div>
-          {message && (
-            <div style={{ marginTop: "0.75rem", padding: "0.75rem", borderRadius: "8px", background: message.includes("✅") ? "#d1fae5" : "#fee2e2", color: message.includes("✅") ? "#065f46" : "#991b1b" }}>
-              {message}
-            </div>
-          )}
+          {message ? <InlineMessageBanner message={message} style={{ marginTop: "0.75rem" }} /> : null}
         </div>
 )}
 
         {safetyNetVisits.length > 0 && (
           <div style={{ marginTop: "1.5rem" }}>
-            <h4 style={{ color: "#ef4444", marginBottom: "0.5rem", fontSize: "0.875rem" }}>
-              ⚠️ Safety Net — Completed but missing notes ({safetyNetVisits.length})
+            <h4 style={{ color: "#ef4444", marginBottom: "0.5rem", fontSize: "0.875rem", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+              <CircleAlert size={15} strokeWidth={2} />
+              <span>Safety Net — Completed but missing notes ({safetyNetVisits.length})</span>
             </h4>
             {safetyNetVisits.map((v) => (
               <div
@@ -288,8 +302,9 @@ setSafetyNetVisits(safetyNet);
                 <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>
                   {new Date(v.scheduledAt).toLocaleDateString()} — {v.status}
                 </div>
-                <div style={{ fontSize: "0.75rem", color: "#ef4444", marginTop: "0.25rem" }}>
-                  ⚠️ Completed without sufficient notes
+                <div style={{ fontSize: "0.75rem", color: "#ef4444", marginTop: "0.25rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                  <CircleAlert size={13} strokeWidth={2} />
+                  <span>Completed without sufficient notes</span>
                 </div>
               </div>
             ))}
@@ -313,7 +328,7 @@ function HEPAssignmentPanel() {
     endDate: "",
   });
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<InlineMessage | null>(null);
 
   useEffect(() => {
     async function loadPatients() {
@@ -338,19 +353,19 @@ function HEPAssignmentPanel() {
 
   const handleAssign = async () => {
     if (!selectedPatient || !form.exerciseName || !form.instructions) {
-      setMessage("❌ Please fill in all required fields.");
+      setMessage({ kind: "error", text: "Please fill in all required fields." });
       return;
     }
     setSaving(true);
-    setMessage("");
+    setMessage(null);
     try {
       await createHEPAssignment({ patientId: selectedPatient, ...form });
-      setMessage("✅ Exercise assigned successfully!");
+      setMessage({ kind: "success", text: "Exercise assigned successfully." });
       setForm({ exerciseName: "", instructions: "", frequencyPerWeek: 3, startDate: new Date().toISOString().split("T")[0], endDate: "" });
       const data = await getHEPAssignments(selectedPatient);
       setAssignments(data);
     } catch (err: unknown) {
-      setMessage(`❌ ${getApiErrorMessage(err, "Failed to assign exercise")}`);
+      setMessage({ kind: "error", text: getApiErrorMessage(err, "Failed to assign exercise") });
     } finally {
       setSaving(false);
     }
@@ -438,11 +453,7 @@ function HEPAssignmentPanel() {
           {saving ? "Assigning..." : "Assign Exercise"}
         </button>
 
-        {message && (
-          <div style={{ marginTop: "0.75rem", padding: "0.75rem", borderRadius: "8px", background: message.includes("✅") ? "#d1fae5" : "#fee2e2", color: message.includes("✅") ? "#065f46" : "#991b1b" }}>
-            {message}
-          </div>
-        )}
+        {message ? <InlineMessageBanner message={message} style={{ marginTop: "0.75rem" }} /> : null}
       </div>
 
       {/* Right: existing assignments */}
@@ -472,12 +483,15 @@ function HEPAssignmentPanel() {
                 </span>
               </div>
               <div style={{ color: "#6b7280", fontSize: "0.875rem", marginTop: "0.25rem" }}>{a.exercise.instructions}</div>
-              <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.5rem" }}>
-                📅 {a.frequencyPerWeek}x/week · Started {new Date(a.startDate).toLocaleDateString()}
+              <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.5rem", display: "inline-flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                <CalendarDays size={14} strokeWidth={2} />
+                <span>{a.frequencyPerWeek}x/week · Started {new Date(a.startDate).toLocaleDateString()}
                 {a.endDate ? ` · Ends ${new Date(a.endDate).toLocaleDateString()}` : ""}
+                </span>
               </div>
-              <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.25rem" }}>
-                ✅ {a.completions.length} completion{a.completions.length !== 1 ? "s" : ""} logged
+              <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.25rem", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                <CheckCircle2 size={14} strokeWidth={2} color="#10b981" />
+                <span>{a.completions.length} completion{a.completions.length !== 1 ? "s" : ""} logged</span>
               </div>
             </div>
           ))
@@ -494,7 +508,7 @@ function PrepTasksPanel() {
   const [tasks, setTasks] = useState<VisitPrepTask[]>([]);
   const [newTaskText, setNewTaskText] = useState("");
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<InlineMessage | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -521,15 +535,15 @@ function PrepTasksPanel() {
   const handleAddTask = async () => {
     if (!selectedVisit || !newTaskText.trim()) return;
     setSaving(true);
-    setMessage("");
+    setMessage(null);
     try {
       await createVisitPrepTask(selectedVisit.id, newTaskText.trim());
-      setMessage("✅ Task added!");
+      setMessage({ kind: "success", text: "Task added." });
       setNewTaskText("");
       const data = await getVisitPrepTasks(selectedVisit.id);
       setTasks(data);
     } catch (err: unknown) {
-      setMessage(`❌ ${getApiErrorMessage(err, "Failed to add task")}`);
+      setMessage({ kind: "error", text: getApiErrorMessage(err, "Failed to add task") });
     } finally {
       setSaving(false);
     }
@@ -593,11 +607,7 @@ function PrepTasksPanel() {
             </button>
           </div>
 
-          {message && (
-            <div style={{ marginBottom: "1rem", padding: "0.75rem", borderRadius: "8px", background: message.includes("✅") ? "#d1fae5" : "#fee2e2", color: message.includes("✅") ? "#065f46" : "#991b1b" }}>
-              {message}
-            </div>
-          )}
+          {message ? <InlineMessageBanner message={message} style={{ marginBottom: "1rem" }} /> : null}
 
           {/* Task list */}
           {tasks.length === 0 ? (
@@ -607,7 +617,9 @@ function PrepTasksPanel() {
           ) : (
             tasks.map((t) => (
   <div key={t.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem", marginBottom: "0.5rem", borderRadius: "8px", border: "1px solid #e5e7eb", background: t.isDone ? "#f0fdf4" : "white" }}>
-    <span style={{ fontSize: "1.25rem" }}>{t.isDone ? "✅" : "⬜"}</span>
+    <span style={{ width: "1.5rem", height: "1.5rem", display: "inline-flex", alignItems: "center", justifyContent: "center", color: t.isDone ? "#10b981" : "#cbd5e1" }}>
+      {t.isDone ? <CheckCircle2 size={18} strokeWidth={2} /> : <CircleAlert size={18} strokeWidth={2} />}
+    </span>
     <div style={{ flex: 1 }}>
       <div style={{ fontWeight: 500, textDecoration: t.isDone ? "line-through" : "none", color: t.isDone ? "#6b7280" : "#374151" }}>
         {t.text}
@@ -679,8 +691,33 @@ function EditTaskButton({ task, onUpdated }: { task: VisitPrepTask; onUpdated: (
       onClick={() => setEditing(true)}
       style={{ padding: "0.25rem 0.5rem", borderRadius: "6px", border: "1px solid #e5e7eb", background: "white", cursor: "pointer", fontSize: "0.75rem", color: "#6b7280" }}
     >
-      ✏️ Edit
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+        <Pencil size={12} strokeWidth={2} />
+        <span>Edit</span>
+      </span>
     </button>
   );
 }
+}
+
+function InlineMessageBanner({ message, style }: { message: InlineMessage; style?: CSSProperties }) {
+  const isSuccess = message.kind === "success";
+
+  return (
+    <div
+      style={{
+        padding: "0.75rem",
+        borderRadius: "8px",
+        background: isSuccess ? "#d1fae5" : "#fee2e2",
+        color: isSuccess ? "#065f46" : "#991b1b",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.45rem",
+        ...style,
+      }}
+    >
+      {isSuccess ? <CheckCircle2 size={16} strokeWidth={2} /> : <CircleX size={16} strokeWidth={2} />}
+      <span>{message.text}</span>
+    </div>
+  );
 }

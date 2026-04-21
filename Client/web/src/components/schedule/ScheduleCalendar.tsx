@@ -12,12 +12,14 @@ interface Props {
   events: ScheduleEvent[];
   initialView?: "timeGridWeek" | "timeGridDay" | "dayGridMonth";
   onAction?: (action: "confirm" | "checkin" | "reschedule" | "cancel", event: ScheduleEvent) => void;
+  onOpenReminderPreferences?: () => void;
 }
 
 const ScheduleCalendar: React.FC<Props> = ({
   events,
   initialView = "timeGridWeek",
   onAction,
+  onOpenReminderPreferences,
 }) => {
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
 
@@ -48,6 +50,7 @@ const ScheduleCalendar: React.FC<Props> = ({
         <ScheduleEventDrawer
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
+          onOpenReminderPreferences={onOpenReminderPreferences}
           onAction={(action) => {
             onAction?.(action, selectedEvent);
             setSelectedEvent(null);

@@ -1,5 +1,9 @@
 import { useState, useEffect } from "react";
+import { BellOff } from "lucide-react";
+import { useAuth } from "../../auth/AuthContext";
 import { api } from "../../lib/axios";
+import { notificationTypeIcon } from "./notificationIconMap";
+import "./NotificationCenter.css";
 
 interface Notification {
   id: string;
@@ -38,26 +42,8 @@ function formatTimeAgo(dateString: string): string {
   return date.toLocaleDateString();
 }
 
-function typeIcon(type: string): string {
-  switch (type) {
-    case "VISIT_REQUEST_RECEIVED":
-    case "VISIT_APPROVED":
-      return "\u2705";
-    case "VISIT_DENIED":
-      return "\u274C";
-    case "VISIT_CANCELLED":
-      return "\uD83D\uDEAB";
-    case "VISIT_REMINDER_24H":
-    case "VISIT_REMINDER_1H":
-      return "\u23F0";
-    case "CAREPLAN_UPDATED":
-      return "\uD83D\uDCCB";
-    default:
-      return "\uD83D\uDD14";
-  }
-}
-
 export default function NotificationCenter() {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"notifications" | "preferences">("notifications");
@@ -119,166 +105,162 @@ export default function NotificationCenter() {
   };
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const role = user?.role?.toLowerCase() || "unknown";
 
   return (
-    <div style={{ maxWidth: 700, margin: "0 auto" }}>
-      <div style={{ display: "flex", gap: 12, borderBottom: "2px solid #e5e7eb", marginBottom: 16 }}>
-        <button
-          onClick={() => setTab("notifications")}
-          style={{
-            padding: "8px 20px",
-            fontWeight: tab === "notifications" ? 600 : 400,
-            borderBottom: tab === "notifications" ? "3px solid #6E5B9A" : "3px solid transparent",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: tab === "notifications" ? "#6E5B9A" : "#6b7280",
-            fontSize: "0.95rem",
-          }}
-        >
-          Notifications {unreadCount > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: "0.75rem", marginLeft: 6 }}>{unreadCount}</span>}
-        </button>
-        <button
-          onClick={() => setTab("preferences")}
-          style={{
-            padding: "8px 20px",
-            fontWeight: tab === "preferences" ? 600 : 400,
-            borderBottom: tab === "preferences" ? "3px solid #6E5B9A" : "3px solid transparent",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: tab === "preferences" ? "#6E5B9A" : "#6b7280",
-            fontSize: "0.95rem",
-          }}
-        >
-          Reminder Preferences
-        </button>
-      </div>
+    <section className="nc-center" data-role={role}>
+      <header className="nc-header">
+        <div className="nc-tab-rail" role="tablist" aria-label="Notification sections">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "notifications"}
+            className={`nc-tab ${tab === "notifications" ? "is-active" : ""}`}
+            onClick={() => setTab("notifications")}
+          >
+            <span>Notifications</span>
+            {unreadCount > 0 ? <span className="nc-tab-count">{unreadCount}</span> : null}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "preferences"}
+            className={`nc-tab ${tab === "preferences" ? "is-active" : ""}`}
+            onClick={() => setTab("preferences")}
+          >
+            <span>Reminder Preferences</span>
+          </button>
+        </div>
+      </header>
 
-      {tab === "notifications" && (
-        <>
-          {unreadCount > 0 && (
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <button
-                onClick={markAllRead}
-                style={{ background: "none", border: "none", color: "#6E5B9A", cursor: "pointer", fontSize: "0.85rem", textDecoration: "underline" }}
-              >
+      {tab === "notifications" ? (
+        <div className="nc-pane" role="tabpanel" aria-label="Notifications">
+          <div className="nc-toolbar">
+            <p className="nc-toolbar-copy">Recent updates, reminders, and care-plan signals.</p>
+            {unreadCount > 0 ? (
+              <button type="button" className="nc-link-btn" onClick={markAllRead}>
                 Mark all as read
               </button>
-            </div>
-          )}
+            ) : null}
+          </div>
+
           {loading ? (
-            <p style={{ textAlign: "center", color: "#6b7280", padding: "2rem" }}>Loading notifications...</p>
+            <p className="nc-loading">Loading notifications...</p>
           ) : notifications.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "3rem", color: "#9ca3af" }}>
-              <p style={{ fontSize: "2rem", marginBottom: 8 }}>{"\uD83D\uDD14"}</p>
+            <div className="nc-empty">
+              <span className="nc-empty-icon" aria-hidden>
+                <BellOff size={28} strokeWidth={1.8} />
+              </span>
               <p>No notifications yet</p>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {notifications.map((n) => (
-                <div
-                  key={n.id}
-                  onClick={() => !n.isRead && markRead(n.id)}
-                  style={{
-                    display: "flex",
-                    gap: 12,
-                    padding: "10px 14px",
-                    borderRadius: 8,
-                    background: n.isRead ? "#fff" : "#f5f3ff",
-                    border: `1px solid ${n.isRead ? "#e5e7eb" : "#ddd6fe"}`,
-                    cursor: n.isRead ? "default" : "pointer",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <span style={{ fontSize: "1.3rem", flexShrink: 0, marginTop: 2 }}>{typeIcon(n.type)}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <strong style={{ fontSize: "0.9rem" }}>{n.title}</strong>
-                      <span style={{ fontSize: "0.75rem", color: "#9ca3af", flexShrink: 0 }}>{formatTimeAgo(n.createdAt)}</span>
+            <div className="nc-list" aria-live="polite">
+              {notifications.map((n) => {
+                const NotificationIcon = notificationTypeIcon(n.type);
+
+                return (
+                  <article
+                    key={n.id}
+                    className={`nc-item ${n.isRead ? "is-read" : "is-unread"}`}
+                    role={n.isRead ? undefined : "button"}
+                    tabIndex={n.isRead ? -1 : 0}
+                    onClick={() => {
+                      if (!n.isRead) {
+                        void markRead(n.id);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (!n.isRead) {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          void markRead(n.id);
+                        }
+                      }
+                    }}
+                  >
+                    <span className="nc-item-icon" aria-hidden>
+                      <NotificationIcon size={18} strokeWidth={2} />
+                    </span>
+
+                    <div className="nc-item-main">
+                      <div className="nc-item-head">
+                        <strong className="nc-item-title">{n.title}</strong>
+                        <span className="nc-item-time">{formatTimeAgo(n.createdAt)}</span>
+                      </div>
+                      <p className="nc-item-body">{n.body}</p>
                     </div>
-                    <p style={{ fontSize: "0.85rem", color: "#4b5563", margin: "4px 0 0" }}>{n.body}</p>
-                  </div>
-                  {!n.isRead && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#6E5B9A", flexShrink: 0, marginTop: 8 }} />}
-                </div>
-              ))}
+
+                    {!n.isRead ? <span className="nc-item-dot" aria-label="Unread notification" /> : null}
+                  </article>
+                );
+              })}
             </div>
           )}
-        </>
-      )}
-
-      {tab === "preferences" && (
-        <div style={{ maxWidth: 480 }}>
+        </div>
+      ) : (
+        <div className="nc-pane" role="tabpanel" aria-label="Reminder preferences">
           {prefsLoading ? (
-            <p style={{ textAlign: "center", color: "#6b7280", padding: "2rem" }}>Loading preferences...</p>
+            <p className="nc-loading">Loading preferences...</p>
           ) : (
-            <>
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={prefs.enabled}
-                    onChange={(e) => setPrefs((p) => ({ ...p, enabled: e.target.checked }))}
-                    style={{ width: 18, height: 18, accentColor: "#6E5B9A" }}
-                  />
-                  <span style={{ fontWeight: 500 }}>Enable visit reminders</span>
-                </label>
-              </div>
+            <form
+              className="nc-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void savePrefs();
+              }}
+            >
+              <label className="nc-toggle-row">
+                <input
+                  type="checkbox"
+                  checked={prefs.enabled}
+                  onChange={(e) => setPrefs((p) => ({ ...p, enabled: e.target.checked }))}
+                />
+                <span>Enable visit reminders</span>
+              </label>
 
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>Reminder Channel</label>
+              <div className="nc-field">
+                <label htmlFor="nc-channel">Reminder channel</label>
                 <select
+                  id="nc-channel"
                   value={prefs.channel}
                   onChange={(e) => setPrefs((p) => ({ ...p, channel: e.target.value }))}
                   disabled={!prefs.enabled}
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.9rem" }}
                 >
                   {CHANNEL_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
-                {prefs.channel !== "IN_APP_ONLY" && (
-                  <p style={{ fontSize: "0.8rem", color: "#9ca3af", marginTop: 6 }}>
-                    Outbound reminders (SMS/email) are only sent when enabled by the server administrator.
+                {prefs.channel !== "IN_APP_ONLY" ? (
+                  <p className="nc-helper-copy">
+                    Outbound reminders (SMS/email) are sent only when enabled by server administration.
                   </p>
-                )}
+                ) : null}
               </div>
 
-              <div style={{ marginBottom: 24 }}>
-                <label style={{ display: "block", fontWeight: 500, marginBottom: 6 }}>Timezone (optional)</label>
+              <div className="nc-field">
+                <label htmlFor="nc-timezone">Timezone (optional)</label>
                 <input
+                  id="nc-timezone"
                   type="text"
                   placeholder="e.g. America/New_York"
                   value={prefs.timezone || ""}
                   onChange={(e) => setPrefs((p) => ({ ...p, timezone: e.target.value || null }))}
                   disabled={!prefs.enabled}
-                  style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: "0.9rem", boxSizing: "border-box" }}
                 />
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button
-                  onClick={savePrefs}
-                  disabled={prefsSaving}
-                  style={{
-                    padding: "8px 24px",
-                    background: "#6E5B9A",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 6,
-                    cursor: prefsSaving ? "wait" : "pointer",
-                    fontWeight: 500,
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  {prefsSaving ? "Saving..." : "Save Preferences"}
+              <div className="nc-form-actions">
+                <button type="submit" className="nc-save-btn" disabled={prefsSaving}>
+                  {prefsSaving ? "Saving..." : "Save preferences"}
                 </button>
-                {prefsSaved && <span style={{ color: "#16a34a", fontSize: "0.85rem" }}>Saved!</span>}
+                {prefsSaved ? <span className="nc-saved">Saved!</span> : null}
               </div>
-            </>
+            </form>
           )}
         </div>
       )}
-    </div>
+    </section>
   );
 }

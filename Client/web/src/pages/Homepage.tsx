@@ -3,27 +3,13 @@ import { Link } from "react-router";
 import { useAgencyBranding } from "../branding/AgencyBranding";
 import "./Homepage.css";
 
+const HOMEPAGE_SECTION_IDS = ["features", "about", "support"] as const;
+
 export default function Homepage() {
   const [activeSection, setActiveSection] = useState("");
   const { settings } = useAgencyBranding();
 
   useEffect(() => {
-    const handleScroll = () => {
-      const sections = ["features", "about", "support"];
-      const scrollPosition = window.scrollY + 100;
-
-      for (const section of sections) {
-        const element = document.getElementById(section);
-        if (element) {
-          const { offsetTop, offsetHeight } = element;
-          if (scrollPosition >= offsetTop && scrollPosition < offsetTop + offsetHeight) {
-            setActiveSection(section);
-            break;
-          }
-        }
-      }
-    };
-
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1);
       if (hash) {
@@ -31,16 +17,34 @@ export default function Homepage() {
       }
     };
 
-    window.addEventListener("scroll", handleScroll);
     window.addEventListener("hashchange", handleHashChange);
+    const sections = HOMEPAGE_SECTION_IDS
+      .map((sectionId) => document.getElementById(sectionId))
+      .filter((section): section is HTMLElement => section instanceof HTMLElement);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntry = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+        if (visibleEntry?.target.id) {
+          setActiveSection(visibleEntry.target.id);
+        }
+      },
+      {
+        rootMargin: "-96px 0px -45% 0px",
+        threshold: [0.2, 0.4, 0.6],
+      },
+    );
+
+    sections.forEach((section) => observer.observe(section));
     
-    // Check initial hash
     handleHashChange();
-    handleScroll(); // Check on mount
 
     return () => {
-      window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("hashchange", handleHashChange);
+      observer.disconnect();
     };
   }, []);
 

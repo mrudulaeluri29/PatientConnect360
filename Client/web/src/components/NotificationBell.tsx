@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import { Bell, BellOff } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../lib/axios";
+import { notificationTypeIcon } from "./notifications/notificationIconMap";
 import "./NotificationBell.css";
 
 interface InAppNotificationApi {
@@ -221,28 +223,6 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
     return `${days}d ago`;
   };
 
-  const getNotifIcon = (type: string) => {
-    switch (type) {
-      case "VISIT_REQUEST_RECEIVED":
-      case "VISIT_APPROVED":
-        return "✅";
-      case "VISIT_DENIED":
-        return "❌";
-      case "VISIT_CANCELLED":
-        return "🚫";
-      case "VISIT_REMINDER_24H":
-      case "VISIT_REMINDER_1H":
-        return "⏰";
-      case "CAREPLAN_UPDATED":
-        return "📋";
-      case "MESSAGE":
-      case "MESSAGE_RECEIVED":
-        return "💬";
-      default:
-        return "🔔";
-    }
-  };
-
   return (
     <div className="notification-bell-container" ref={dropdownRef}>
       <button
@@ -251,19 +231,7 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
         aria-label={`Notifications (${totalUnread} unread)`}
       >
         {/* Bell Icon */}
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
-          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
-        </svg>
+        <Bell size={20} strokeWidth={2} />
 
         {/* Notification Count Badge */}
         {totalUnread > 0 && (
@@ -305,37 +273,32 @@ export default function NotificationBell({ onMessageClick }: NotificationBellPro
               <div className="notification-loading">Loading...</div>
             ) : notifications.length === 0 ? (
               <div className="notification-empty">
-                <svg
-                  width="48"
-                  height="48"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1"
-                  opacity="0.3"
-                >
-                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
-                  <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
-                </svg>
+                <BellOff size={44} strokeWidth={1.5} opacity={0.35} />
                 <p>No notifications</p>
               </div>
             ) : (
-              notifications.slice(0, 20).map((notif) => (
-                <div
-                  key={notif.id}
-                  className={`notification-item ${!notif.isRead ? "unread" : ""}`}
-                  onClick={() => handleNotificationClick(notif)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <div className="notification-icon">{getNotifIcon(notif.type)}</div>
-                  <div className="notification-content">
-                    <div className="notification-title">{notif.title}</div>
-                    <div className="notification-body">{notif.body.slice(0, 120)}</div>
-                    <div className="notification-time">{formatTimeAgo(notif.createdAt)}</div>
+              notifications.slice(0, 20).map((notif) => {
+                const NotificationIcon = notificationTypeIcon(notif.type);
+
+                return (
+                  <div
+                    key={notif.id}
+                    className={`notification-item ${!notif.isRead ? "unread" : ""}`}
+                    onClick={() => handleNotificationClick(notif)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <div className="notification-icon">
+                      <NotificationIcon size={18} strokeWidth={2} />
+                    </div>
+                    <div className="notification-content">
+                      <div className="notification-title">{notif.title}</div>
+                      <div className="notification-body">{notif.body.slice(0, 120)}</div>
+                      <div className="notification-time">{formatTimeAgo(notif.createdAt)}</div>
+                    </div>
+                    {!notif.isRead && <div className="notification-unread-dot" />}
                   </div>
-                  {!notif.isRead && <div className="notification-unread-dot" />}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

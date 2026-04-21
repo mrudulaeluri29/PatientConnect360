@@ -1,33 +1,133 @@
 .schedule-calendar-wrapper {
-  background: #fff;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  margin-bottom: 1.5rem;
+  --sc-accent: #0f766e;
+  --sc-accent-strong: #115e59;
+  --sc-border: rgba(203, 213, 225, 0.78);
+  --sc-panel: rgba(255, 255, 255, 0.95);
+  background:
+    radial-gradient(circle at top right, rgba(15, 118, 110, 0.12), transparent 34%),
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.08), transparent 30%),
+    linear-gradient(180deg, var(--sc-panel) 0%, rgba(248, 250, 252, 0.98) 100%);
+  border-radius: 24px;
+  padding: 1rem;
+  border: 1px solid var(--sc-border);
+  box-shadow:
+    0 22px 52px rgba(15, 23, 42, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  margin-bottom: 1.4rem;
 }
 
-.fc-event {
+.schedule-calendar-wrapper .fc {
+  --fc-border-color: rgba(226, 232, 240, 0.85);
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: rgba(248, 250, 252, 0.75);
+  --fc-list-event-hover-bg-color: rgba(15, 118, 110, 0.08);
+  --fc-today-bg-color: rgba(15, 118, 110, 0.08);
+}
+
+.schedule-calendar-wrapper .fc-toolbar {
+  gap: 0.85rem;
+  margin-bottom: 0.95rem !important;
+}
+
+.schedule-calendar-wrapper .fc-toolbar-title {
+  font-size: clamp(1rem, 2vw, 1.18rem) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.schedule-calendar-wrapper .fc-button {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(203, 213, 225, 0.84) !important;
+  color: #0f4c5c !important;
+  font-size: 0.79rem !important;
+  font-weight: 700 !important;
+  border-radius: 999px !important;
+  padding: 0.52rem 0.86rem !important;
+  box-shadow: none !important;
+  transition: border-color 0.2s, color 0.2s, transform 0.2s;
+}
+
+.schedule-calendar-wrapper .fc-button:hover {
+  border-color: rgba(15, 118, 110, 0.3) !important;
+  color: #0f766e !important;
+  transform: translateY(-1px);
+}
+
+.schedule-calendar-wrapper .fc-button:focus-visible {
+  outline: 2px solid rgba(15, 118, 110, 0.42) !important;
+  outline-offset: 2px;
+}
+
+.schedule-calendar-wrapper .fc-button-active {
+  background: linear-gradient(135deg, var(--sc-accent) 0%, var(--sc-accent-strong) 100%) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 14px 28px rgba(15, 118, 110, 0.22) !important;
+}
+
+.schedule-calendar-wrapper .fc-col-header-cell-cushion,
+.schedule-calendar-wrapper .fc-daygrid-day-number,
+.schedule-calendar-wrapper .fc-timegrid-axis-cushion {
+  color: #475569;
+  font-weight: 600;
+}
+
+.schedule-calendar-wrapper .fc-daygrid-day-frame,
+.schedule-calendar-wrapper .fc-timegrid-slot {
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.schedule-calendar-wrapper .fc-timegrid-slot-label,
+.schedule-calendar-wrapper .fc-timegrid-axis {
+  color: #64748b;
+}
+
+.schedule-calendar-wrapper .fc-event {
   cursor: pointer !important;
-  border-radius: 4px !important;
-  font-size: 12px !important;
-  padding: 2px 4px !important;
+  border-radius: 10px !important;
+  font-size: 0.74rem !important;
+  padding: 0.24rem 0.42rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.26) !important;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.16);
 }
 
-.fc-toolbar-title {
-  font-size: 1rem !important;
-  font-weight: 600 !important;
+.schedule-calendar-wrapper .fc-event-main {
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-.fc-button {
-  background: #6E5B9A !important;
-  border-color: #6E5B9A !important;
-  font-size: 0.8rem !important;
+.schedule-calendar-wrapper .fc-event:hover {
+  filter: brightness(1.02);
 }
 
-.fc-button:hover {
-  background: #5a4a80 !important;
+@media (prefers-reduced-motion: no-preference) {
+  .schedule-calendar-wrapper .fc-button,
+  .schedule-calendar-wrapper .fc-event {
+    transition-duration: 220ms;
+  }
 }
 
-.fc-button-active {
-  background: #4a3a70 !important;
+@media (max-width: 768px) {
+  .schedule-calendar-wrapper {
+    padding: 0.72rem;
+    border-radius: 18px;
+  }
+
+  .schedule-calendar-wrapper .fc-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .schedule-calendar-wrapper .fc-toolbar-chunk {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .schedule-calendar-wrapper .fc-button {
+    font-size: 0.74rem !important;
+    padding: 0.5rem 0.74rem !important;
+  }
 }

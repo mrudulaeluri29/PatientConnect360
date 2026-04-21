@@ -152,7 +152,7 @@ export default function MessageCenter({ pendingConversation, onConversationOpene
     const otherName = otherParticipant?.user?.username || "Unknown";
 
     return (
-      <div className="mc-container">
+      <div className="mc-container mc-thread-view" data-role={user?.role?.toLowerCase() || "unknown"}>
         <div className="mc-thread-header">
           <button className="mc-back-btn" onClick={() => setSelectedConversation(null)}>← Back</button>
           <div className="mc-thread-info">
@@ -189,7 +189,7 @@ export default function MessageCenter({ pendingConversation, onConversationOpene
   const currentItems = activeFolder === "inbox" ? inbox : sent;
 
   return (
-    <div className="mc-container">
+    <div className="mc-container mc-list-view" data-role={user?.role?.toLowerCase() || "unknown"}>
       {error && <div className="mc-error">{error}</div>}
       <div className="mc-toolbar">
         <div className="mc-folder-tabs">
@@ -208,19 +208,27 @@ export default function MessageCenter({ pendingConversation, onConversationOpene
             const isInbox = activeFolder === "inbox";
             const inboxItem = item as InboxItem;
             const sentItem = item as SentItem;
+            const itemTitle = isInbox ? inboxItem.from || "Unknown" : `To: ${sentItem.to || "Unknown"}`;
             return (
-              <div key={item.id} className={`mc-item ${isInbox && inboxItem.unread ? "mc-unread" : ""}`}
-                onClick={() => openConversation(item.conversationId || item.id)}>
+              <button
+                key={item.id}
+                type="button"
+                className={`mc-item ${isInbox && inboxItem.unread ? "mc-unread" : ""}`}
+                onClick={() => {
+                  void openConversation(item.conversationId || item.id);
+                }}
+                aria-label={`${itemTitle}. ${item.subject || "No Subject"}`}
+              >
                 <div className="mc-item-left">
                   {isInbox && inboxItem.unread && <div className="mc-unread-dot" />}
                   <div>
-                    <div className="mc-item-from">{isInbox ? inboxItem.from || "Unknown" : `To: ${sentItem.to || "Unknown"}`}</div>
+                    <div className="mc-item-from">{itemTitle}</div>
                     <div className="mc-item-subject">{item.subject || "No Subject"}</div>
                     <div className="mc-item-preview">{item.preview}</div>
                   </div>
                 </div>
                 <div className="mc-item-time">{formatTime(item.time)}</div>
-              </div>
+              </button>
             );
           })
         )}

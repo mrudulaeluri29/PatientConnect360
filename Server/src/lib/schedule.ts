@@ -1,5 +1,12 @@
 // Feature 2 — Schedule aggregation helper
 import { prisma } from "../db";
+import {
+  dateTimeInTimeZoneToUtc,
+  dayKeyInTimeZone,
+  dayKeyToStoredAvailabilityDate,
+  getAvailabilityTimeZone,
+  timeZoneDayKeyToUtcRange,
+} from "../availabilityTime";
 
 export type ScheduleEventKind = "VISIT" | "PREP_TASK" | "AVAILABILITY_BLOCK";
 
@@ -31,6 +38,7 @@ export async function buildScheduleEvents(options: {
 }): Promise<ScheduleEvent[]> {
   const { userId, role, from, to, patientId, includeAvailability, includePrepTasks } = options;
   const events: ScheduleEvent[] = [];
+  const tz = getAvailabilityTimeZone();
 
   const dateFilter: any = {};
   if (from) dateFilter.gte = new Date(from);
@@ -145,8 +153,16 @@ export async function buildScheduleEvents(options: {
       role === "CLINICIAN"
         ? { clinicianId: userId, status: "APPROVED" }
         : { status: "APPROVED" };
-    if (Object.keys(dateFilter).length > 0) {
-      availWhere.date = dateFilter;
+    if (from || to) {
+      availWhere.date = {};
+      if (from) {
+        const fromDayKey = dayKeyInTimeZone(new Date(from), tz);
+        availWhere.date.gte = dayKeyToStoredAvailabilityDate(fromDayKey, tz);
+      }
+      if (to) {
+        const toDayKey = dayKeyInTimeZone(new Date(to), tz);
+        availWhere.date.lt = timeZoneDayKeyToUtcRange(toDayKey, tz).end;
+      }
     }
     const slots = await prisma.clinicianAvailability.findMany({
       where: availWhere,
@@ -155,9 +171,9 @@ export async function buildScheduleEvents(options: {
       },
     });
     for (const s of slots) {
-      const dateStr = s.date.toISOString().split("T")[0];
-      const slotStart = new Date(`${dateStr}T${s.startTime}:00`);
-      const slotEnd   = new Date(`${dateStr}T${s.endTime}:00`);
+      const dayKey = dayKeyInTimeZone(s.date, tz);
+      const slotStart = dateTimeInTimeZoneToUtc(dayKey, s.startTime, tz);
+      const slotEnd = dateTimeInTimeZoneToUtc(dayKey, s.endTime, tz);
       events.push({
         id: `avail-${s.id}`,
         kind: "AVAILABILITY_BLOCK",

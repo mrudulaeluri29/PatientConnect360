@@ -1,0 +1,47 @@
+.cg-surface-safety {
+  --cg-safety-accent: #b91c1c;
+}
+
+.cg-surface-safety .cg-alert-kpis {
+  margin-bottom: 1rem;
+}
+
+.cg-surface-safety .cg-safety-grid {
+  align-items: stretch;
+}
+
+.cg-surface-safety .cg-card.info {
+  border-top-color: #0f766e;
+  background:
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.13), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(236, 253, 245, 0.93) 100%);
+}
+
+.cg-surface-safety .cg-card.alerts {
+  border-top-color: var(--cg-safety-accent);
+  background:
+    radial-gradient(circle at top left, rgba(248, 113, 113, 0.14), transparent 35%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(254, 242, 242, 0.94) 100%);
+}
+
+.cg-surface-safety .cg-alert-feed-item {
+  border-radius: 14px;
+}
+
+.cg-surface-safety .cg-alert-feed-item.danger {
+  border-left: 4px solid #ef4444;
+}
+
+.cg-surface-safety .cg-alert-feed-item.warning {
+  border-left: 4px solid #f59e0b;
+}
+
+@media (max-width: 768px) {
+  .cg-surface-safety .cg-alert-feed-item {
+    flex-direction: column;
+  }
+
+  .cg-surface-safety .cg-alert-feed-actions {
+    width: 100%;
+  }
+}

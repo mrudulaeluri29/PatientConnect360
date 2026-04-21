@@ -104,10 +104,7 @@ async function checkApprovedAvailability(clinicianId, scheduledAt, durationMinut
         where: {
             clinicianId,
             status: "APPROVED",
-            date: {
-                gte: new Date(`${dayKey}T00:00:00.000Z`),
-                lt: new Date(`${dayKey}T23:59:59.999Z`),
-            },
+            date: (0, availabilityTime_1.dayKeyToStoredAvailabilityDate)(dayKey, tz),
         },
         select: { startTime: true, endTime: true },
     });

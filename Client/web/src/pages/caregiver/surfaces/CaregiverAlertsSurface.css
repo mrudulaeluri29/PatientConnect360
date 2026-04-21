@@ -1,0 +1,82 @@
+.cg-surface-alerts {
+  --cg-alert-accent: #b91c1c;
+  --cg-alert-warning: #b45309;
+}
+
+.cg-surface-alerts .cg-alert-kpis {
+  background:
+    radial-gradient(circle at top right, rgba(248, 113, 113, 0.16), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(254, 242, 242, 0.9) 100%);
+  border: 1px solid rgba(254, 202, 202, 0.8);
+  border-radius: 16px;
+  padding: 0.95rem;
+}
+
+.cg-surface-alerts .cg-alert-kpi {
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.cg-surface-alerts .cg-alert-toolbar {
+  padding: 0.72rem 0.8rem;
+  border-radius: 14px;
+  border: 1px solid rgba(254, 202, 202, 0.7);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.cg-surface-alerts .cg-filter-btn.active {
+  border-color: var(--cg-alert-accent);
+  color: var(--cg-alert-accent);
+  background: rgba(254, 226, 226, 0.85);
+}
+
+.cg-surface-alerts .cg-card.alerts {
+  border-top-color: var(--cg-alert-accent);
+  background:
+    radial-gradient(circle at top left, rgba(248, 113, 113, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(254, 242, 242, 0.92) 100%);
+}
+
+.cg-surface-alerts .cg-alert-feed-item {
+  border-radius: 14px;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cg-surface-alerts .cg-alert-feed-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
+}
+
+.cg-surface-alerts .cg-alert-feed-item.danger {
+  border-left: 4px solid #ef4444;
+  background: linear-gradient(135deg, rgba(254, 242, 242, 0.96) 0%, rgba(255, 255, 255, 0.95) 100%);
+}
+
+.cg-surface-alerts .cg-alert-feed-item.warning {
+  border-left: 4px solid #f59e0b;
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.96) 0%, rgba(255, 255, 255, 0.95) 100%);
+}
+
+.cg-surface-alerts .cg-alert-feed-actions {
+  align-self: center;
+}
+
+@media (max-width: 768px) {
+  .cg-surface-alerts .cg-alert-kpis {
+    padding: 0.7rem;
+  }
+
+  .cg-surface-alerts .cg-alert-toolbar {
+    padding: 0.65rem;
+  }
+
+  .cg-surface-alerts .cg-alert-feed-item {
+    flex-direction: column;
+  }
+
+  .cg-surface-alerts .cg-alert-feed-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

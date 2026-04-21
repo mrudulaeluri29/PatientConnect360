@@ -1,0 +1,34 @@
+.cg-surface-progress {
+  --cg-progress-accent: #0f766e;
+}
+
+.cg-surface-progress .cg-progress-hero {
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(153, 246, 228, 0.78);
+  background:
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.14), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(240, 253, 250, 0.91) 100%);
+}
+
+.cg-surface-progress .cg-progress-card {
+  border-top-color: var(--cg-progress-accent);
+}
+
+.cg-surface-progress .cg-progress-kpi--tile {
+  border-top: 3px solid rgba(15, 118, 110, 0.42);
+}
+
+.cg-surface-progress .cg-goal-item--interactive {
+  border-left: 3px solid rgba(15, 118, 110, 0.42);
+}
+
+.cg-surface-progress .cg-edu-tile-body {
+  border-left-color: #0f766e;
+}
+
+@media (max-width: 768px) {
+  .cg-surface-progress .cg-progress-hero {
+    padding: 0.75rem;
+  }
+}

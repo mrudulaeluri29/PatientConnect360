@@ -7,82 +7,70 @@ type Props = {
 };
 
 function statusLabel(status: "complete" | "attention" | "monitor") {
-  if (status === "complete") return { text: "Ready", background: "#dcfce7", color: "#166534" };
-  if (status === "attention") return { text: "Action needed", background: "#fee2e2", color: "#991b1b" };
-  return { text: "Monitor", background: "#fef3c7", color: "#92400e" };
+  if (status === "complete") return "ready";
+  if (status === "attention") return "attention";
+  return "monitor";
+}
+
+function statusText(status: "complete" | "attention" | "monitor") {
+  if (status === "complete") return "Ready";
+  if (status === "attention") return "Action needed";
+  return "Monitor";
 }
 
 export function PilotReadinessPanel({ data, loading, onNavigate }: Props) {
   if (loading) {
-    return <div style={{ padding: "1.25rem", color: "#6b7280" }}>Loading pilot readiness...</div>;
+    return <div className="admin-empty-state">Loading pilot readiness...</div>;
   }
 
   if (!data) {
     return (
-      <div className="report-card" style={{ padding: "1.25rem" }}>
+      <section className="report-card pilot-readiness-panel">
         <h3 className="card-title">Pilot Readiness</h3>
-        <p style={{ color: "#6b7280", margin: 0 }}>Pilot readiness data is unavailable right now.</p>
-      </div>
+        <p className="pilot-readiness-subtitle">Pilot readiness data is unavailable right now.</p>
+      </section>
     );
   }
 
   return (
-    <div className="report-card" style={{ padding: "1.25rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+    <section className="report-card pilot-readiness-panel">
+      <header className="pilot-readiness-header">
         <div>
-          <h3 className="card-title" style={{ marginBottom: "0.4rem" }}>Pilot Readiness</h3>
-          <p style={{ color: "#6b7280", margin: 0 }}>
-            {data.status === "ready" ? "Operationally ready for an agency pilot." : "A few setup items still need attention before launch."}
+          <h3 className="card-title">Pilot Readiness</h3>
+          <p className="pilot-readiness-subtitle">
+            {data.status === "ready"
+              ? "Operationally ready for an agency pilot."
+              : "A few setup items still need attention before launch."}
           </p>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: "2rem", fontWeight: 700, color: "#1f2937" }}>{data.readinessScore}%</div>
-          <div style={{ color: "#6b7280", fontSize: "0.9rem" }}>readiness score</div>
+        <div className="pilot-readiness-score">
+          <div className="pilot-readiness-score-value">{data.readinessScore}%</div>
+          <div className="pilot-readiness-score-label">readiness score</div>
         </div>
-      </div>
+      </header>
 
-      <div style={{ marginTop: "1rem", display: "grid", gap: "0.75rem" }}>
-        {data.checklist.map((item) => {
-          const badge = statusLabel(item.status);
-          return (
-            <div
-              key={item.id}
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 12,
-                padding: "0.9rem 1rem",
-                background: "white",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ fontWeight: 600, color: "#1f2937" }}>{item.label}</div>
-                  <div style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: 4 }}>{item.category}</div>
-                </div>
-                <span
-                  style={{
-                    padding: "0.3rem 0.65rem",
-                    borderRadius: 999,
-                    background: badge.background,
-                    color: badge.color,
-                    fontWeight: 600,
-                    fontSize: "0.8rem",
-                  }}
-                >
-                  {badge.text}
-                </span>
+      <div className="pilot-readiness-list">
+        {data.checklist.map((item) => (
+          <article className="pilot-readiness-item" key={item.id}>
+            <div className="pilot-readiness-item-header">
+              <div>
+                <div className="pilot-readiness-item-title">{item.label}</div>
+                <div className="pilot-readiness-item-category">{item.category}</div>
               </div>
-              <p style={{ margin: "0.6rem 0 0", color: "#4b5563" }}>{item.detail}</p>
+              <span className={`pilot-readiness-badge pilot-readiness-badge--${statusLabel(item.status)}`}>
+                {statusText(item.status)}
+              </span>
             </div>
-          );
-        })}
+            <p className="pilot-readiness-item-detail">{item.detail}</p>
+          </article>
+        ))}
       </div>
 
-      <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+      <div className="pilot-readiness-actions">
         <button className="btn-primary" onClick={() => onNavigate?.("settings")}>Open Settings</button>
         <button className="btn-secondary" onClick={() => onNavigate?.("assign")}>Review Assignments</button>
         <button className="btn-secondary" onClick={() => onNavigate?.("audit")}>Open Audit Log</button>
       </div>
-    </div>
+    </section>
   );
 }

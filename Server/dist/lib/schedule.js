@@ -3,9 +3,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildScheduleEvents = buildScheduleEvents;
 // Feature 2 — Schedule aggregation helper
 const db_1 = require("../db");
+const availabilityTime_1 = require("../availabilityTime");
 async function buildScheduleEvents(options) {
     const { userId, role, from, to, patientId, includeAvailability, includePrepTasks } = options;
     const events = [];
+    const tz = (0, availabilityTime_1.getAvailabilityTimeZone)();
     const dateFilter = {};
     if (from)
         dateFilter.gte = new Date(from);
@@ -111,8 +113,16 @@ async function buildScheduleEvents(options) {
         const availWhere = role === "CLINICIAN"
             ? { clinicianId: userId, status: "APPROVED" }
             : { status: "APPROVED" };
-        if (Object.keys(dateFilter).length > 0) {
-            availWhere.date = dateFilter;
+        if (from || to) {
+            availWhere.date = {};
+            if (from) {
+                const fromDayKey = (0, availabilityTime_1.dayKeyInTimeZone)(new Date(from), tz);
+                availWhere.date.gte = (0, availabilityTime_1.dayKeyToStoredAvailabilityDate)(fromDayKey, tz);
+            }
+            if (to) {
+                const toDayKey = (0, availabilityTime_1.dayKeyInTimeZone)(new Date(to), tz);
+                availWhere.date.lt = (0, availabilityTime_1.timeZoneDayKeyToUtcRange)(toDayKey, tz).end;
+            }
         }
         const slots = await db_1.prisma.clinicianAvailability.findMany({
             where: availWhere,
@@ -121,9 +131,9 @@ async function buildScheduleEvents(options) {
             },
         });
         for (const s of slots) {
-            const dateStr = s.date.toISOString().split("T")[0];
-            const slotStart = new Date(`${dateStr}T${s.startTime}:00`);
-            const slotEnd = new Date(`${dateStr}T${s.endTime}:00`);
+            const dayKey = (0, availabilityTime_1.dayKeyInTimeZone)(s.date, tz);
+            const slotStart = (0, availabilityTime_1.dateTimeInTimeZoneToUtc)(dayKey, s.startTime, tz);
+            const slotEnd = (0, availabilityTime_1.dateTimeInTimeZoneToUtc)(dayKey, s.endTime, tz);
             events.push({
                 id: `avail-${s.id}`,
                 kind: "AVAILABILITY_BLOCK",

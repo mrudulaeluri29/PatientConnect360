@@ -1,9 +1,17 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  Activity,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  CircleAlert,
+  ClipboardList,
+  Dumbbell,
+} from "lucide-react";
 import { getHEPAssignments, completeHEPAssignment, type ExerciseAssignment } from "../../api/hep";
 import { getVisitPrepTasks, updateVisitPrepTask, type VisitPrepTask } from "../../api/visitPrepTasks";
 import { api } from "../../lib/axios";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 interface Visit {
   id: string;
   scheduledAt: string;
@@ -12,6 +20,8 @@ interface Visit {
 }
 
 type PatientHEPSection = "exercises" | "prep";
+type MessageKind = "success" | "error";
+type InlineMessage = { kind: MessageKind; text: string };
 
 function getApiErrorMessage(err: unknown, fallback: string): string {
   if (typeof err === "object" && err !== null && "response" in err) {
@@ -24,36 +34,89 @@ function getApiErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-const PATIENT_HEP_SECTIONS: { key: PatientHEPSection; label: string }[] = [
-  { key: "exercises", label: "🏋️ My Home Exercises" },
-  { key: "prep", label: "📋 Visit Prep Tasks" },
+const PATIENT_HEP_SECTIONS: { key: PatientHEPSection; label: string; icon: typeof Dumbbell }[] = [
+  { key: "exercises", label: "My Home Exercises", icon: Dumbbell },
+  { key: "prep", label: "Visit Prep Tasks", icon: ClipboardList },
 ];
 
-// ─── Main Tab Component ───────────────────────────────────────────────────────
+function EmptyState({
+  icon,
+  message,
+}: {
+  icon: ReactNode;
+  message: string;
+}) {
+  return (
+    <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280", background: "#f9fafb", borderRadius: "12px" }}>
+      <div style={{ display: "inline-flex", marginBottom: "1rem", color: "#6E5B9A" }}>{icon}</div>
+      <p>{message}</p>
+    </div>
+  );
+}
+
+function InlineStatusMessage({ message }: { message: InlineMessage }) {
+  const isSuccess = message.kind === "success";
+
+  return (
+    <div
+      style={{
+        marginTop: "0.5rem",
+        padding: "0.65rem 0.75rem",
+        borderRadius: "8px",
+        background: isSuccess ? "#d1fae5" : "#fee2e2",
+        color: isSuccess ? "#065f46" : "#991b1b",
+        fontSize: "0.875rem",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.45rem",
+      }}
+    >
+      {isSuccess ? <CheckCircle2 size={16} strokeWidth={2} /> : <CircleAlert size={16} strokeWidth={2} />}
+      <span>{message.text}</span>
+    </div>
+  );
+}
+
+function MetricLine({ icon, text }: { icon: ReactNode; text: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+      <span style={{ display: "inline-flex", color: "#6E5B9A" }} aria-hidden="true">{icon}</span>
+      <span>{text}</span>
+    </span>
+  );
+}
+
 export default function PatientHEPTab() {
   const [activeSection, setActiveSection] = useState<PatientHEPSection>("exercises");
 
   return (
     <div style={{ padding: "1.5rem" }}>
-      {/* Section switcher */}
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0.5rem" }}>
-        {PATIENT_HEP_SECTIONS.map((s) => (
-          <button
-            key={s.key}
-            onClick={() => setActiveSection(s.key)}
-            style={{
-              padding: "0.5rem 1rem",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              fontWeight: activeSection === s.key ? 700 : 400,
-              background: activeSection === s.key ? "#6E5B9A" : "#f3f4f6",
-              color: activeSection === s.key ? "white" : "#374151",
-            }}
-          >
-            {s.label}
-          </button>
-        ))}
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0.5rem", flexWrap: "wrap" }}>
+        {PATIENT_HEP_SECTIONS.map((section) => {
+          const SectionIcon = section.icon;
+
+          return (
+            <button
+              key={section.key}
+              onClick={() => setActiveSection(section.key)}
+              style={{
+                padding: "0.55rem 1rem",
+                borderRadius: "10px",
+                border: "none",
+                cursor: "pointer",
+                fontWeight: activeSection === section.key ? 700 : 500,
+                background: activeSection === section.key ? "#6E5B9A" : "#f3f4f6",
+                color: activeSection === section.key ? "white" : "#374151",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.5rem",
+              }}
+            >
+              <SectionIcon size={16} strokeWidth={2} />
+              <span>{section.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {activeSection === "exercises" && <MyExercises />}
@@ -62,13 +125,12 @@ export default function PatientHEPTab() {
   );
 }
 
-// ─── 1. My Exercises ──────────────────────────────────────────────────────────
 function MyExercises() {
   const [assignments, setAssignments] = useState<ExerciseAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string | null>(null);
-  const [comment, setComment] = useState<{ [id: string]: string }>({});
-  const [message, setMessage] = useState<{ [id: string]: string }>({});
+  const [comment, setComment] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState<Record<string, InlineMessage | undefined>>({});
 
   useEffect(() => {
     async function load() {
@@ -81,23 +143,22 @@ function MyExercises() {
         setLoading(false);
       }
     }
-    load();
+    void load();
   }, []);
 
   const handleComplete = async (assignmentId: string) => {
     setCompleting(assignmentId);
     try {
       await completeHEPAssignment(assignmentId, comment[assignmentId] || "");
-      setMessage({ ...message, [assignmentId]: "✅ Logged successfully!" });
-      setComment({ ...comment, [assignmentId]: "" });
-      // Refresh
+      setMessage((prev) => ({ ...prev, [assignmentId]: { kind: "success", text: "Completion logged successfully." } }));
+      setComment((prev) => ({ ...prev, [assignmentId]: "" }));
       const data = await getHEPAssignments();
       setAssignments(data);
     } catch (err: unknown) {
-      setMessage({
-        ...message,
-        [assignmentId]: `❌ ${getApiErrorMessage(err, "Failed")}`,
-      });
+      setMessage((prev) => ({
+        ...prev,
+        [assignmentId]: { kind: "error", text: getApiErrorMessage(err, "Failed to log completion.") },
+      }));
     } finally {
       setCompleting(null);
     }
@@ -105,8 +166,8 @@ function MyExercises() {
 
   if (loading) return <p>Loading your exercises...</p>;
 
-  const active = assignments.filter((a) => a.status === "ACTIVE");
-  const others = assignments.filter((a) => a.status !== "ACTIVE");
+  const active = assignments.filter((assignment) => assignment.status === "ACTIVE");
+  const others = assignments.filter((assignment) => assignment.status !== "ACTIVE");
 
   return (
     <div>
@@ -116,51 +177,48 @@ function MyExercises() {
       </p>
 
       {assignments.length === 0 ? (
-        <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280", background: "#f9fafb", borderRadius: "12px" }}>
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🏋️</div>
-          <p>No exercises assigned yet. Your clinician will add them here.</p>
-        </div>
+        <EmptyState icon={<Dumbbell size={32} strokeWidth={1.8} />} message="No exercises assigned yet. Your clinician will add them here." />
       ) : (
         <>
-          {active.length > 0 && (
+          {active.length > 0 ? (
             <>
               <h3 style={{ color: "#374151", marginBottom: "1rem" }}>Active Exercises ({active.length})</h3>
-              {active.map((a) => (
+              {active.map((assignment) => (
                 <ExerciseCard
-                  key={a.id}
-                  assignment={a}
-                  comment={comment[a.id] || ""}
-                  onCommentChange={(val) => setComment({ ...comment, [a.id]: val })}
-                  onComplete={() => handleComplete(a.id)}
-                  completing={completing === a.id}
-                  message={message[a.id] || ""}
+                  key={assignment.id}
+                  assignment={assignment}
+                  comment={comment[assignment.id] || ""}
+                  onCommentChange={(val) => setComment((prev) => ({ ...prev, [assignment.id]: val }))}
+                  onComplete={() => void handleComplete(assignment.id)}
+                  completing={completing === assignment.id}
+                  message={message[assignment.id]}
                 />
               ))}
             </>
-          )}
-          {others.length > 0 && (
+          ) : null}
+
+          {others.length > 0 ? (
             <>
               <h3 style={{ color: "#6b7280", marginBottom: "1rem", marginTop: "2rem" }}>Past Exercises</h3>
-              {others.map((a) => (
+              {others.map((assignment) => (
                 <ExerciseCard
-                  key={a.id}
-                  assignment={a}
-                  comment={comment[a.id] || ""}
-                  onCommentChange={(val) => setComment({ ...comment, [a.id]: val })}
-                  onComplete={() => handleComplete(a.id)}
-                  completing={completing === a.id}
-                  message={message[a.id] || ""}
+                  key={assignment.id}
+                  assignment={assignment}
+                  comment={comment[assignment.id] || ""}
+                  onCommentChange={(val) => setComment((prev) => ({ ...prev, [assignment.id]: val }))}
+                  onComplete={() => void handleComplete(assignment.id)}
+                  completing={completing === assignment.id}
+                  message={message[assignment.id]}
                 />
               ))}
             </>
-          )}
+          ) : null}
         </>
       )}
     </div>
   );
 }
 
-// ─── Exercise Card ────────────────────────────────────────────────────────────
 function ExerciseCard({
   assignment,
   comment,
@@ -174,125 +232,110 @@ function ExerciseCard({
   onCommentChange: (val: string) => void;
   onComplete: () => void;
   completing: boolean;
-  message: string;
+  message?: InlineMessage;
 }) {
   const [showLog, setShowLog] = useState(false);
-
-  // Calculate this week's completions
   const now = new Date();
   const startOfWeek = new Date(now);
   startOfWeek.setDate(now.getDate() - now.getDay());
   startOfWeek.setHours(0, 0, 0, 0);
   const thisWeekCompletions = assignment.completions.filter(
-    (c) => new Date(c.completedAt) >= startOfWeek
+    (completion) => new Date(completion.completedAt) >= startOfWeek
   ).length;
-
   const adherence = Math.min(100, Math.round((thisWeekCompletions / assignment.frequencyPerWeek) * 100));
 
   return (
-    <div style={{
-      padding: "1.25rem",
-      marginBottom: "1rem",
-      borderRadius: "12px",
-      border: "1px solid #e5e7eb",
-      background: "white",
-      boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+    <div style={{ padding: "1.25rem", marginBottom: "1rem", borderRadius: "12px", border: "1px solid #e5e7eb", background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem", flexWrap: "wrap" }}>
             <span style={{ fontWeight: 700, fontSize: "1rem", color: "#374151" }}>{assignment.exercise.name}</span>
-            <span style={{
-              padding: "0.15rem 0.5rem", borderRadius: "9999px", fontSize: "0.7rem", fontWeight: 600,
-              background: assignment.status === "ACTIVE" ? "#d1fae5" : "#f3f4f6",
-              color: assignment.status === "ACTIVE" ? "#065f46" : "#6b7280",
-            }}>
+            <span
+              style={{
+                padding: "0.15rem 0.5rem",
+                borderRadius: "9999px",
+                fontSize: "0.7rem",
+                fontWeight: 600,
+                background: assignment.status === "ACTIVE" ? "#d1fae5" : "#f3f4f6",
+                color: assignment.status === "ACTIVE" ? "#065f46" : "#6b7280",
+              }}
+            >
               {assignment.status}
             </span>
           </div>
-          <p style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "0.75rem" }}>
-            {assignment.exercise.instructions}
-          </p>
-          <div style={{ display: "flex", gap: "1rem", fontSize: "0.8rem", color: "#6b7280" }}>
-            <span>📅 {assignment.frequencyPerWeek}x per week</span>
-            <span>✅ {thisWeekCompletions}/{assignment.frequencyPerWeek} this week</span>
-            <span>📊 {adherence}% adherence</span>
+          <p style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "0.75rem" }}>{assignment.exercise.instructions}</p>
+          <div style={{ display: "flex", gap: "1rem", fontSize: "0.8rem", color: "#6b7280", flexWrap: "wrap" }}>
+            <MetricLine icon={<CalendarDays size={14} strokeWidth={2} />} text={`${assignment.frequencyPerWeek}x per week`} />
+            <MetricLine icon={<CheckCircle2 size={14} strokeWidth={2} />} text={`${thisWeekCompletions}/${assignment.frequencyPerWeek} this week`} />
+            <MetricLine icon={<Activity size={14} strokeWidth={2} />} text={`${adherence}% adherence`} />
           </div>
 
-          {/* Adherence bar */}
           <div style={{ marginTop: "0.5rem", background: "#f3f4f6", borderRadius: "9999px", height: "6px", width: "200px" }}>
-            <div style={{
-              height: "6px", borderRadius: "9999px",
-              width: `${adherence}%`,
-              background: adherence >= 80 ? "#10b981" : adherence >= 50 ? "#f59e0b" : "#ef4444",
-            }} />
+            <div
+              style={{
+                height: "6px",
+                borderRadius: "9999px",
+                width: `${adherence}%`,
+                background: adherence >= 80 ? "#10b981" : adherence >= 50 ? "#f59e0b" : "#ef4444",
+              }}
+            />
           </div>
         </div>
 
-        {assignment.status === "ACTIVE" && (
+        {assignment.status === "ACTIVE" ? (
           <button
-            onClick={() => setShowLog(!showLog)}
-            style={{
-              padding: "0.5rem 1rem", borderRadius: "8px", border: "none",
-              background: "#6E5B9A", color: "white", cursor: "pointer", fontWeight: 600,
-              whiteSpace: "nowrap",
-            }}
+            onClick={() => setShowLog((current) => !current)}
+            style={{ padding: "0.5rem 1rem", borderRadius: "8px", border: "none", background: "#6E5B9A", color: "white", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}
           >
-            Log Completion
+            Log completion
           </button>
-        )}
+        ) : null}
       </div>
 
-      {/* Log completion form */}
-      {showLog && (
+      {showLog ? (
         <div style={{ marginTop: "1rem", padding: "1rem", background: "#f9fafb", borderRadius: "8px" }}>
           <input
             type="text"
             value={comment}
             onChange={(e) => onCommentChange(e.target.value)}
-            placeholder="Optional comment (e.g. felt good, mild pain)"
+            placeholder="Optional comment"
             style={{ width: "100%", padding: "0.5rem", borderRadius: "8px", border: "1px solid #e5e7eb", marginBottom: "0.5rem" }}
           />
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button
               onClick={onComplete}
               disabled={completing}
-              style={{ padding: "0.5rem 1rem", borderRadius: "8px", border: "none", background: "#10b981", color: "white", cursor: "pointer", fontWeight: 600 }}
+              style={{ padding: "0.5rem 1rem", borderRadius: "8px", border: "none", background: "#10b981", color: "white", cursor: "pointer", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "0.4rem" }}
             >
-              {completing ? "Logging..." : "✅ Mark Done"}
+              <CheckCircle2 size={16} strokeWidth={2} />
+              <span>{completing ? "Logging..." : "Mark done"}</span>
             </button>
-            <button
-              onClick={() => setShowLog(false)}
-              style={{ padding: "0.5rem 1rem", borderRadius: "8px", border: "1px solid #e5e7eb", background: "white", cursor: "pointer" }}
-            >
+            <button onClick={() => setShowLog(false)} style={{ padding: "0.5rem 1rem", borderRadius: "8px", border: "1px solid #e5e7eb", background: "white", cursor: "pointer" }}>
               Cancel
             </button>
           </div>
-          {message && (
-            <div style={{ marginTop: "0.5rem", padding: "0.5rem", borderRadius: "8px", background: message.includes("✅") ? "#d1fae5" : "#fee2e2", color: message.includes("✅") ? "#065f46" : "#991b1b", fontSize: "0.875rem" }}>
-              {message}
-            </div>
-          )}
+          {message ? <InlineStatusMessage message={message} /> : null}
         </div>
-      )}
+      ) : null}
 
-      {/* Recent completions */}
-      {assignment.completions.length > 0 && (
+      {assignment.completions.length > 0 ? (
         <div style={{ marginTop: "0.75rem", borderTop: "1px solid #f3f4f6", paddingTop: "0.75rem" }}>
-          <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem" }}>Recent completions:</div>
-          {assignment.completions.slice(0, 3).map((c) => (
-            <div key={c.id} style={{ fontSize: "0.75rem", color: "#6b7280", display: "flex", gap: "0.5rem" }}>
-              <span>✅ {new Date(c.completedAt).toLocaleDateString()}</span>
-              {c.comment && <span>— {c.comment}</span>}
+          <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.25rem", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            Recent completions
+          </div>
+          {assignment.completions.slice(0, 3).map((completion) => (
+            <div key={completion.id} style={{ fontSize: "0.75rem", color: "#6b7280", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <CheckCircle2 size={14} strokeWidth={2} color="#10b981" />
+              <span>{new Date(completion.completedAt).toLocaleDateString()}</span>
+              {completion.comment ? <span>- {completion.comment}</span> : null}
             </div>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
-// ─── 2. My Prep Tasks ─────────────────────────────────────────────────────────
 function MyPrepTasks() {
   const [visits, setVisits] = useState<Visit[]>([]);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
@@ -306,7 +349,7 @@ function MyPrepTasks() {
       try {
         const res = await api.get("/api/visits");
         const upcoming = (res.data.visits || []).filter(
-          (v: Visit) => !["COMPLETED", "CANCELLED", "MISSED", "REJECTED"].includes(v.status)
+          (visit: Visit) => !["COMPLETED", "CANCELLED", "MISSED", "REJECTED"].includes(visit.status)
         );
         setVisits(upcoming);
         if (upcoming.length > 0) {
@@ -320,7 +363,7 @@ function MyPrepTasks() {
         setLoading(false);
       }
     }
-    load();
+    void load();
   }, []);
 
   const handleSelectVisit = async (visit: Visit) => {
@@ -352,7 +395,7 @@ function MyPrepTasks() {
 
   if (loading) return <p>Loading prep tasks...</p>;
 
-  const doneTasks = tasks.filter((t) => t.isDone).length;
+  const doneTasks = tasks.filter((task) => task.isDone).length;
 
   return (
     <div>
@@ -362,119 +405,110 @@ function MyPrepTasks() {
       </p>
 
       {visits.length === 0 ? (
-        <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280", background: "#f9fafb", borderRadius: "12px" }}>
-          <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>📋</div>
-          <p>No upcoming visits found.</p>
-        </div>
+        <EmptyState icon={<ClipboardList size={32} strokeWidth={1.8} />} message="No upcoming visits found." />
       ) : (
         <div style={{ display: "flex", gap: "1.5rem" }}>
-          {/* Visit selector */}
           <div style={{ width: "250px", flexShrink: 0 }}>
             <h3 style={{ marginBottom: "0.75rem", fontSize: "0.875rem", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>Your Visits</h3>
-            {visits.map((v) => (
+            {visits.map((visit) => (
               <div
-                key={v.id}
-                onClick={() => handleSelectVisit(v)}
+                key={visit.id}
+                onClick={() => void handleSelectVisit(visit)}
                 style={{
                   padding: "0.75rem",
                   marginBottom: "0.5rem",
                   borderRadius: "8px",
-                  border: `2px solid ${selectedVisit?.id === v.id ? "#6E5B9A" : "#e5e7eb"}`,
+                  border: `2px solid ${selectedVisit?.id === visit.id ? "#6E5B9A" : "#e5e7eb"}`,
                   cursor: "pointer",
-                  background: selectedVisit?.id === v.id ? "#f5f3ff" : "white",
+                  background: selectedVisit?.id === visit.id ? "#f5f3ff" : "white",
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>
-                  {new Date(v.scheduledAt).toLocaleDateString()}
-                </div>
-                <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>{v.status}</div>
+                <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>{new Date(visit.scheduledAt).toLocaleDateString()}</div>
+                <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>{visit.status}</div>
               </div>
             ))}
           </div>
 
-          {/* Tasks */}
           <div style={{ flex: 1 }}>
-            {selectedVisit && (
+            {selectedVisit ? (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                  <h3 style={{ color: "#374151" }}>
-                    Tasks for {new Date(selectedVisit.scheduledAt).toLocaleDateString()}
-                  </h3>
-                  {tasks.length > 0 && (
-                    <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>
-                      {doneTasks}/{tasks.length} completed
-                    </span>
-                  )}
+                  <h3 style={{ color: "#374151" }}>Tasks for {new Date(selectedVisit.scheduledAt).toLocaleDateString()}</h3>
+                  {tasks.length > 0 ? <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>{doneTasks}/{tasks.length} completed</span> : null}
                 </div>
 
-                {error && (
-                  <div style={{ marginBottom: "1rem", padding: "0.75rem", borderRadius: "8px", background: "#fee2e2", color: "#991b1b", fontSize: "0.875rem" }}>
-                    {error}
-                  </div>
-                )}
+                {error ? <InlineStatusMessage message={{ kind: "error", text: error }} /> : null}
 
-                {/* Progress bar */}
-                {tasks.length > 0 && (
-                  <div style={{ background: "#f3f4f6", borderRadius: "9999px", height: "8px", marginBottom: "1.5rem" }}>
-                    <div style={{
-                      height: "8px", borderRadius: "9999px",
-                      width: `${Math.round((doneTasks / tasks.length) * 100)}%`,
-                      background: "#6E5B9A",
-                      transition: "width 0.3s ease",
-                    }} />
+                {tasks.length > 0 ? (
+                  <div style={{ background: "#f3f4f6", borderRadius: "9999px", height: "8px", margin: error ? "1rem 0 1.5rem" : "0 0 1.5rem" }}>
+                    <div
+                      style={{
+                        height: "8px",
+                        borderRadius: "9999px",
+                        width: `${Math.round((doneTasks / tasks.length) * 100)}%`,
+                        background: "#6E5B9A",
+                        transition: "width 0.3s ease",
+                      }}
+                    />
                   </div>
-                )}
+                ) : null}
 
                 {tasks.length === 0 ? (
                   <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280", background: "#f9fafb", borderRadius: "12px" }}>
                     No prep tasks for this visit yet.
                   </div>
                 ) : (
-                  tasks.map((t) => (
+                  tasks.map((task) => (
                     <div
-                      key={t.id}
+                      key={task.id}
                       style={{
-                        display: "flex", alignItems: "center", gap: "1rem",
-                        padding: "1rem", marginBottom: "0.5rem",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "1rem",
+                        padding: "1rem",
+                        marginBottom: "0.5rem",
                         borderRadius: "10px",
-                        border: `1px solid ${t.isDone ? "#a7f3d0" : "#e5e7eb"}`,
-                        background: t.isDone ? "#f0fdf4" : "white",
+                        border: `1px solid ${task.isDone ? "#a7f3d0" : "#e5e7eb"}`,
+                        background: task.isDone ? "#f0fdf4" : "white",
                         transition: "all 0.2s ease",
                       }}
                     >
                       <button
-                        onClick={() => handleToggleDone(t)}
-                        disabled={toggling === t.id}
+                        onClick={() => void handleToggleDone(task)}
+                        disabled={toggling === task.id}
                         style={{
-                          width: "28px", height: "28px", borderRadius: "50%",
-                          border: `2px solid ${t.isDone ? "#10b981" : "#d1d5db"}`,
-                          background: t.isDone ? "#10b981" : "white",
-                          cursor: "pointer", flexShrink: 0,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          color: "white", fontWeight: 700,
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "50%",
+                          border: `2px solid ${task.isDone ? "#10b981" : "#d1d5db"}`,
+                          background: task.isDone ? "#10b981" : "white",
+                          cursor: "pointer",
+                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "white",
                         }}
+                        aria-label={task.isDone ? "Mark task as not done" : "Mark task as done"}
                       >
-                        {t.isDone ? "✓" : ""}
+                        {task.isDone ? <Check size={14} strokeWidth={3} /> : null}
                       </button>
                       <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontWeight: 500,
-                          color: t.isDone ? "#6b7280" : "#374151",
-                          textDecoration: t.isDone ? "line-through" : "none",
-                        }}>
-                          {t.text}
+                        <div style={{ fontWeight: 500, color: task.isDone ? "#6b7280" : "#374151", textDecoration: task.isDone ? "line-through" : "none" }}>
+                          {task.text}
                         </div>
-                        {t.isDone && t.doneByUser && (
-                          <div style={{ fontSize: "0.75rem", color: "#10b981" }}>
-                            ✅ Done by {t.doneByUser.username}
+                        {task.isDone && task.doneByUser ? (
+                          <div style={{ fontSize: "0.75rem", color: "#10b981", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                            <CheckCircle2 size={14} strokeWidth={2} />
+                            <span>Done by {task.doneByUser.username}</span>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   ))
                 )}
               </>
-            )}
+            ) : null}
           </div>
         </div>
       )}

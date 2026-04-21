@@ -1,0 +1,65 @@
+.cg-surface-medications {
+  --cg-med-accent: #0f766e;
+}
+
+.cg-surface-medications .cg-kpi-row {
+  background:
+    radial-gradient(circle at top left, rgba(45, 212, 191, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(240, 253, 250, 0.9) 100%);
+  border: 1px solid rgba(153, 246, 228, 0.8);
+  border-radius: 16px;
+  padding: 0.85rem;
+}
+
+.cg-surface-medications .cg-kpi-card {
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.cg-surface-medications .cg-med-toolbar {
+  border: 1px solid rgba(153, 246, 228, 0.75);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 0.65rem 0.8rem;
+}
+
+.cg-surface-medications .cg-card.meds {
+  border-top-color: var(--cg-med-accent);
+  background:
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.13), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(240, 253, 250, 0.93) 100%);
+}
+
+.cg-surface-medications .cg-med-item {
+  border-radius: 12px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.05);
+}
+
+.cg-surface-medications .cg-med-item.high-risk {
+  border-left: 4px solid #ef4444;
+}
+
+.cg-surface-medications .cg-med-item.changed {
+  border-left: 4px solid #f59e0b;
+}
+
+.cg-surface-medications .cg-card.info {
+  border-top-color: #2563eb;
+}
+
+@media (max-width: 768px) {
+  .cg-surface-medications .cg-kpi-row {
+    padding: 0.65rem;
+  }
+
+  .cg-surface-medications .cg-med-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.7rem;
+  }
+
+  .cg-surface-medications .cg-med-side {
+    width: 100%;
+    align-items: flex-start;
+  }
+}
