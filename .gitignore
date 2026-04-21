@@ -1,5 +1,40 @@
-# dependencies
+# Dependencies
 node_modules/
+
+# Build outputs and caches
+dist/
+dist-ssr/
+build/
+coverage/
+.cache/
+.turbo/
+.eslintcache
+*.tsbuildinfo
+
+# Environment and local-only config
+.env
+.env.local
+.env.*.local
+*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor / IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.iml
 
 # OS files
 .DS_Store
@@ -7,17 +42,27 @@ node_modules/
 ._*
 .Spotlight-V100
 .Trashes
+Thumbs.db
+Desktop.ini
 
-# Environment variables
-.env
-.env.local
-.env.*.local
+# Hosting / tooling state
+.vercel/
 
-# IDE/workspace-local config
-.vscode/
+# Mobile / Expo / native build artifacts
+.expo/
+web-build/
+.gradle/
+.cxx/
+DerivedData/
+xcuserdata/
+local.properties
+*.hprof
+*.keystore
+*.jsbundle
+
+# Generated Prisma client output
+Server/src/generated/prisma/
 
 # Local helper/test scripts generated during development
 Server/seed_phase*.js
 Server/test_*.ps1
-
-
