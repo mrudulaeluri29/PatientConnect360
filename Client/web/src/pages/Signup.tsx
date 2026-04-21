@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
+import { CalendarClock, FileText, MessageSquare, ShieldCheck } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { validatePassword, validateEmail, validateUsername } from "../utils/validation";
 import { sendOtp } from "../api/auth";
 import { ONBOARDING_CONSENTS, DEFAULT_COMM_PREFS } from "../api/onboarding";
 import type { CommPrefs } from "../api/onboarding";
+import { useAgencyBranding } from "../branding/AgencyBranding";
+import AuthRouteLink from "../components/auth/AuthRouteLink";
+import AuthShell from "../components/auth/AuthShell";
+import { navigateWithViewTransition } from "../components/auth/authMotion";
 import ConsentSection from "../components/ConsentSection";
 import CommPreferences from "../components/CommPreferences";
 import AddressAutocomplete from "../components/AddressAutocomplete";
@@ -40,6 +45,7 @@ export default function Signup() {
   });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { settings } = useAgencyBranding();
 
   // Feature 1: Consent and communication preferences state
   const [consentState, setConsentState] = useState<Record<string, boolean>>({});
@@ -225,7 +231,7 @@ export default function Signup() {
       } as any);
 
       // Navigate to OTP verification page
-      navigate("/verify-email", { state: { email: formData.email, role: "PATIENT" } });
+      navigateWithViewTransition(navigate, "/verify-email", { state: { email: formData.email, role: "PATIENT" } });
     } catch (err: unknown) {
       let msg = "Registration failed. Please try again.";
       if (err && typeof err === "object" && "response" in err) {
@@ -241,48 +247,46 @@ export default function Signup() {
   };
 
   return (
-    <div className="signup-page">
-      <div className="signup-container">
-        <div className="signup-left">
-          <div className="signup-branding">
-            <div className="brand-logo">
-              <span className="logo-text">MediHealth</span>
-            </div>
-            <h1 className="signup-title">Patient Registration</h1>
-            <p className="signup-subtitle">
-              Join MediHealth to manage your health, connect with your care team, and access your medical records
-            </p>
-          </div>
-          
-          <div className="signup-features">
-            <div className="feature-item">
-              <span>Secure & HIPAA Compliant</span>
-            </div>
-            <div className="feature-item">
-              <span>24/7 Access to Records</span>
-            </div>
-            <div className="feature-item">
-              <span>Connect with Care Team</span>
-            </div>
-            <div className="feature-item">
-              <span>Manage Appointments</span>
-            </div>
-          </div>
+    <AuthShell
+      theme="patient"
+      utility={<AuthRouteLink to="/login" className="auth-utility-link">Already registered?</AuthRouteLink>}
+      visualKicker="Patient onboarding"
+      visualTitle="A care portal that begins with clarity, not paperwork fatigue."
+      visualSubtitle={`Create your ${settings.portalName} account with a guided, secure registration flow built for real patients and family-supported care.`}
+      visualTags={["Records", "Scheduling", "Messages", "Recovery"]}
+      quote={{
+        author: "Leah Monroe",
+        handle: "Post-discharge patient",
+        body: "It feels calm and premium, but nothing important is hidden. You always know what the next step is.",
+      }}
+    >
+      <div className="auth-intro" style={{ viewTransitionName: "auth-form-intro" }}>
+        <div className="login-form-proof">
+          <ShieldCheck size={15} strokeWidth={2.3} />
+          Identity-secure patient onboarding
         </div>
+        <h2 className="form-title">Create your patient account</h2>
+        <p className="form-subtitle">Set up secure access to scheduling, communication, records, and recovery progress in one place.</p>
+        <div className="login-features">
+          <div className="feature-item"><span className="feature-icon" aria-hidden="true"><CalendarClock size={16} strokeWidth={2.2} /></span><span>Manage appointments and reminders</span></div>
+          <div className="feature-item"><span className="feature-icon" aria-hidden="true"><MessageSquare size={16} strokeWidth={2.2} /></span><span>Stay connected to your care team</span></div>
+          <div className="feature-item"><span className="feature-icon" aria-hidden="true"><FileText size={16} strokeWidth={2.2} /></span><span>Keep records and pharmacy details in sync</span></div>
+        </div>
+      </div>
 
-        <div className="signup-right">
-          <div className="signup-form-container">
-            <h2 className="form-title">Sign Up</h2>
-            <p className="form-subtitle">Create your patient account</p>
+      {errors.submit && (
+        <div className="error-message">
+          <span>{errors.submit}</span>
+        </div>
+      )}
 
-            {errors.submit && (
-              <div className="error-message">
-                <span>{errors.submit}</span>
+      <form onSubmit={handleSubmit} className="signup-form" style={{ viewTransitionName: "auth-primary-form" }}>
+              <div className="auth-section-heading">
+                <span className="auth-section-heading__eyebrow">Identity</span>
+                <p className="auth-section-heading__title">Account basics</p>
+                <p className="auth-section-heading__copy">Start with the login credentials you will use for future access.</p>
               </div>
-            )}
 
-            <form onSubmit={handleSubmit} className="signup-form">
-              {/* Basic Fields */}
               <div className="form-group">
                 <label htmlFor="email">Email *</label>
                 <input
@@ -292,6 +296,7 @@ export default function Signup() {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="Enter your email"
+                  autoComplete="email"
                   required
                   disabled={loading}
                   className={errors.email ? "error" : ""}
@@ -308,6 +313,7 @@ export default function Signup() {
                   value={formData.username}
                   onChange={handleChange}
                   placeholder="Choose a username"
+                  autoComplete="username"
                   required
                   disabled={loading}
                   className={errors.username ? "error" : ""}
@@ -315,7 +321,12 @@ export default function Signup() {
                 {errors.username && <span className="field-error">{errors.username}</span>}
               </div>
 
-              {/* Patient-Specific Fields */}
+              <div className="auth-section-heading">
+                <span className="auth-section-heading__eyebrow">Patient profile</span>
+                <p className="auth-section-heading__title">Care identity</p>
+                <p className="auth-section-heading__copy">These details anchor your records, pharmacy data, and home-health coordination.</p>
+              </div>
+
               <div className="form-group">
                 <label htmlFor="legalName">Legal Name *</label>
                 <input
@@ -324,10 +335,11 @@ export default function Signup() {
                   name="legalName"
                   value={formData.legalName}
                   onChange={handleChange}
-                  placeholder="John Doe"
-                  required
-                  disabled={loading}
-                  className={errors.legalName ? "error" : ""}
+                    placeholder="John Doe"
+                    autoComplete="name"
+                    required
+                    disabled={loading}
+                    className={errors.legalName ? "error" : ""}
                 />
                 {errors.legalName && <span className="field-error">{errors.legalName}</span>}
               </div>
@@ -346,10 +358,11 @@ export default function Signup() {
                   yearDropdownItemNumber={100}
                   scrollableYearDropdown
                   className={errors.dateOfBirth ? "date-picker error" : "date-picker"}
-                  disabled={loading}
-                  required
-                  wrapperClassName="date-picker-wrapper"
-                />
+                    disabled={loading}
+                    required
+                    wrapperClassName="date-picker-wrapper"
+                    autoComplete="bday"
+                  />
                 {errors.dateOfBirth && <span className="field-error">{errors.dateOfBirth}</span>}
               </div>
 
@@ -362,12 +375,19 @@ export default function Signup() {
                   value={formData.phoneNumber}
                   onChange={handlePhoneChange("phoneNumber")}
                   placeholder="(555) 123-4567"
+                  autoComplete="tel"
                   required
                   disabled={loading}
                   className={errors.phoneNumber ? "error" : ""}
                   maxLength={14}
                 />
                 {errors.phoneNumber && <span className="field-error">{errors.phoneNumber}</span>}
+              </div>
+
+              <div className="auth-section-heading">
+                <span className="auth-section-heading__eyebrow">Coverage</span>
+                <p className="auth-section-heading__title">Insurance and pharmacy</p>
+                <p className="auth-section-heading__copy">Keep care delivery coordinated by capturing coverage and preferred fill location up front.</p>
               </div>
 
               <div className="form-group">
@@ -447,12 +467,19 @@ export default function Signup() {
                 {errors.pharmacyPhoneNumber && <span className="field-error">{errors.pharmacyPhoneNumber}</span>}
               </div>
 
+              <div className="auth-section-heading">
+                <span className="auth-section-heading__eyebrow">Residence</span>
+                <p className="auth-section-heading__title">Home details and documentation</p>
+                <p className="auth-section-heading__copy">These fields support home-visit logistics and make uploaded records easy to associate later.</p>
+              </div>
+
               <div className="form-group">
                 <label htmlFor="homeAddress">Home Address *</label>
                 <AddressAutocomplete
                   value={formData.homeAddress}
                   onChange={handleAddressChange("homeAddress")}
                   placeholder="Start typing your home address..."
+                  autoComplete="street-address"
                   error={errors.homeAddress}
                   disabled={loading}
                 />
@@ -468,6 +495,7 @@ export default function Signup() {
                   value={formData.apartmentSuite}
                   onChange={handleChange}
                   placeholder="Apt 4B"
+                  autoComplete="address-line2"
                   disabled={loading}
                 />
               </div>
@@ -481,6 +509,12 @@ export default function Signup() {
                 />
               </div>
 
+              <div className="auth-section-heading">
+                <span className="auth-section-heading__eyebrow">Security</span>
+                <p className="auth-section-heading__title">Protect your account</p>
+                <p className="auth-section-heading__copy">Use a strong password before you verify your email and activate the account.</p>
+              </div>
+
               <div className="form-group">
                 <label htmlFor="password">Password *</label>
                 <div className="password-input-wrapper">
@@ -491,6 +525,7 @@ export default function Signup() {
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="Create a password"
+                    autoComplete="new-password"
                     required
                     disabled={loading}
                     className={errors.password ? "error" : ""}
@@ -547,6 +582,7 @@ export default function Signup() {
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     placeholder="Confirm your password"
+                    autoComplete="new-password"
                     required
                     disabled={loading}
                     className={errors.confirmPassword ? "error" : ""}
@@ -574,11 +610,15 @@ export default function Signup() {
                 {errors.confirmPassword && <span className="field-error">{errors.confirmPassword}</span>}
               </div>
 
-              {/* Feature 1: Consent Section */}
+              <div className="auth-section-heading">
+                <span className="auth-section-heading__eyebrow">Permissions</span>
+                <p className="auth-section-heading__title">Agreements and alerts</p>
+                <p className="auth-section-heading__copy">Finish by confirming required acknowledgments and choosing how you want updates delivered.</p>
+              </div>
+
               <ConsentSection consents={ONBOARDING_CONSENTS} onChange={setConsentState} disabled={loading} />
               {errors.consents && <span className="field-error">{errors.consents}</span>}
 
-              {/* Feature 1: Communication Preferences */}
               <CommPreferences value={commPrefs} onChange={setCommPrefs} disabled={loading} />
 
               <button
@@ -588,18 +628,17 @@ export default function Signup() {
               >
                 {loading ? "Creating account..." : "Create Account"}
               </button>
-            </form>
+      </form>
 
-            <div className="signup-divider">
-              <span>Already have an account?</span>
-            </div>
-
-            <Link to="/login" className="btn-login-link">
-              Sign In
-            </Link>
-          </div>
+      <div className="auth-form-footer">
+        <div className="signup-divider">
+          <span>Already have an account?</span>
         </div>
+
+        <AuthRouteLink to="/login" className="btn-login-link">
+          Sign In
+        </AuthRouteLink>
       </div>
-    </div>
+    </AuthShell>
   );
 }

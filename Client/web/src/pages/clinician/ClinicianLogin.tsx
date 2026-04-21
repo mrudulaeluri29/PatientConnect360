@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
+import { CalendarClock, FileText, MessageSquare, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { useAgencyBranding } from "../../branding/AgencyBranding";
+import AuthRouteLink from "../../components/auth/AuthRouteLink";
+import AuthShell from "../../components/auth/AuthShell";
+import { navigateWithViewTransition } from "../../components/auth/authMotion";
 import "../Login.css";
 
 export default function ClinicianLogin() {
@@ -32,7 +36,7 @@ export default function ClinicianLogin() {
       }
       
       // User is clinician, navigate to dashboard
-      navigate('/clinician/dashboard');
+      navigateWithViewTransition(navigate, '/clinician/dashboard');
     } catch (err: unknown) {
       setError((err instanceof Error ? err.message : null) || "Invalid credentials. Please try again.");
       setLoading(false);
@@ -40,138 +44,99 @@ export default function ClinicianLogin() {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-container">
-        <div className="login-left">
-            <div className="login-branding">
-              <div className="brand-logo">
-                {settings.logoUrl ? (
-                  <img src={settings.logoUrl} alt={settings.portalName} style={{ width: 42, height: 42, objectFit: "contain", borderRadius: 10 }} />
-                ) : null}
-                <span className="logo-text">{settings.portalName}</span>
-              </div>
-            <h1 className="login-title">Clinician Portal</h1>
-            <p className="login-subtitle">
-              Access your clinician dashboard to manage patient visits, communications, and care plans
-            </p>
-          </div>
-          
-          <div className="login-features">
-            <div className="feature-item">
-              <span>Patient Visits Management</span>
-            </div>
-            <div className="feature-item">
-              <span>Secure Communication</span>
-            </div>
-            <div className="feature-item">
-              <span>AI-Powered Assistance</span>
-            </div>
-            <div className="feature-item">
-              <span>Care Plan Tracking</span>
-            </div>
-          </div>
+    <AuthShell
+      theme="clinician"
+      utility={<AuthRouteLink to="/login" className="auth-utility-link">Shared sign-in</AuthRouteLink>}
+      visualKicker="Clinical readiness"
+      visualTitle="Fast, legible, always ready for the next visit."
+      visualSubtitle={`Access ${settings.portalName} with a flow designed for clinicians who need calm precision before the day accelerates.`}
+      visualTags={["Visits", "Documentation", "Messaging", "Plans"]}
+      quote={{
+        author: "Dr. Maya Ellison",
+        handle: "Field clinician",
+        body: "The sign-in feels quiet and premium. You get in, reorient instantly, and move straight into the work.",
+      }}
+    >
+      <div className="auth-intro" style={{ viewTransitionName: "auth-form-intro" }}>
+        <div className="login-form-proof">
+          <ShieldCheck size={15} strokeWidth={2.3} />
+          Protected clinician access
         </div>
-
-        <div className="login-right">
-          <div className="login-form-container">
-            <h2 className="form-title">Clinician Sign In</h2>
-            <p className="form-subtitle">Enter your credentials to access your dashboard</p>
-
-            {error && (
-              <div className="error-message">
-                <span>{error}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="login-form">
-              <div className="form-group">
-                <label htmlFor="emailOrUsername">Email or Username</label>
-                <input
-                  type="text"
-                  id="emailOrUsername"
-                  value={emailOrUsername}
-                  onChange={(e) => setEmailOrUsername(e.target.value)}
-                  placeholder="Enter your email or username"
-                  required
-                  disabled={loading}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="password">Password</label>
-                <div className="password-input-wrapper">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    id="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    required
-                    disabled={loading}
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                        <line x1="1" y1="1" x2="23" y2="23"></line>
-                      </svg>
-                    ) : (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div className="form-options">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                  />
-                  <span>Remember me</span>
-                </label>
-                <Link to="/forgot-password" className="forgot-password">
-                  Forgot password?
-                </Link>
-              </div>
-
-              <button
-                type="submit"
-                className="btn-login-submit"
-                disabled={loading}
-                style={{ backgroundColor: settings.primaryColor }}
-              >
-                {loading ? "Signing in..." : "Sign In as Clinician"}
-              </button>
-            </form>
-
-            <div className="login-divider">
-              <span>Don't have a clinician account?</span>
-            </div>
-
-            <Link to="/register/clinician" className="btn-signup-link">
-              Register as Clinician
-            </Link>
-
-            <div className="role-info" style={{ marginTop: "1.5rem" }}>
-              <Link to="/" style={{ color: settings.primaryColor, textDecoration: "none", fontWeight: "500" }}>
-                ← Back to Homepage
-              </Link>
-            </div>
-          </div>
+        <h2 className="form-title">Clinician sign in</h2>
+        <p className="form-subtitle">Enter your credentials to access schedules, documentation, messages, and patient care plans.</p>
+        <div className="login-features">
+          <div className="feature-item"><span className="feature-icon" aria-hidden="true"><CalendarClock size={16} strokeWidth={2.2} /></span><span>Visits and workload at a glance</span></div>
+          <div className="feature-item"><span className="feature-icon" aria-hidden="true"><MessageSquare size={16} strokeWidth={2.2} /></span><span>Secure communication with patients and caregivers</span></div>
+          <div className="feature-item"><span className="feature-icon" aria-hidden="true"><FileText size={16} strokeWidth={2.2} /></span><span>Documentation and care plan continuity</span></div>
         </div>
       </div>
-    </div>
+
+      {error && <div className="error-message"><span>{error}</span></div>}
+
+      <form onSubmit={handleSubmit} className="login-form" style={{ viewTransitionName: "auth-primary-form" }}>
+        <div className="form-group">
+          <label htmlFor="emailOrUsername">Email or Username</label>
+          <input
+            type="text"
+            id="emailOrUsername"
+            value={emailOrUsername}
+            onChange={(e) => setEmailOrUsername(e.target.value)}
+            placeholder="Enter your email or username"
+            autoComplete="username"
+            required
+            disabled={loading}
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="password">Password</label>
+          <div className="password-input-wrapper">
+            <input
+              type={showPassword ? "text" : "password"}
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+              required
+              disabled={loading}
+            />
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() => setShowPassword(!showPassword)}
+              disabled={loading}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="form-options">
+          <label className="checkbox-label">
+            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+            <span>Keep me signed in</span>
+          </label>
+          <AuthRouteLink to="/forgot-password" className="forgot-password">Reset password</AuthRouteLink>
+        </div>
+
+        <button type="submit" className="btn-login-submit" disabled={loading}>
+          {loading ? "Signing in..." : "Sign In as Clinician"}
+        </button>
+      </form>
+
+      <div className="auth-form-footer">
+        <div className="login-divider"><span>Need a clinician account?</span></div>
+        <AuthRouteLink to="/register/clinician" className="btn-signup-link btn-signup-link--solid">
+          Register as Clinician
+        </AuthRouteLink>
+      </div>
+    </AuthShell>
   );
 }
 

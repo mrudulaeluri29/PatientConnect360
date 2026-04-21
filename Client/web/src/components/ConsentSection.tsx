@@ -19,33 +19,24 @@ export default function ConsentSection({ consents, onChange, disabled }: Consent
   };
 
   return (
-    <div className="consent-section" style={{ marginTop: 16, marginBottom: 12 }}>
-      <div style={{ fontWeight: 600, fontSize: "0.95rem", color: "#333", marginBottom: 8 }}>
-        Required Acknowledgments
-      </div>
+    <div className="consent-section">
+      <div className="consent-section__title">Required Acknowledgments</div>
       {consents.map((c) => (
         <label
           key={c.consentType}
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-            padding: "8px 0",
-            cursor: disabled ? "not-allowed" : "pointer",
-            opacity: disabled ? 0.6 : 1,
-          }}
+          className={`consent-section__item${disabled ? " is-disabled" : ""}`}
         >
           <input
             type="checkbox"
             checked={accepted[c.consentType] || false}
             onChange={() => handleToggle(c.consentType)}
             disabled={disabled}
-            style={{ marginTop: 3, accentColor: "#6E5B9A", width: 18, height: 18, flexShrink: 0 }}
+            className="consent-section__checkbox"
           />
-          <div>
-            <span style={{ fontWeight: 500, fontSize: "0.9rem" }}>{c.label}</span>
-            {c.required && <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>}
-            <div style={{ fontSize: "0.82rem", color: "#6b7280", marginTop: 2 }}>
+          <div className="consent-section__copy">
+            <span className="consent-section__label">{c.label}</span>
+            {c.required && <span className="consent-section__required">*</span>}
+            <div className="consent-section__description">
               {c.description}
             </div>
           </div>
